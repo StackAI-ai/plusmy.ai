@@ -1,4 +1,5 @@
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
+import Link from 'next/link';
 import { getPlatformCounts, getProviderMetadata, plannedProviderPlatforms, supportedProviders } from '@plusmy/contracts';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import { getAuthorizedWorkspace, listConnectionJobs, listConnectionsForWorkspace, listUserWorkspaces } from '@plusmy/core';
@@ -6,18 +7,20 @@ import { RefreshConnectionButton } from './refresh-button';
 import { DisconnectConnectionButton } from './disconnect-button';
 import { SyncConnectionButton } from './sync-button';
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
+import {
+  buildConnectionsHref,
+  connectionHealthFilters,
+  connectionProviderFilters,
+  filterConnections,
+  getConnectionHealth,
+  normalizeConnectionHealthFilter,
+  normalizeConnectionProviderFilter
+} from './filters';
 
 function jobTone(status: string) {
   if (status === 'succeeded') return 'moss' as const;
   if (status === 'failed' || status === 'canceled') return 'brass' as const;
   return 'default' as const;
-}
-
-function isStaleRefresh(value: string | null, maxAgeDays = 14) {
-  if (!value) return true;
-  const ageMs = Date.now() - new Date(value).getTime();
-  const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
-  return ageMs > maxAgeMs;
 }
 
 function formatTimestamp(value: string | null) {
@@ -26,6 +29,7 @@ function formatTimestamp(value: string | null) {
 }
 
 export default async function ConnectionsPage({ searchParams }: { searchParams?: AppSearchParams }) {
+  const currentSearchParams: Record<string, string | string[] | undefined> = searchParams ? await searchParams : {};
   const supabase = await createServerSupabaseClient();
   const {
     data: { user }
@@ -48,6 +52,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
   const workspaces = await listUserWorkspaces(user.id);
   const requestedWorkspaceId = await getSearchParam(searchParams, 'workspace');
   const provider = await getSearchParam(searchParams, 'provider');
+  const health = await getSearchParam(searchParams, 'health');
   const status = await getSearchParam(searchParams, 'status');
   const message = await getSearchParam(searchParams, 'message');
   const workspace = await getAuthorizedWorkspace(user.id, requestedWorkspaceId);
@@ -55,6 +60,9 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
   const canManageWorkspaceConnections = activeMembership?.role === 'owner' || activeMembership?.role === 'admin';
   const connections = workspace ? await listConnectionsForWorkspace(workspace.id, user.id) : [];
   const connectionJobs = workspace ? await listConnectionJobs(workspace.id, 40) : [];
+  const selectedProvider = normalizeConnectionProviderFilter(provider);
+  const selectedHealth = normalizeConnectionHealthFilter(health);
+  const visibleConnections = filterConnections(connections, selectedProvider, selectedHealth);
   const jobsByConnection = new Map<string, typeof connectionJobs>();
   for (const job of connectionJobs) {
     const existing = jobsByConnection.get(job.connection_id) ?? [];
@@ -65,13 +73,20 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
   const processingJobs = connectionJobs.filter((job) => job.status === 'processing').length;
   const failedJobs = connectionJobs.filter((job) => job.status === 'failed').length;
   const staleConnections = connections.filter(
-    (connection) => connection.status === 'active' && isStaleRefresh(connection.last_refreshed_at)
+    (connection) => getConnectionHealth(connection).value === 'stale'
   ).length;
   const reauthRequiredConnections = connections.filter((connection) => connection.status === 'reauth_required').length;
   const revokedConnections = connections.filter((connection) => connection.status === 'revoked').length;
+  const matchingProviders = new Set(visibleConnections.map((connection) => connection.provider));
+  const hasActiveFilters = selectedProvider !== 'all' || selectedHealth !== 'all';
   const healthTone = reauthRequiredConnections || failedJobs || staleConnections ? 'brass' : 'moss';
   const statusTone = status === 'connected' ? 'moss' : 'brass';
   const platformCounts = getPlatformCounts();
+  const visibleConnectionCount = visibleConnections.length;
+  const visibleProviderCatalog =
+    selectedProvider === 'all'
+      ? supportedProviders
+      : supportedProviders.filter((entry) => entry.providerId === selectedProvider);
 
   return (
     <div className="space-y-5">
@@ -115,6 +130,55 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
         ) : null}
       </Card>
 
+      {workspace ? (
+        <Card className="space-y-5">
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+            <div className="space-y-2">
+              <CardTitle className="text-lg">Filters</CardTitle>
+              <CardDescription>Use provider and health filters to isolate installs, reauth loops, and stale tokens.</CardDescription>
+            </div>
+            {hasActiveFilters ? (
+              <Button asChild size="sm" variant="outline">
+                <Link href={buildConnectionsHref(workspace.id, currentSearchParams, { provider: null, health: null })}>
+                  Clear filters
+                </Link>
+              </Button>
+            ) : null}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {connectionProviderFilters.map((filter) => {
+                const active = selectedProvider === filter.value;
+                return (
+                  <Button key={filter.value} asChild size="sm" variant={active ? 'default' : 'outline'}>
+                    <Link href={buildConnectionsHref(workspace.id, currentSearchParams, { provider: filter.value === 'all' ? null : filter.value })}>
+                      {filter.label}
+                    </Link>
+                  </Button>
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {connectionHealthFilters.map((filter) => {
+                const active = selectedHealth === filter.value;
+                return (
+                  <Button key={filter.value} asChild size="sm" variant={active ? 'default' : 'outline'}>
+                    <Link href={buildConnectionsHref(workspace.id, currentSearchParams, { health: filter.value === 'all' ? null : filter.value })}>
+                      {filter.label}
+                    </Link>
+                  </Button>
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="moss">{visibleConnectionCount} matching connections</Badge>
+              <Badge tone={matchingProviders.size ? 'moss' : 'brass'}>{matchingProviders.size} matching providers</Badge>
+              {hasActiveFilters ? <Badge tone="brass">Filtered view</Badge> : <Badge>All installs</Badge>}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Platform coverage</CardTitle>
@@ -138,8 +202,8 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
       </Card>
 
       <div className="grid gap-4 md:grid-cols-3">
-        {supportedProviders.map((provider) => {
-          const providerConnections = connections.filter((item) => item.provider === provider.providerId);
+        {visibleProviderCatalog.map((provider) => {
+          const providerConnections = visibleConnections.filter((item) => item.provider === provider.providerId);
           const activeCount = providerConnections.filter((item) => item.status === 'active').length;
           const redirectTo = workspace ? encodeURIComponent(`/connections?workspace=${workspace.id}`) : '';
           const workspaceConnectHref = workspace
@@ -155,10 +219,18 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
               <CardHeader className="space-y-4">
                 <div className="flex items-center justify-between gap-3">
                   <CardTitle className="text-xl">{provider.name}</CardTitle>
-                  <Badge tone={activeCount ? 'moss' : 'brass'}>{activeCount ? `${activeCount} active` : 'not connected'}</Badge>
+                  <Badge tone={providerConnections.length ? 'moss' : 'brass'}>
+                    {hasActiveFilters
+                      ? `${providerConnections.length} matching`
+                      : activeCount
+                        ? `${activeCount} active`
+                        : 'not connected'}
+                  </Badge>
                 </div>
                 <CardDescription>{provider.summary}</CardDescription>
-                {providerConnections.length === 0 ? (
+                {hasActiveFilters && providerConnections.length === 0 ? (
+                  <CardDescription>No installs match the current provider and health filters.</CardDescription>
+                ) : providerConnections.length === 0 ? (
                   <CardDescription>No provider installs yet.</CardDescription>
                 ) : null}
               </CardHeader>
@@ -210,10 +282,13 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
                 ) : null}
                 <div className="space-y-3">
                   {providerConnections.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No connection records for this provider yet.</p>
+                    <p className="text-sm text-muted-foreground">
+                      {hasActiveFilters ? 'No connection records match these filters for this provider yet.' : 'No connection records for this provider yet.'}
+                    </p>
                   ) : (
                     providerConnections.map((connection) => {
                       const recentJobs = (jobsByConnection.get(connection.id) ?? []).slice(0, 3);
+                      const connectionHealth = getConnectionHealth(connection);
                       return (
                         <div key={connection.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
                           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -222,13 +297,17 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
                               <p className="text-sm text-slate-700">
                                 {connection.scope} • {connection.status}
                               </p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <Badge tone={connectionHealth.tone}>{connectionHealth.label}</Badge>
+                                <Badge tone={connection.scope === 'workspace' ? 'moss' : 'default'}>{connection.scope}</Badge>
+                              </div>
                               {connection.external_account_email ? (
                                 <p className="text-sm text-slate-700">{connection.external_account_email}</p>
                               ) : null}
                               {connection.reauth_required_reason ? (
                                 <p className="mt-2 text-xs text-red-700">{connection.reauth_required_reason}</p>
                               ) : null}
-                              {connection.status === 'active' && isStaleRefresh(connection.last_refreshed_at) ? (
+                              {connection.status === 'active' && connectionHealth.value === 'stale' ? (
                                 <p className="mt-2 text-xs text-amber-700">Token refresh is stale and may need manual recheck.</p>
                               ) : null}
                               <div className="mt-3 flex flex-wrap gap-2">
