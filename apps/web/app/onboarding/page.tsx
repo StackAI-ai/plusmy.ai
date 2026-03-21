@@ -63,7 +63,9 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
       label: 'Register an MCP client',
       done: clients.length > 0,
       href: workspace ? '/mcp-clients?workspace=' + workspace.id : '/mcp-clients',
-      detail: clients.length > 0 ? String(clients.length) + ' client(s) registered' : 'Create a client for OAuth + PKCE'
+      detail: clients.length > 0
+        ? String(clients.length) + ' client(s) registered'
+        : 'Create a client for OpenAI, Anthropic, Gemini, or Cursor via OAuth + PKCE'
     },
     {
       label: 'Finish MCP connection setup',

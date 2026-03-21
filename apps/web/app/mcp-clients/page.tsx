@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
+import { supportedMcpClients } from '@plusmy/contracts';
 import type { AuditLogRecord, ConnectionRecord, OAuthClientApprovalRecord, ToolInvocationRecord } from '@plusmy/contracts';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import {
@@ -367,7 +368,31 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
             )}
           </CardContent>
         </Card>
-        <ClientRegistrationForm />
+        <div className="space-y-5">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Supported MCP clients</CardTitle>
+              <CardDescription>
+                plusmy.ai currently tracks four beta client targets in the shared platform catalog. Operators can
+                register any compatible OAuth client against the same authorization server and workspace scope.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {supportedMcpClients.map((client) => (
+                <div key={client.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-ink">{client.name}</p>
+                      <p className="text-sm text-slate-700">{client.summary}</p>
+                    </div>
+                    <Badge>{client.status}</Badge>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+          <ClientRegistrationForm />
+        </div>
       </div>
 
       <Card>

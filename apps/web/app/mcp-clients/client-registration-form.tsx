@@ -20,7 +20,7 @@ import {
 
 export function ClientRegistrationForm() {
   const router = useRouter();
-  const [name, setName] = useState('Cursor');
+  const [name, setName] = useState('MCP client');
   const [redirectUri, setRedirectUri] = useState('http://localhost:3000/callback');
   const [authMethod, setAuthMethod] = useState<'none' | 'client_secret_post'>('none');
   const [status, setStatus] = useState<string | null>(null);
@@ -64,41 +64,46 @@ export function ClientRegistrationForm() {
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={handleSubmit}>
-        <div className="space-y-2">
-          <Label htmlFor="client-name">MCP client name</Label>
-          <Input
-            id="client-name"
-            type="text"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="redirect-uri">Redirect URI</Label>
-          <Input
-            id="redirect-uri"
-            type="url"
-            value={redirectUri}
-            onChange={(event) => setRedirectUri(event.target.value)}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="auth-method">Token auth method</Label>
-          <Select value={authMethod} onValueChange={(value) => setAuthMethod(value === 'client_secret_post' ? 'client_secret_post' : 'none')}>
-            <SelectTrigger id="auth-method">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Public client (PKCE only)</SelectItem>
-              <SelectItem value="client_secret_post">Confidential client</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <Button disabled={submitting} type="submit">
-          {submitting ? 'Registering…' : 'Register client'}
-        </Button>
-        {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
-        {secret ? <p className="font-mono text-xs text-muted-foreground">Client secret: {secret}</p> : null}
+          <div className="space-y-2">
+            <Label htmlFor="client-name">MCP client name</Label>
+            <Input
+              id="client-name"
+              type="text"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="OpenAI, Anthropic, Gemini, or Cursor"
+            />
+            <p className="text-xs text-muted-foreground">
+              Use a descriptive label for the client you are registering. The shared catalog currently tracks
+              OpenAI, Anthropic, Gemini, and Cursor as the supported MCP client targets.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="redirect-uri">Redirect URI</Label>
+            <Input
+              id="redirect-uri"
+              type="url"
+              value={redirectUri}
+              onChange={(event) => setRedirectUri(event.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="auth-method">Token auth method</Label>
+            <Select value={authMethod} onValueChange={(value) => setAuthMethod(value === 'client_secret_post' ? 'client_secret_post' : 'none')}>
+              <SelectTrigger id="auth-method">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Public client (PKCE only)</SelectItem>
+                <SelectItem value="client_secret_post">Confidential client</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button disabled={submitting} type="submit">
+            {submitting ? 'Registering…' : 'Register client'}
+          </Button>
+          {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
+          {secret ? <p className="font-mono text-xs text-muted-foreground">Client secret: {secret}</p> : null}
         </form>
       </CardContent>
     </Card>
