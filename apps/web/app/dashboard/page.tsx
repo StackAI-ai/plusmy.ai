@@ -75,6 +75,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
     ? buildAuditHref(activeWorkspace.id, { resource: 'connection_job', action: 'connection_job.dead_lettered', status: 'error' })
     : null
   const approvalsHref = activeWorkspace ? `/mcp-clients?workspace=${activeWorkspace.id}` : null
+  const attentionCount = reauthRequiredConnections + deadLetterConnectionJobs + failedConnectionJobs
 
   return (
     <div className="space-y-6">
@@ -90,6 +91,43 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
           <Badge tone="moss">{activeWorkspace ? activeWorkspace.name : 'No workspace yet'}</Badge>
         </CardHeader>
       </Card>
+
+      {activeWorkspace && attentionCount > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Operator notifications</CardTitle>
+            <CardDescription>
+              Immediate workspace actions for degraded provider installs and background job failures.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            {reauthRequiredConnections > 0 ? (
+              <p>
+                <LinkBadge href={reauthConnectionsHref} tone="brass">
+                  {reauthRequiredConnections} connections need reauthorization
+                </LinkBadge>{' '}
+                Provider access has expired or drifted and needs a fresh consent flow.
+              </p>
+            ) : null}
+            {deadLetterConnectionJobs > 0 ? (
+              <p>
+                <LinkBadge href={deadLetterJobsAuditHref} tone="brass">
+                  {deadLetterConnectionJobs} jobs are dead-lettered
+                </LinkBadge>{' '}
+                Retry budgets are exhausted and operators need to inspect the affected installs.
+              </p>
+            ) : null}
+            {failedConnectionJobs > 0 ? (
+              <p>
+                <LinkBadge href={failedJobsAuditHref} tone="brass">
+                  {failedConnectionJobs} sync jobs failed recently
+                </LinkBadge>{' '}
+                Review provider errors before they turn into dead-letter incidents.
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
         <Card>

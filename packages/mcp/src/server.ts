@@ -20,6 +20,31 @@ import {
   type McpAuthContext
 } from '@plusmy/core';
 
+const TOOL_RATE_LIMIT_WINDOW_SECONDS = 60;
+const TOOL_RATE_LIMIT_LIMIT = 60;
+
+export interface McpRateLimitMetadata {
+  limit: number;
+  remaining: number;
+  resetAt: number;
+  resetAfterSeconds: number;
+}
+
+export interface McpRequestResult {
+  response: McpJsonRpcResponse;
+  rateLimit?: McpRateLimitMetadata;
+}
+
+class McpToolExecutionError extends Error {
+  constructor(
+    message: string,
+    readonly rateLimit?: McpRateLimitMetadata
+  ) {
+    super(message);
+    this.name = 'McpToolExecutionError';
+  }
+}
+
 export function createMcpServer(authContext: McpAuthContext) {
   return {
     authContext,
@@ -139,9 +164,15 @@ export async function executeToolCall(authContext: McpAuthContext, toolName: str
     workspaceId: authContext.workspaceId,
     subject: authContext.clientId,
     action: toolName,
-    windowSeconds: 60,
-    limit: 60
+    windowSeconds: TOOL_RATE_LIMIT_WINDOW_SECONDS,
+    limit: TOOL_RATE_LIMIT_LIMIT
   });
+  const rateLimitMetadata = {
+    limit: TOOL_RATE_LIMIT_LIMIT,
+    remaining: Math.max(rateLimit.remaining, 0),
+    resetAfterSeconds: TOOL_RATE_LIMIT_WINDOW_SECONDS,
+    resetAt: Math.floor(Date.now() / 1000) + TOOL_RATE_LIMIT_WINDOW_SECONDS
+  } satisfies McpRateLimitMetadata;
 
   if (!rateLimit.allowed) {
     await logAuditEvent({
@@ -155,7 +186,7 @@ export async function executeToolCall(authContext: McpAuthContext, toolName: str
       status: 'error',
       metadata: { provider }
     });
-    throw new Error(`Rate limit exceeded for ${toolName}.`);
+    throw new McpToolExecutionError(`Rate limit exceeded for ${toolName}.`, rateLimitMetadata);
   }
 
   const startedAt = Date.now();
@@ -224,7 +255,7 @@ export async function executeToolCall(authContext: McpAuthContext, toolName: str
         contextInjection: summarizeContextInjection(contextInjection)
       }
     });
-    return { output, runtimeContext, contextInjection };
+    return { output, runtimeContext, contextInjection, rateLimit: rateLimitMetadata };
   } catch (error) {
     await recordToolInvocation({
       workspaceId: authContext.workspaceId,
@@ -254,7 +285,7 @@ export async function executeToolCall(authContext: McpAuthContext, toolName: str
         error: error instanceof Error ? error.message : 'Tool execution failed.'
       }
     });
-    throw error;
+    throw new McpToolExecutionError(error instanceof Error ? error.message : 'Tool execution failed.', rateLimitMetadata);
   }
 }
 
@@ -266,27 +297,27 @@ function failure(id: string | number | null, code: number, message: string, data
   return { jsonrpc: '2.0', id, error: { code, message, data } };
 }
 
-export async function handleMcpJsonRpcRequest(authContext: McpAuthContext, body: McpJsonRpcRequest): Promise<McpJsonRpcResponse> {
+export async function handleMcpJsonRpcRequest(authContext: McpAuthContext, body: McpJsonRpcRequest): Promise<McpRequestResult> {
   try {
     switch (body.method) {
       case 'initialize':
-        return success(body.id, {
+        return { response: success(body.id, {
           protocolVersion: '2025-03-26',
           serverInfo: { name: 'plusmy.ai', version: '0.1.0' },
           capabilities: {
             tools: { listChanged: false },
             resources: { listChanged: false }
           }
-        });
+        }) };
       case 'ping':
-        return success(body.id, {});
+        return { response: success(body.id, {}) };
       case 'tools/list': {
         const tools = await resolveAvailableTools(authContext);
-        return success(body.id, { tools } as unknown as Json);
+        return { response: success(body.id, { tools } as unknown as Json) };
       }
       case 'resources/list': {
         const resources = await resolveAvailableResources(authContext);
-        return success(body.id, { resources } as unknown as Json);
+        return { response: success(body.id, { resources } as unknown as Json) };
       }
       case 'resources/read': {
         const uri = String(body.params?.uri ?? '');
@@ -295,9 +326,10 @@ export async function handleMcpJsonRpcRequest(authContext: McpAuthContext, body:
           `# Relevant Workspace Context${resourceName ? ` for ${resourceName}` : ''}`,
           contextInjection
         );
-        return success(
-          body.id,
-          {
+        return {
+          response: success(
+            body.id,
+            {
             contents: supplementalContext
               ? [
                   ...contents,
@@ -308,35 +340,43 @@ export async function handleMcpJsonRpcRequest(authContext: McpAuthContext, body:
                   }
                 ]
               : contents
-          } as unknown as Json
-        );
+            } as unknown as Json
+          )
+        };
       }
       case 'tools/call': {
         const name = String(body.params?.name ?? '');
         const args = (body.params?.arguments ?? {}) as Record<string, unknown>;
-        const { output, runtimeContext, contextInjection } = await executeToolCall(authContext, name, args);
+        const { output, runtimeContext, contextInjection, rateLimit } = await executeToolCall(authContext, name, args);
         const supplementalBlocks = [
           formatRuntimeContextMarkdown(runtimeContext),
           formatContextInjectionMarkdown('# Matched Workspace Context', contextInjection)
         ].filter((block): block is string => Boolean(block));
-        return success(body.id, {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(output, null, 2)
-            },
-            ...supplementalBlocks.map((text) => ({
-              type: 'text' as const,
-              text
-            }))
-          ],
-          structuredContent: output as Json
-        });
+        return {
+          response: success(body.id, {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(output, null, 2)
+              },
+              ...supplementalBlocks.map((text) => ({
+                type: 'text' as const,
+                text
+              }))
+            ],
+            structuredContent: output as Json
+          }),
+          rateLimit
+        };
       }
       default:
-        return failure(body.id, -32601, `Method not found: ${body.method}`);
+        return { response: failure(body.id, -32601, `Method not found: ${body.method}`) };
     }
   } catch (error) {
-    return failure(body.id, -32000, error instanceof Error ? error.message : 'MCP request failed.');
+    const rateLimit = error instanceof McpToolExecutionError ? error.rateLimit : undefined;
+    return {
+      response: failure(body.id, -32000, error instanceof Error ? error.message : 'MCP request failed.'),
+      rateLimit
+    };
   }
 }

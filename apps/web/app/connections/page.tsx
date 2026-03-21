@@ -29,6 +29,11 @@ function formatTimestamp(value: string | null) {
   return new Date(value).toLocaleString();
 }
 
+function buildReconnectHref(workspaceId: string, provider: string, scope: 'workspace' | 'personal') {
+  const redirectTo = encodeURIComponent(`/connections?workspace=${workspaceId}`);
+  return `/api/integrations/${provider}/connect?workspace_id=${workspaceId}&scope=${scope}&redirect_to=${redirectTo}`;
+}
+
 export default async function ConnectionsPage({ searchParams }: { searchParams?: AppSearchParams }) {
   const currentSearchParams: Record<string, string | string[] | undefined> = searchParams ? await searchParams : {};
   const supabase = await createServerSupabaseClient();
@@ -110,6 +115,10 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
       return job ? { connection, job } : null;
     })
     .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  const needsAttentionConnections = connections.filter((connection) => {
+    const health = getConnectionHealth(connection).value;
+    return connection.status === 'reauth_required' || connection.status === 'revoked' || health === 'stale';
+  });
 
   return (
     <div className="space-y-5">
@@ -249,6 +258,53 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
         </Card>
       ) : null}
 
+      {workspace && needsAttentionConnections.length ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Connection notifications</CardTitle>
+            <CardDescription>
+              Provider installs that need an operator action now, including expired consent, revoked access, and stale refresh posture.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {needsAttentionConnections.slice(0, 5).map((connection) => {
+              const health = getConnectionHealth(connection);
+              const canReconnect = connection.scope === 'personal' || canManageWorkspaceConnections;
+              const reconnectHref = canReconnect ? buildReconnectHref(workspace.id, connection.provider, connection.scope) : null;
+              return (
+                <div key={connection.id} className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium text-foreground">{connection.display_name}</p>
+                        <Badge tone={health.tone}>{health.label}</Badge>
+                        <Badge tone={connection.scope === 'workspace' ? 'moss' : 'default'}>{connection.scope}</Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {connection.status === 'revoked'
+                          ? 'This connection was revoked and must be linked again before tools can run.'
+                          : connection.status === 'reauth_required'
+                            ? connection.reauth_required_reason ?? 'Provider consent or token state requires reauthorization.'
+                            : 'Refresh posture is stale. Reconnect now if the provider grant may have changed.'}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {reconnectHref ? (
+                        <Button asChild size="sm">
+                          <a href={reconnectHref}>Reconnect</a>
+                        </Button>
+                      ) : (
+                        <Badge tone="brass">Owner or admin required</Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Platform coverage</CardTitle>
@@ -371,6 +427,8 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
                     providerConnections.map((connection) => {
                       const recentJobs = (jobsByConnection.get(connection.id) ?? []).slice(0, 3);
                       const connectionHealth = getConnectionHealth(connection);
+                      const canReconnect = connection.scope === 'personal' || canManageWorkspaceConnections;
+                      const reconnectHref = workspace ? buildReconnectHref(workspace.id, connection.provider, connection.scope) : null;
                       const connectionAuditHref = workspace
                         ? buildAuditHref(workspace.id, {
                             resource: 'connection',
@@ -405,6 +463,11 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
                                   <Link className="font-medium underline underline-offset-4" href={connectionAuditHref}>
                                     Inspect audit trail
                                   </Link>
+                                </p>
+                              ) : null}
+                              {connection.status === 'revoked' ? (
+                                <p className="mt-2 text-xs text-amber-700">
+                                  Provider access was revoked. Reconnect this install before MCP clients can use it again.
                                 </p>
                               ) : null}
                               <div className="mt-3 flex flex-wrap gap-2">
@@ -447,6 +510,13 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
                             </div>
                             {workspace ? (
                               <div className="flex flex-col items-end gap-2">
+                                {canReconnect && reconnectHref ? (
+                                  <Button asChild size="sm">
+                                    <a href={reconnectHref}>
+                                      {connection.status === 'revoked' || connection.status === 'reauth_required' ? 'Reconnect now' : 'Reconnect'}
+                                    </a>
+                                  </Button>
+                                ) : null}
                                 {connection.status !== 'revoked' ? (
                                   <>
                                     <SyncConnectionButton workspaceId={workspace.id} connectionId={connection.id} />
