@@ -7,6 +7,9 @@ import { ClientRegistrationForm } from './client-registration-form';
 import { RevokeApprovalButton } from './revoke-approval-button';
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
 
+const staleApprovalWindowDays = 14;
+const approvalExchangeGraceWindowDays = 3;
+
 function canManageWorkspace(role: string | undefined) {
   return role === 'owner' || role === 'admin';
 }
@@ -17,7 +20,19 @@ function isRecent(isoTimestamp: string | null | undefined, windowDays: number) {
 }
 
 function isStaleApproval(approval: OAuthClientApprovalRecord) {
-  return approval.status === 'active' && !isRecent(approval.last_used_at, 14);
+  return approval.status === 'active' && !isRecent(approval.last_used_at, staleApprovalWindowDays) && !isApprovalAwaitingTokenExchange(approval);
+}
+
+function isApprovalAwaitingTokenExchange(approval: OAuthClientApprovalRecord) {
+  if (approval.status !== 'active' || !isRecent(approval.approved_at, approvalExchangeGraceWindowDays)) {
+    return false;
+  }
+
+  if (!approval.last_used_at) {
+    return true;
+  }
+
+  return new Date(approval.last_used_at).getTime() < new Date(approval.approved_at).getTime();
 }
 
 function extractAuditClientId(entry: AuditLogRecord) {
@@ -40,6 +55,83 @@ function buildClientAuditHref(workspaceId: string, clientId: string) {
     client: clientId
   });
   return `/audit?${params.toString()}`;
+}
+
+function getApprovalMetadataString(approval: OAuthClientApprovalRecord, key: string) {
+  const metadata = approval.metadata;
+  if (!metadata || Array.isArray(metadata) || typeof metadata !== 'object') return null;
+
+  const value = (metadata as Record<string, unknown>)[key];
+  if (typeof value !== 'string') return null;
+
+  const trimmedValue = value.trim();
+  return trimmedValue.length > 0 ? trimmedValue : null;
+}
+
+function buildApprovalAuthorizeHref(workspaceId: string, approval: OAuthClientApprovalRecord) {
+  const storedRedirectUri = getApprovalMetadataString(approval, 'redirect_uri');
+  if (!storedRedirectUri) return null;
+
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: approval.client_id,
+    redirect_uri: storedRedirectUri,
+    scope: approval.scopes.join(' '),
+    workspace_id: workspaceId,
+    source: 'operator_ui'
+  });
+
+  return `/authorize?${params.toString()}`;
+}
+
+function getRedirectHostLabel(redirectUri: string | null) {
+  if (!redirectUri) return null;
+
+  try {
+    return new URL(redirectUri).host;
+  } catch {
+    return redirectUri;
+  }
+}
+
+function getApprovalHealth(approval: OAuthClientApprovalRecord) {
+  if (approval.status === 'revoked') {
+    return {
+      tone: 'brass' as const,
+      label: 'Revoked',
+      detail: approval.revoked_at ? `Revoked at ${approval.revoked_at}.` : 'This approval has already been revoked.'
+    };
+  }
+
+  if (isApprovalAwaitingTokenExchange(approval)) {
+    return {
+      tone: 'default' as const,
+      label: 'Awaiting token exchange',
+      detail: 'Recently approved or reauthorized. The client still needs to exchange a fresh code before token activity updates.'
+    };
+  }
+
+  if (isStaleApproval(approval)) {
+    return {
+      tone: 'brass' as const,
+      label: 'Stale approval',
+      detail: `No token usage recorded in the last ${staleApprovalWindowDays} days.`
+    };
+  }
+
+  if (isRecent(approval.last_used_at, 7)) {
+    return {
+      tone: 'moss' as const,
+      label: 'Recently used',
+      detail: 'Token usage was recorded during the last 7 days.'
+    };
+  }
+
+  return {
+    tone: 'moss' as const,
+    label: 'Active',
+    detail: 'This approval can still mint or refresh MCP access tokens.'
+  };
 }
 
 type ClientActivitySummary = {
@@ -153,7 +245,8 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
   const revokedApprovals = approvals.filter((approval) => approval.status === 'revoked').length;
   const recentlyUsedApprovals = approvals.filter((approval) => isRecent(approval.last_used_at, 7)).length;
   const staleApprovals = approvals.filter((approval) => isStaleApproval(approval)).length;
-  const userScopedApprovals = approvals.filter((approval) => approval.user_id === user.id).length;
+  const awaitingTokenExchangeApprovals = approvals.filter((approval) => isApprovalAwaitingTokenExchange(approval)).length;
+  const reauthorizableApprovals = approvals.filter((approval) => approval.status === 'active' && approval.user_id === user.id).length;
   const clientActivity = buildClientActivitySummaries(approvals, approvalActivity, recentInvocations);
   const activeClients = clientActivity.filter((entry) => entry.recentToolCalls > 0 || entry.recentAuditEvents > 0).length;
 
@@ -178,7 +271,9 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
         <Card className="space-y-2">
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Stale approvals</p>
           <p className="text-4xl font-semibold text-ink">{staleApprovals}</p>
-          <p className="text-sm text-slate-700">Active approvals with no token usage in the last 14 days.</p>
+          <p className="text-sm text-slate-700">
+            Active approvals with no token usage in the last {staleApprovalWindowDays} days. {awaitingTokenExchangeApprovals} awaiting client exchange.
+          </p>
         </Card>
         <Card className="space-y-2">
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Recent active clients</p>
@@ -188,9 +283,9 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
           </p>
         </Card>
         <Card className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Owner approvals visible</p>
-          <p className="text-4xl font-semibold text-ink">{userScopedApprovals}</p>
-          <p className="text-sm text-slate-700">Approvals created by the signed-in operator.</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">You can renew</p>
+          <p className="text-4xl font-semibold text-ink">{reauthorizableApprovals}</p>
+          <p className="text-sm text-slate-700">Only the original approving user can reauthorize an active approval.</p>
         </Card>
       </div>
 
@@ -271,7 +366,12 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
             ) : (
               approvals.map((approval) => {
                 const canRevoke = approval.status === 'active' && (approval.user_id === user.id || canReviewWorkspaceApprovals);
+                const canReauthorize = approval.status === 'active' && approval.user_id === user.id;
                 const summary = clientActivity.find((entry) => entry.clientId === approval.client_id);
+                const approvalHealth = getApprovalHealth(approval);
+                const storedRedirectUri = getApprovalMetadataString(approval, 'redirect_uri');
+                const reauthorizeHref = canReauthorize ? buildApprovalAuthorizeHref(workspace.id, approval) : null;
+                const redirectHostLabel = getRedirectHostLabel(storedRedirectUri);
 
                 return (
                   <div key={approval.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
@@ -283,6 +383,7 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                       <div className="flex flex-wrap items-center gap-2">
                         {approval.token_endpoint_auth_method ? <Badge>{approval.token_endpoint_auth_method}</Badge> : null}
                         <Badge tone={approval.status === 'revoked' ? 'brass' : 'moss'}>{approval.status}</Badge>
+                        <Badge tone={approvalHealth.tone}>{approvalHealth.label}</Badge>
                       </div>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -296,8 +397,13 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                       <p>{approval.user_id === user.id ? 'Approved by you' : `Approved by ${approval.user_id}`}</p>
                       <p>Approved at {approval.approved_at}</p>
                       <p>{approval.last_used_at ? `Last token issued ${approval.last_used_at}` : 'No token exchanges recorded yet.'}</p>
-                      {approval.status === 'active' && isStaleApproval(approval) ? (
-                        <p className="text-amber-700">Active approval with no token usage in the last 14 days.</p>
+                      <p className={approvalHealth.tone === 'brass' ? 'text-amber-700' : 'text-slate-700'}>{approvalHealth.detail}</p>
+                      {redirectHostLabel ? <p>Reauthorization returns to {redirectHostLabel}.</p> : null}
+                      {approval.status === 'active' && isStaleApproval(approval) && approval.user_id !== user.id ? (
+                        <p className="text-amber-700">Only the original approving user can renew this stale approval.</p>
+                      ) : null}
+                      {approval.status === 'active' && isStaleApproval(approval) && canReauthorize && !reauthorizeHref ? (
+                        <p className="text-amber-700">No stored redirect URI is available, so renewal must start from the client itself.</p>
                       ) : null}
                       {approval.revoked_at ? <p>Revoked at {approval.revoked_at}</p> : null}
                       {summary && canReviewWorkspaceApprovals ? (
@@ -313,6 +419,27 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                           className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:-translate-y-0.5 hover:bg-white"
                         >
                           Inspect audit trail
+                        </Link>
+                        {reauthorizeHref ? (
+                          <Link
+                            href={reauthorizeHref}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:-translate-y-0.5 hover:bg-white"
+                          >
+                            {isStaleApproval(approval) ? 'Reauthorize now' : 'Open consent flow'}
+                          </Link>
+                        ) : null}
+                      </div>
+                    ) : reauthorizeHref ? (
+                      <div className="mt-4">
+                        <Link
+                          href={reauthorizeHref}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:-translate-y-0.5 hover:bg-white"
+                        >
+                          {isStaleApproval(approval) ? 'Reauthorize now' : 'Open consent flow'}
                         </Link>
                       </div>
                     ) : null}

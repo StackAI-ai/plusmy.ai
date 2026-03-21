@@ -19,11 +19,13 @@
 - Completed: semantic context-asset injection into MCP resource reads and tool-call responses, including top-match workspace snippets threaded from `match_context_chunks`.
 - In progress: continue operator-surface polish across non-dashboard pages (connections, MCP clients, audit) to surface degraded authorization and connection state inline.
 - 2026-03-21 execution checkpoint: reviewed commit set `9615c8e..d46bad4` and created a fresh 30-item next-operator backlog in Linear (`NIC-12` through `NIC-42`) while closing implementation notes on completed items `NIC-5` through `NIC-10`.
+- Completed: MCP approval remediation on the operator surface, including stale-vs-pending token exchange state, one-click self-reauthorization for approval owners, and operator-initiated renewal messaging on the OAuth consent screen.
+- 2026-03-21 execution checkpoint: shipped `NIC-11` and `NIC-12`, validated the web app locally, and created follow-on operator backlog items `NIC-43` through `NIC-45` for local origin handling, member identity labels, and approval-health filtering.
 
 ## Next execution slice (2026-03-21)
-- Validate and ship `NIC-11` and `NIC-12` as immediate follow-up: stale approval remediation and MCP client activity visibility.
-- Prioritize reliability hardening in `NIC-16`/`NIC-17` (dead-letter + worker backoff), then UI/operability fixes `NIC-13` and `NIC-14`.
-- Defer long-tail docs and compliance enhancements (`NIC-31`, `NIC-29`, `NIC-30`) until core worker and UX reliability items pass.
+- Prioritize adjacent MCP client follow-up work in `NIC-45`, `NIC-44`, and `NIC-43` so approval remediation is easier to operate locally and across multi-user workspaces.
+- Continue with operator drill-down/pagination work in `NIC-13` and `NIC-14` once the approval list becomes easier to filter and read.
+- Return to reliability hardening in `NIC-16` and `NIC-17` after the current operator-surface remediation loop is complete.
 
 ## Implementation changes
 1. Fresh repo bootstrap: replace the current empty workspace with a clean clone of the GitHub repo, set the default branch as the base, and treat the first commit after clone as the canonical scaffold baseline for all subsequent work.

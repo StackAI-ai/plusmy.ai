@@ -55,6 +55,7 @@ function renderConsentPage(input: {
   workspaceName: string;
   codeChallenge: string | null;
   codeChallengeMethod: string | null;
+  source: string | null;
   existingApproval?: {
     approvedAt: string;
     lastUsedAt: string | null;
@@ -92,6 +93,14 @@ function renderConsentPage(input: {
       </div>`
           : ''
       }
+      ${
+        input.source === 'operator_ui'
+          ? `<div style="margin-top:18px;border:1px solid rgba(19,32,29,.08);border-radius:20px;padding:16px;background:rgba(200,162,77,.12)">
+        <p style="margin:0;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#55635f">Operator-initiated renewal</p>
+        <p class="muted" style="margin:8px 0 0">This consent flow was opened from the MCP clients operator page. After approval, the client still needs to exchange the new authorization code before token activity appears as fresh usage.</p>
+      </div>`
+          : ''
+      }
       <form method="post" action="/authorize" style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
         <input type="hidden" name="client_id" value="${input.clientId}" />
         <input type="hidden" name="redirect_uri" value="${input.redirectUri}" />
@@ -100,6 +109,7 @@ function renderConsentPage(input: {
         <input type="hidden" name="workspace_id" value="${input.workspaceId}" />
         <input type="hidden" name="code_challenge" value="${input.codeChallenge ?? ''}" />
         <input type="hidden" name="code_challenge_method" value="${input.codeChallengeMethod ?? ''}" />
+        <input type="hidden" name="source" value="${input.source ?? ''}" />
         <button class="primary" type="submit" name="decision" value="approve">Approve access</button>
         <button class="secondary" type="submit" name="decision" value="deny">Deny</button>
       </form>
@@ -117,6 +127,7 @@ export async function GET(request: NextRequest) {
   const codeChallenge = url.searchParams.get('code_challenge');
   const codeChallengeMethod = url.searchParams.get('code_challenge_method');
   const requestedWorkspaceId = url.searchParams.get('workspace_id');
+  const source = url.searchParams.get('source');
 
   if (!clientId || !redirectUri) {
     return NextResponse.json({ error: 'invalid_request', error_description: 'Missing client_id or redirect_uri.' }, { status: 400 });
@@ -163,6 +174,7 @@ export async function GET(request: NextRequest) {
       workspaceName: workspace.name,
       codeChallenge,
       codeChallengeMethod,
+      source,
       existingApproval: existingApproval && existingApproval.status === 'active'
         ? {
             approvedAt: formatTimestamp(existingApproval.approved_at) ?? existingApproval.approved_at,
@@ -185,6 +197,7 @@ export async function POST(request: NextRequest) {
   const workspaceId = String(form.get('workspace_id') ?? '');
   const codeChallenge = String(form.get('code_challenge') ?? '');
   const codeChallengeMethod = String(form.get('code_challenge_method') ?? 'S256');
+  const source = String(form.get('source') ?? '');
 
   const supabase = await createServerSupabaseClient();
   const {
@@ -226,7 +239,8 @@ export async function POST(request: NextRequest) {
       resourceId: clientId,
       metadata: {
         redirect_uri: redirectUri,
-        scopes: requestedScopes
+        scopes: requestedScopes,
+        source: source || null
       }
     });
 
@@ -241,7 +255,8 @@ export async function POST(request: NextRequest) {
     userId: user.id,
     scopes: requestedScopes,
     metadata: {
-      redirect_uri: redirectUri
+      redirect_uri: redirectUri,
+      source: source || null
     }
   });
 
