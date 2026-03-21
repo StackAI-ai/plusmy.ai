@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
-import { getPlatformCounts, plannedProviderPlatforms, supportedProviders } from '@plusmy/contracts';
+import { getPlatformCategoryCounts, getPlatformCounts, plannedProviderPlatforms, supportedProviders } from '@plusmy/contracts';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import {
   getAuthorizedWorkspace,
@@ -25,6 +25,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
   const clients = user ? await listOAuthClients(user.id) : [];
 
   const platformCounts = getPlatformCounts();
+  const categoryCounts = getPlatformCategoryCounts();
   const workspaceLabel = workspace
     ? workspace.name
     : workspaces.length > 0
@@ -165,11 +166,13 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
               <Badge tone="moss">{platformCounts.liveProviders} live</Badge>
               <Badge>{platformCounts.supportedClients} clients</Badge>
               <Badge tone="brass">{platformCounts.plannedPlatforms} next</Badge>
+              <Badge>{Object.keys(categoryCounts).length} categories</Badge>
             </div>
             <p className="text-sm leading-7 text-muted-foreground">
-              Live today: {supportedProviders.map((provider) => provider.name).join(', ')}. Next wave:
+              Live today: {supportedProviders.map((provider) => provider.name).join(', ')}. Reviewed next wave:
               {' '}
-              {plannedProviderPlatforms.slice(0, 3).map((platform) => platform.name).join(', ')}.
+              {plannedProviderPlatforms.slice(0, 5).map((platform) => platform.name).join(', ')} and more across
+              documents, engineering, project management, CRM, support, storage, productivity, and identity.
             </p>
             <div className="flex flex-wrap gap-2">
               <Button asChild size="sm" variant="outline">

@@ -9,7 +9,8 @@ export type PlatformCategory =
   | 'crm'
   | 'support'
   | 'storage'
-  | 'productivity';
+  | 'productivity'
+  | 'identity';
 
 export interface PlatformCapability {
   label: string;
@@ -210,6 +211,84 @@ export const plannedProviderPlatforms = [
       { label: 'Base search', detail: 'Find records across connected bases.' },
       { label: 'Record updates', detail: 'Write controlled updates into operational tables.' }
     ]
+  },
+  {
+    id: 'box',
+    name: 'Box',
+    status: 'planned',
+    surface: 'provider',
+    category: 'storage',
+    summary: 'Enterprise content collaboration and file search/read coverage for Box-heavy teams.',
+    rationale: 'Fills the same storage-access gap as Dropbox while targeting stricter enterprise content programs.',
+    capabilities: [
+      { label: 'File search', detail: 'Search content and metadata across connected Box folders.' },
+      { label: 'File read', detail: 'Open shared documents and files through governed MCP tools.' }
+    ]
+  },
+  {
+    id: 'asana',
+    name: 'Asana',
+    status: 'planned',
+    surface: 'provider',
+    category: 'project_management',
+    summary: 'Task, project, and comment workflows for planning-heavy operating teams.',
+    rationale: 'Adds a broad project-management surface that complements Linear for less engineering-centric customers.',
+    capabilities: [
+      { label: 'Project search', detail: 'Find projects, portfolios, and task lists by workspace context.' },
+      { label: 'Task updates', detail: 'Post governed updates and comments back into Asana.' }
+    ]
+  },
+  {
+    id: 'monday',
+    name: 'monday.com',
+    status: 'planned',
+    surface: 'provider',
+    category: 'project_management',
+    summary: 'Board-centric workflow updates for teams running operations on monday.com.',
+    rationale: 'Covers visual operations teams that model work as boards rather than issue trackers.',
+    capabilities: [
+      { label: 'Board search', detail: 'Locate boards, items, and automation state quickly.' },
+      { label: 'Item updates', detail: 'Write controlled updates into monday.com items.' }
+    ]
+  },
+  {
+    id: 'servicenow',
+    name: 'ServiceNow',
+    status: 'planned',
+    surface: 'provider',
+    category: 'support',
+    summary: 'Incident, request, and change workflows for IT and enterprise operations teams.',
+    rationale: 'Captures a major service-management system that often sits at the center of enterprise automation.',
+    capabilities: [
+      { label: 'Incident search', detail: 'Find incidents and related service records.' },
+      { label: 'Request updates', detail: 'Add notes or governed state changes to service requests.' }
+    ]
+  },
+  {
+    id: 'zoom',
+    name: 'Zoom',
+    status: 'planned',
+    surface: 'provider',
+    category: 'productivity',
+    summary: 'Meeting context, transcript, and follow-up workflows for distributed teams.',
+    rationale: 'Adds conversational context around decisions, notes, and action items that never make it into docs.',
+    capabilities: [
+      { label: 'Meeting search', detail: 'Find meetings and participants tied to workspace context.' },
+      { label: 'Transcript read', detail: 'Pull transcripts and summaries into MCP workflows.' }
+    ]
+  },
+  {
+    id: 'okta',
+    name: 'Okta',
+    status: 'planned',
+    surface: 'provider',
+    category: 'identity',
+    summary: 'Identity, group, and app-assignment workflows for enterprise admin control planes.',
+    rationale: 'Useful for understanding access posture and tenant automation without introducing a separate security model.',
+    capabilities: [
+      { label: 'User lookup', detail: 'Resolve identity records and lifecycle state.' },
+      { label: 'Group sync', detail: 'Inspect group membership and application assignments.' }
+    ]
   }
 ] as const satisfies readonly PlatformCatalogEntry[];
 
@@ -302,6 +381,13 @@ export function getPlatformCounts() {
     plannedPlatforms: plannedProviderPlatforms.length,
     supportedClients: supportedMcpClients.length
   };
+}
+
+export function getPlatformCategoryCounts() {
+  return platformCatalog.reduce<Record<string, number>>((counts, entry) => {
+    counts[entry.category] = (counts[entry.category] ?? 0) + 1;
+    return counts;
+  }, {});
 }
 
 export function getProviderMetadata(providerId: 'google' | 'slack' | 'notion') {

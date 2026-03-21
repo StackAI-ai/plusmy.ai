@@ -26,16 +26,16 @@ The next-wave platforms were chosen because they fit that same model without req
 
 ## Next-Wave Expansion Candidates
 
-Highest-value reviewed gaps:
+Highest-value reviewed gaps by category:
 
-- Microsoft 365 for OneDrive and SharePoint parity
-- GitHub for repository, issue, and pull-request workflows
-- Linear and Jira for issue-tracking integration
-- Confluence for enterprise knowledge search
-- HubSpot and Salesforce for CRM context
-- Zendesk for customer-support workflows
-- Dropbox for storage-heavy teams
-- Airtable for operational table read/write workflows
+- Documents and storage: Microsoft 365, Dropbox, and Box
+- Engineering and knowledge: GitHub, Linear, Jira, and Confluence
+- Project management: Asana and monday.com
+- CRM and customer ops: HubSpot and Salesforce
+- Support and service management: Zendesk and ServiceNow
+- Productivity and identity: Airtable, Zoom, and Okta
+
+These next-wave platforms stay aligned with the same tenant model as the live providers: workspace-scoped installs, Vault-backed credentials, MCP-gated tools, and explicit audit/re-auth boundaries.
 
 ## Source Of Truth
 
