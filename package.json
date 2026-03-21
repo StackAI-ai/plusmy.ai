@@ -1,0 +1,21 @@
+{
+  "name": "plusmy-ai",
+  "private": true,
+  "packageManager": "pnpm@10.6.3",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "typecheck": "turbo typecheck",
+    "lint": "turbo lint",
+    "dev:web": "pnpm --filter @plusmy/web dev",
+    "dev:mobile": "pnpm --filter @plusmy/mobile dev",
+    "supabase:start": "supabase start",
+    "supabase:reset": "supabase db reset",
+    "supabase:types": "supabase gen types typescript --local --schema public,app > packages/supabase/src/database.types.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.2"
+  }
+}

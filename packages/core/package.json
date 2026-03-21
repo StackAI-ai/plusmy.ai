@@ -1,0 +1,21 @@
+{
+  "name": "@plusmy/core",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@plusmy/config": "workspace:*",
+    "@plusmy/contracts": "workspace:*",
+    "@plusmy/integrations": "workspace:*",
+    "@plusmy/supabase": "workspace:*",
+    "jose": "^5.9.6",
+    "nanoid": "^5.1.5"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  }
+}
