@@ -5,13 +5,16 @@ import { useRouter } from 'next/navigation';
 import { Button, Card } from '@plusmy/ui';
 
 type Mode = 'asset' | 'prompt' | 'skill';
+type ScopeMode = 'workspace' | 'personal';
 
 export function ContextIngestForm({ workspaceId }: { workspaceId: string }) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('asset');
+  const [scope, setScope] = useState<ScopeMode>('workspace');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [description, setDescription] = useState('');
+  const [sourceUri, setSourceUri] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -30,19 +33,23 @@ export function ContextIngestForm({ workspaceId }: { workspaceId: string }) {
       mode === 'asset'
         ? {
             workspace_id: workspaceId,
+            scope,
             type: 'document',
             title,
-            content: body
+            content: body,
+            source_uri: sourceUri || null
           }
         : mode === 'prompt'
           ? {
               workspace_id: workspaceId,
+              scope,
               name: title,
               description,
               content: body
             }
           : {
               workspace_id: workspaceId,
+              scope,
               name: title,
               description,
               instructions: body
@@ -64,7 +71,8 @@ export function ContextIngestForm({ workspaceId }: { workspaceId: string }) {
     setTitle('');
     setBody('');
     setDescription('');
-    setStatus(`${mode} created.`);
+    setSourceUri('');
+    setStatus(`${scope} ${mode} created.`);
     setSubmitting(false);
     router.refresh();
   }
@@ -84,6 +92,20 @@ export function ContextIngestForm({ workspaceId }: { workspaceId: string }) {
         ))}
       </div>
       <form className="space-y-4" onSubmit={handleSubmit}>
+        <div>
+          <label className="text-sm font-semibold text-slate-700" htmlFor="context-scope">
+            Visibility
+          </label>
+          <select
+            id="context-scope"
+            value={scope}
+            onChange={(event) => setScope(event.target.value === 'personal' ? 'personal' : 'workspace')}
+            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
+          >
+            <option value="workspace">Workspace shared</option>
+            <option value="personal">Personal only</option>
+          </select>
+        </div>
         <div>
           <label className="text-sm font-semibold text-slate-700" htmlFor="context-title">
             {mode === 'asset' ? 'Asset title' : 'Name'}
@@ -108,6 +130,21 @@ export function ContextIngestForm({ workspaceId }: { workspaceId: string }) {
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
+            />
+          </div>
+        ) : null}
+        {mode === 'asset' ? (
+          <div>
+            <label className="text-sm font-semibold text-slate-700" htmlFor="context-source-uri">
+              Source URI
+            </label>
+            <input
+              id="context-source-uri"
+              type="text"
+              value={sourceUri}
+              onChange={(event) => setSourceUri(event.target.value)}
+              className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
+              placeholder="notion://page/123 or https://docs.google.com/..."
             />
           </div>
         ) : null}

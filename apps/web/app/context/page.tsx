@@ -11,6 +11,10 @@ import { ContextIngestForm } from './context-ingest-form';
 import { ContextSearchForm } from './search-form';
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
 
+function scopeLabel(ownerUserId: string | null | undefined) {
+  return ownerUserId ? 'personal' : 'workspace';
+}
+
 export default async function ContextPage({ searchParams }: { searchParams?: AppSearchParams }) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -85,6 +89,80 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
               </div>
             </Card>
           </section>
+
+          <div className="grid gap-4 xl:grid-cols-3">
+            <Card>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold">Context assets</h2>
+                <Badge tone="moss">{assets.length}</Badge>
+              </div>
+              <div className="mt-4 space-y-3">
+                {assets.length === 0 ? (
+                  <p className="text-sm text-slate-700">No context assets yet.</p>
+                ) : (
+                  assets.map((asset) => (
+                    <div key={asset.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-semibold text-ink">{asset.title}</p>
+                        <Badge tone={asset.owner_user_id ? 'brass' : 'moss'}>{scopeLabel(asset.owner_user_id)}</Badge>
+                      </div>
+                      <p className="mt-2 text-sm text-slate-700">{asset.type}</p>
+                      {asset.source_uri ? <p className="mt-2 break-all text-xs text-slate-500">{asset.source_uri}</p> : null}
+                      <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">{asset.updated_at}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+
+            <Card>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold">Prompt templates</h2>
+                <Badge tone="moss">{prompts.length}</Badge>
+              </div>
+              <div className="mt-4 space-y-3">
+                {prompts.length === 0 ? (
+                  <p className="text-sm text-slate-700">No prompt templates yet.</p>
+                ) : (
+                  prompts.map((prompt) => (
+                    <div key={prompt.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-semibold text-ink">{prompt.name}</p>
+                        <Badge tone={prompt.owner_user_id ? 'brass' : 'moss'}>{scopeLabel(prompt.owner_user_id)}</Badge>
+                      </div>
+                      <p className="mt-2 text-sm text-slate-700">{prompt.description ?? 'No description yet.'}</p>
+                      <p className="mt-2 text-xs text-slate-500">{`plusmy://prompt/${prompt.id}`}</p>
+                      <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">{prompt.updated_at}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+
+            <Card>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold">Skill definitions</h2>
+                <Badge tone="moss">{skills.length}</Badge>
+              </div>
+              <div className="mt-4 space-y-3">
+                {skills.length === 0 ? (
+                  <p className="text-sm text-slate-700">No skill definitions yet.</p>
+                ) : (
+                  skills.map((skill) => (
+                    <div key={skill.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-semibold text-ink">{skill.name}</p>
+                        <Badge tone={skill.owner_user_id ? 'brass' : 'moss'}>{scopeLabel(skill.owner_user_id)}</Badge>
+                      </div>
+                      <p className="mt-2 text-sm text-slate-700">{skill.description ?? 'No description yet.'}</p>
+                      <p className="mt-2 text-xs text-slate-500">{`plusmy://skill/${skill.id}`}</p>
+                      <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">{skill.updated_at}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+          </div>
         </div>
         {workspace ? <ContextIngestForm workspaceId={workspace.id} /> : <Card>Create a workspace first.</Card>}
       </div>
