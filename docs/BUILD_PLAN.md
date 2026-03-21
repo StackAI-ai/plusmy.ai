@@ -18,6 +18,12 @@
 - Completed: background worker coverage for queued token refresh and connection sync jobs, including queued job state, retries, worker claiming, and operator-facing visibility on the connections surface.
 - Completed: semantic context-asset injection into MCP resource reads and tool-call responses, including top-match workspace snippets threaded from `match_context_chunks`.
 - In progress: continue operator-surface polish across non-dashboard pages (connections, MCP clients, audit) to surface degraded authorization and connection state inline.
+- 2026-03-21 execution checkpoint: reviewed commit set `9615c8e..d46bad4` and created a fresh 30-item next-operator backlog in Linear (`NIC-12` through `NIC-42`) while closing implementation notes on completed items `NIC-5` through `NIC-10`.
+
+## Next execution slice (2026-03-21)
+- Validate and ship `NIC-11` and `NIC-12` as immediate follow-up: stale approval remediation and MCP client activity visibility.
+- Prioritize reliability hardening in `NIC-16`/`NIC-17` (dead-letter + worker backoff), then UI/operability fixes `NIC-13` and `NIC-14`.
+- Defer long-tail docs and compliance enhancements (`NIC-31`, `NIC-29`, `NIC-30`) until core worker and UX reliability items pass.
 
 ## Implementation changes
 1. Fresh repo bootstrap: replace the current empty workspace with a clean clone of the GitHub repo, set the default branch as the base, and treat the first commit after clone as the canonical scaffold baseline for all subsequent work.
