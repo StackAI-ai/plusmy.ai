@@ -92,6 +92,7 @@ const tools: McpToolDefinition[] = [
     name: 'google.search_drive',
     title: 'Search Google Drive',
     description: 'Search Drive files by full text query.',
+    requiredProviderScopes: ['https://www.googleapis.com/auth/drive.readonly'],
     inputSchema: {
       type: 'object',
       properties: {
@@ -105,6 +106,7 @@ const tools: McpToolDefinition[] = [
     name: 'google.get_document',
     title: 'Get Google Doc',
     description: 'Fetch a Google Docs document by ID.',
+    requiredProviderScopes: ['https://www.googleapis.com/auth/documents.readonly'],
     inputSchema: {
       type: 'object',
       properties: {

@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
-import type { AuditLogRecord, OAuthClientApprovalRecord, ToolInvocationRecord } from '@plusmy/contracts';
+import type { AuditLogRecord, ConnectionRecord, OAuthClientApprovalRecord, ToolInvocationRecord } from '@plusmy/contracts';
 import { createServerSupabaseClient } from '@plusmy/supabase';
-import { getAuthorizedWorkspace, listAuditLogs, listOAuthClientApprovals, listOAuthClients, listToolInvocations, listUserWorkspaces } from '@plusmy/core';
+import { getAuthorizedWorkspace, listAuditLogs, listConnectionsForWorkspace, listOAuthClientApprovals, listOAuthClients, listToolInvocations, listUserWorkspaces } from '@plusmy/core';
+import { getIntegration, getToolScopeDrift } from '@plusmy/integrations';
 import { ClientRegistrationForm } from './client-registration-form';
 import { RevokeApprovalButton } from './revoke-approval-button';
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
@@ -99,7 +100,48 @@ type ApprovalHealthReason = {
   tone: 'default' | 'moss' | 'brass';
 };
 
-function getApprovalHealthReasons(approval: OAuthClientApprovalRecord): ApprovalHealthReason[] {
+type ProviderScopeDriftSummary = {
+  provider: ConnectionRecord['provider'];
+  providerLabel: string;
+  connectionId: string;
+  missingScopes: string[];
+  affectedTools: string[];
+};
+
+async function listProviderScopeDriftSummaries(connections: ConnectionRecord[]) {
+  const activeConnections = connections.filter((connection) => connection.status === 'active');
+  const summaries = await Promise.all(
+    activeConnections.map(async (connection) => {
+      const integration = getIntegration(connection.provider);
+      if (!integration) return null;
+
+      const toolScopeDrift = getToolScopeDrift(await integration.listTools(connection), connection.granted_scopes);
+      if (toolScopeDrift.length === 0) {
+        return null;
+      }
+
+      return {
+        provider: connection.provider,
+        providerLabel: integration.displayName,
+        connectionId: connection.id,
+        missingScopes: Array.from(new Set(toolScopeDrift.flatMap((entry) => entry.missingScopes))),
+        affectedTools: toolScopeDrift.map((entry) => entry.toolTitle)
+      } satisfies ProviderScopeDriftSummary;
+    })
+  );
+
+  return summaries.filter((entry): entry is ProviderScopeDriftSummary => entry != null);
+}
+
+function buildConnectionsProviderHref(workspaceId: string, provider: ConnectionRecord['provider']) {
+  const params = new URLSearchParams({ workspace: workspaceId, provider });
+  return `/connections?${params.toString()}`;
+}
+
+function getApprovalHealthReasons(
+  approval: OAuthClientApprovalRecord,
+  providerScopeDriftSummaries: ProviderScopeDriftSummary[]
+): ApprovalHealthReason[] {
   if (approval.status === 'revoked') {
     const revokedByUserId = getApprovalMetadataString(approval, 'revoked_by_user_id');
     const label = revokedByUserId && revokedByUserId !== approval.user_id ? 'Revoked by operator' : 'Revoked';
@@ -116,6 +158,22 @@ function getApprovalHealthReasons(approval: OAuthClientApprovalRecord): Approval
       tone: 'default',
       label: 'Awaiting token exchange',
       detail: 'Recently approved or reauthorized. The client still needs to exchange a fresh code before token activity updates.'
+    }];
+  }
+
+  if (providerScopeDriftSummaries.length > 0) {
+    const detail = providerScopeDriftSummaries
+      .map(
+        (entry) =>
+          `${entry.providerLabel} is missing ${entry.missingScopes.join(', ')} for ${entry.affectedTools.join(', ')}.`
+      )
+      .join(' ');
+
+    return [{
+      key: 'scope_drift',
+      tone: 'brass',
+      label: 'Scope drift',
+      detail
     }];
   }
 
@@ -243,6 +301,8 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
         includeWorkspaceApprovals: canReviewWorkspaceApprovals
       })
     : [];
+  const connections = workspace ? await listConnectionsForWorkspace(workspace.id, user.id) : [];
+  const providerScopeDriftSummaries = await listProviderScopeDriftSummaries(connections);
   const approvalActivity = workspace && canReviewWorkspaceApprovals
     ? await listAuditLogs(workspace.id, {
         limit: 40,
@@ -259,6 +319,12 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
   const recentlyUsedApprovals = approvals.filter((approval) => isRecent(approval.last_used_at, 7)).length;
   const staleApprovals = approvals.filter((approval) => isStaleApproval(approval)).length;
   const awaitingTokenExchangeApprovals = approvals.filter((approval) => isApprovalAwaitingTokenExchange(approval)).length;
+  const scopeDriftApprovals = approvals.filter((approval) =>
+    getApprovalHealthReasons(approval, providerScopeDriftSummaries).some((reason) => reason.key === 'scope_drift')
+  ).length;
+  const degradedApprovals = approvals.filter((approval) =>
+    getApprovalHealthReasons(approval, providerScopeDriftSummaries).some((reason) => reason.key === 'scope_drift' || reason.key === 'stale')
+  ).length;
   const reauthorizableApprovals = approvals.filter((approval) => approval.status === 'active' && approval.user_id === user.id).length;
   const clientActivity = buildClientActivitySummaries(approvals, approvalActivity.items, recentInvocations.items);
   const activeClients = clientActivity.filter((entry) => entry.recentToolCalls > 0 || entry.recentAuditEvents > 0).length;
@@ -297,12 +363,12 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
         </Card>
         <Card className="space-y-2">
           <CardHeader>
-            <CardTitle className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Stale approvals</CardTitle>
+            <CardTitle className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Degraded approvals</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-4xl font-semibold text-foreground">{staleApprovals}</p>
+            <p className="text-4xl font-semibold text-foreground">{degradedApprovals}</p>
             <p className="text-sm text-muted-foreground">
-            Active approvals with no token usage in the last {staleApprovalWindowDays} days. {awaitingTokenExchangeApprovals} awaiting client exchange.
+            {scopeDriftApprovals} blocked by provider scope drift. {staleApprovals} stale. {awaitingTokenExchangeApprovals} awaiting client exchange.
             </p>
           </CardContent>
         </Card>
@@ -408,11 +474,15 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                 const canRevoke = approval.status === 'active' && (approval.user_id === user.id || canReviewWorkspaceApprovals);
                 const canReauthorize = approval.status === 'active' && approval.user_id === user.id;
                 const summary = clientActivity.find((entry) => entry.clientId === approval.client_id);
-                const approvalHealthReasons = getApprovalHealthReasons(approval);
+                const approvalHealthReasons = getApprovalHealthReasons(approval, providerScopeDriftSummaries);
                 const storedRedirectUri = getApprovalMetadataString(approval, 'redirect_uri');
                 const reauthorizeHref = canReauthorize ? buildApprovalAuthorizeHref(workspace.id, approval) : null;
                 const redirectHostLabel = getRedirectHostLabel(storedRedirectUri);
                 const approvalAuditHref = buildClientAuditHref(workspace.id, approval.client_id);
+                const scopeDriftConnectionsHref =
+                  providerScopeDriftSummaries.length === 1
+                    ? buildConnectionsProviderHref(workspace.id, providerScopeDriftSummaries[0].provider)
+                    : `/connections?${new URLSearchParams({ workspace: workspace.id }).toString()}`;
 
                 return (
                   <div key={approval.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
@@ -449,6 +519,9 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                           {reason.detail}
                         </p>
                       ))}
+                      {providerScopeDriftSummaries.length > 0 ? (
+                        <p className="text-amber-700">Reconnect the affected provider installs before retrying MCP calls.</p>
+                      ) : null}
                       {redirectHostLabel ? <p>Reauthorization returns to {redirectHostLabel}.</p> : null}
                       {approval.status === 'active' && isStaleApproval(approval) && approval.user_id !== user.id ? (
                         <p className="text-amber-700">Only the original approving user can renew this stale approval.</p>
@@ -468,6 +541,11 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                         <Button asChild size="sm" variant="outline">
                           <Link href={approvalAuditHref}>Inspect audit trail</Link>
                         </Button>
+                        {providerScopeDriftSummaries.length > 0 ? (
+                          <Button asChild size="sm" variant="outline">
+                            <Link href={scopeDriftConnectionsHref}>Open connections</Link>
+                          </Button>
+                        ) : null}
                         {reauthorizeHref ? (
                           <Button asChild size="sm" variant="outline">
                             <Link href={reauthorizeHref} target="_blank" rel="noreferrer">

@@ -86,12 +86,14 @@ const tools: McpToolDefinition[] = [
     name: 'slack.list_channels',
     title: 'List Slack channels',
     description: 'List public channels available to the connection.',
+    requiredProviderScopes: ['channels:read'],
     inputSchema: { type: 'object', properties: { limit: { type: 'number', default: 25 } } }
   },
   {
     name: 'slack.read_channel_history',
     title: 'Read channel history',
     description: 'Read messages from a Slack channel.',
+    requiredProviderScopes: ['channels:history'],
     inputSchema: {
       type: 'object',
       properties: { channel: { type: 'string' }, limit: { type: 'number', default: 20 } },
@@ -102,6 +104,7 @@ const tools: McpToolDefinition[] = [
     name: 'slack.post_message',
     title: 'Post Slack message',
     description: 'Post a message to a Slack channel.',
+    requiredProviderScopes: ['chat:write'],
     inputSchema: {
       type: 'object',
       properties: { channel: { type: 'string' }, text: { type: 'string' } },

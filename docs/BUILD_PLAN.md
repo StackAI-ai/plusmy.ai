@@ -27,10 +27,11 @@
 - 2026-03-21 execution checkpoint: verified the bundled Supabase CLI via `node_modules/supabase/bin/supabase --version` (`2.83.0`), restarted the web app cleanly on `http://localhost:3009`, and validated `/dashboard`, `/connections`, `/mcp-clients`, and `/audit` after a scoped typecheck.
 - 2026-03-21 execution checkpoint: shipped `NIC-14` with deterministic `created_at + id` cursor pagination for audit logs and tool invocations, added independent per-feed page controls plus page-size selectors on the audit surface, updated the audit API to return paged results, and confirmed the bundled Supabase CLI remains available (`2.83.0`). Root `npm run dev` restarted cleanly after cache removal, but Turbo still bound the web app to `http://localhost:3007` instead of the preferred `3009`.
 - 2026-03-21 execution checkpoint: shipped `NIC-16`, `NIC-17`, `NIC-30`, and `NIC-31` by introducing dead-letter tracking for exhausted connection jobs, jittered exponential backoff for token refresh retries, a root `npm run doctor` bootstrap check, and a new operator troubleshooting runbook for provider/worker remediation.
+- 2026-03-21 execution checkpoint: shipped `NIC-18` by adding per-tool provider scope requirements, shared scope-drift detection, MCP runtime filtering/blocking for underscoped tools, and approval-surface remediation links that point operators back to the affected provider installs. Reconfirmed the live support matrix remains Google Workspace, Slack, and Notion for providers plus OpenAI-compatible, Anthropic-compatible, Gemini-adjacent, and Cursor MCP clients; the highest-value reviewed gaps are still Microsoft 365, GitHub, Linear, Jira, and Confluence.
 
 ## Next execution slice (2026-03-21)
-- Prioritize `NIC-18` next so workspace approvals can detect provider-scope shrinkage before MCP calls degrade unexpectedly.
-- Continue with security/reliability test hardening in `NIC-19`, `NIC-20`, `NIC-21`, and `NIC-22` before expanding the live provider matrix further.
+- Prioritize `NIC-19` next so OAuth callback replay/state handling is covered before broadening operator/runtime behavior further.
+- Continue with security/reliability test hardening in `NIC-20`, `NIC-21`, and `NIC-22` before expanding the live provider matrix further.
 - Return to adjacent MCP client follow-up work in `NIC-45` and `NIC-44` only if local/operator consent friction remains after the latest approval-health improvements.
 - Use the broader platform catalog to decide the next adapter scaffolds; the most obvious candidates are Microsoft 365, GitHub, Linear, Jira, Confluence, HubSpot, Salesforce, Zendesk, Dropbox, Airtable, Box, Asana, monday.com, ServiceNow, Zoom, and Okta.
 

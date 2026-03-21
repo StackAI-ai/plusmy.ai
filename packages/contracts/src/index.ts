@@ -77,6 +77,7 @@ export interface McpToolDefinition {
   title: string;
   description: string;
   inputSchema: Json;
+  requiredProviderScopes?: string[];
 }
 
 export interface McpResourceDefinition {

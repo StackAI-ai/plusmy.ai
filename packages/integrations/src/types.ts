@@ -94,3 +94,9 @@ export interface IntegrationDefinition {
   syncJobs?: SyncJobHandler[];
   webhooks?: WebhookHandler[];
 }
+
+export interface ToolScopeDrift {
+  toolName: string;
+  toolTitle: string;
+  missingScopes: string[];
+}

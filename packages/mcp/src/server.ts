@@ -7,7 +7,7 @@ import type {
   McpToolDefinition,
   ProviderId
 } from '@plusmy/contracts';
-import { getIntegration, getIntegrations } from '@plusmy/integrations';
+import { getIntegration, getIntegrations, getMissingScopes, hasRequiredToolScopes } from '@plusmy/integrations';
 import {
   consumeRateLimit,
   listWorkspaceResources,
@@ -101,7 +101,9 @@ export async function resolveAvailableTools(authContext: McpAuthContext) {
   for (const integration of getIntegrations()) {
     try {
       const { connection } = await resolveProviderExecutionContext(authContext.workspaceId, authContext.userId, integration.id);
-      const providerTools = await integration.listTools(connection);
+      const providerTools = (await integration.listTools(connection)).filter((tool) =>
+        hasRequiredToolScopes(tool, connection.granted_scopes)
+      );
       const contextAwareTools = await Promise.all(
         providerTools.map(async (tool) =>
           withRuntimeContextHint(
@@ -160,6 +162,30 @@ export async function executeToolCall(authContext: McpAuthContext, toolName: str
   const { connection, credentials } = await resolveProviderExecutionContext(authContext.workspaceId, authContext.userId, provider);
   const availableTools = await integration.listTools(connection);
   const toolDefinition = availableTools.find((tool) => tool.name === toolName);
+  if (!toolDefinition) {
+    throw new Error(`Unknown tool ${toolName}.`);
+  }
+
+  const missingScopes = getMissingScopes(toolDefinition.requiredProviderScopes, connection.granted_scopes);
+  if (missingScopes.length > 0) {
+    await logAuditEvent({
+      workspaceId: authContext.workspaceId,
+      actorType: 'mcp_client',
+      actorUserId: authContext.userId,
+      actorClientId: authContext.clientId,
+      action: 'mcp.tool.scope_drift_blocked',
+      resourceType: 'tool',
+      resourceId: toolName,
+      status: 'error',
+      metadata: {
+        provider,
+        missing_scopes: missingScopes,
+        connection_id: connection.id
+      }
+    });
+    throw new Error(`Tool ${toolName} is unavailable until ${provider} is reauthorized with: ${missingScopes.join(', ')}.`);
+  }
+
   const runtimeContext = await resolveProviderRuntimeContext(authContext.workspaceId, authContext.userId, {
     provider,
     toolName

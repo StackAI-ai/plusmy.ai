@@ -54,6 +54,7 @@ const tools: McpToolDefinition[] = [
     name: 'notion.search',
     title: 'Search Notion',
     description: 'Search pages and databases inside Notion.',
+    requiredProviderScopes: ['read'],
     inputSchema: {
       type: 'object',
       properties: {
@@ -66,6 +67,7 @@ const tools: McpToolDefinition[] = [
     name: 'notion.get_page',
     title: 'Get Notion page',
     description: 'Read a Notion page by ID.',
+    requiredProviderScopes: ['read'],
     inputSchema: {
       type: 'object',
       properties: {
@@ -78,6 +80,7 @@ const tools: McpToolDefinition[] = [
     name: 'notion.create_page',
     title: 'Create Notion page',
     description: 'Create a page under a parent page or database.',
+    requiredProviderScopes: ['write'],
     inputSchema: {
       type: 'object',
       properties: {
