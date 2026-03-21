@@ -6,6 +6,7 @@ export type ConnectionStatus = 'pending' | 'active' | 'reauth_required' | 'revok
 export type ProviderId = 'google' | 'slack' | 'notion';
 export type ToolCapability = 'read' | 'write' | 'search' | 'execute';
 export type ContextAssetType = 'document' | 'prompt' | 'brand_guideline' | 'workflow' | 'knowledge_base';
+export type AuditActorType = 'user' | 'mcp_client' | 'system';
 export const contextBindingTypes = ['workspace', 'provider', 'tool'] as const;
 export type ContextBindingType = (typeof contextBindingTypes)[number];
 export type AuditAction = string;
@@ -89,6 +90,39 @@ export interface ContextBindingRecord {
   updated_at: string;
   prompt_template: ContextBindingReference | null;
   skill_definition: ContextBindingReference | null;
+}
+
+export interface AuditLogRecord {
+  id: string;
+  workspace_id: string;
+  actor_type: AuditActorType;
+  actor_user_id: string | null;
+  actor_client_id: string | null;
+  action: string;
+  resource_type: string;
+  resource_id: string | null;
+  status: string;
+  ip: string | null;
+  user_agent: string | null;
+  request_id: string | null;
+  metadata: Json;
+  created_at: string;
+}
+
+export interface ToolInvocationRecord {
+  id: string;
+  workspace_id: string;
+  connection_id: string | null;
+  actor_user_id: string | null;
+  actor_client_id: string | null;
+  provider: string;
+  tool_name: string;
+  status: string;
+  latency_ms: number | null;
+  input: Json;
+  output: Json;
+  error_message: string | null;
+  created_at: string;
 }
 
 export interface McpJsonRpcRequest {

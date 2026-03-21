@@ -1,12 +1,107 @@
+import Link from 'next/link';
 import { Badge, Card } from '@plusmy/ui';
+import type { AuditLogRecord, OAuthClientApprovalRecord, ToolInvocationRecord } from '@plusmy/contracts';
 import { createServerSupabaseClient } from '@plusmy/supabase';
-import { getAuthorizedWorkspace, listOAuthClientApprovals, listOAuthClients, listUserWorkspaces } from '@plusmy/core';
+import { getAuthorizedWorkspace, listAuditLogs, listOAuthClientApprovals, listOAuthClients, listToolInvocations, listUserWorkspaces } from '@plusmy/core';
 import { ClientRegistrationForm } from './client-registration-form';
 import { RevokeApprovalButton } from './revoke-approval-button';
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
 
 function canManageWorkspace(role: string | undefined) {
   return role === 'owner' || role === 'admin';
+}
+
+function isRecent(isoTimestamp: string | null | undefined, windowDays: number) {
+  if (!isoTimestamp) return false;
+  return Date.now() - new Date(isoTimestamp).getTime() <= windowDays * 24 * 60 * 60 * 1000;
+}
+
+function extractAuditClientId(entry: AuditLogRecord) {
+  if (entry.actor_client_id) return entry.actor_client_id;
+  const metadata = entry.metadata;
+  if (!metadata || Array.isArray(metadata) || typeof metadata !== 'object') return null;
+  const value = metadata.client_id;
+  return typeof value === 'string' ? value : null;
+}
+
+function latestTimestamp(left: string | null, right: string | null) {
+  if (!left) return right;
+  if (!right) return left;
+  return new Date(left).getTime() >= new Date(right).getTime() ? left : right;
+}
+
+function buildClientAuditHref(workspaceId: string, clientId: string) {
+  const params = new URLSearchParams({
+    workspace: workspaceId,
+    client: clientId
+  });
+  return `/audit?${params.toString()}`;
+}
+
+type ClientActivitySummary = {
+  clientId: string;
+  clientName: string;
+  approvals: number;
+  activeApprovals: number;
+  revokedApprovals: number;
+  recentAuditEvents: number;
+  recentToolCalls: number;
+  recentErrors: number;
+  lastActivityAt: string | null;
+};
+
+function buildClientActivitySummaries(
+  approvals: OAuthClientApprovalRecord[],
+  audit: AuditLogRecord[],
+  invocations: ToolInvocationRecord[]
+) {
+  const summaries = new Map<string, ClientActivitySummary>();
+
+  for (const approval of approvals) {
+    const entry = summaries.get(approval.client_id) ?? {
+      clientId: approval.client_id,
+      clientName: approval.client_name ?? approval.client_id,
+      approvals: 0,
+      activeApprovals: 0,
+      revokedApprovals: 0,
+      recentAuditEvents: 0,
+      recentToolCalls: 0,
+      recentErrors: 0,
+      lastActivityAt: null
+    };
+
+    entry.approvals += 1;
+    entry.activeApprovals += approval.status === 'active' ? 1 : 0;
+    entry.revokedApprovals += approval.status === 'revoked' ? 1 : 0;
+    entry.lastActivityAt = latestTimestamp(entry.lastActivityAt, approval.last_used_at ?? approval.approved_at);
+    summaries.set(approval.client_id, entry);
+  }
+
+  for (const entry of audit) {
+    const clientId = extractAuditClientId(entry);
+    if (!clientId) continue;
+    const summary = summaries.get(clientId);
+    if (!summary) continue;
+    summary.recentAuditEvents += 1;
+    summary.recentErrors += entry.status === 'error' ? 1 : 0;
+    summary.lastActivityAt = latestTimestamp(summary.lastActivityAt, entry.created_at);
+  }
+
+  for (const invocation of invocations) {
+    if (!invocation.actor_client_id) continue;
+    const summary = summaries.get(invocation.actor_client_id);
+    if (!summary) continue;
+    summary.recentToolCalls += 1;
+    summary.recentErrors += invocation.status === 'error' ? 1 : 0;
+    summary.lastActivityAt = latestTimestamp(summary.lastActivityAt, invocation.created_at);
+  }
+
+  return Array.from(summaries.values()).sort((left, right) => {
+    if (!left.lastActivityAt && !right.lastActivityAt) return left.clientName.localeCompare(right.clientName);
+    if (!left.lastActivityAt) return 1;
+    if (!right.lastActivityAt) return -1;
+    return new Date(right.lastActivityAt).getTime() - new Date(left.lastActivityAt).getTime();
+  });
 }
 
 export default async function McpClientsPage({ searchParams }: { searchParams?: AppSearchParams }) {
@@ -32,17 +127,57 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
   const workspace = await getAuthorizedWorkspace(user.id, requestedWorkspaceId);
   const activeMembership = workspace ? workspaces.find((entry) => entry.id === workspace.id) : null;
   const canReviewWorkspaceApprovals = canManageWorkspace(activeMembership?.role);
-  const approvals = workspace
-    ? await listOAuthClientApprovals({
-        workspaceId: workspace.id,
-        userId: user.id,
-        includeWorkspaceApprovals: canReviewWorkspaceApprovals
-      })
-    : [];
+  const [approvals, approvalActivity, recentInvocations] = workspace
+    ? await Promise.all([
+        listOAuthClientApprovals({
+          workspaceId: workspace.id,
+          userId: user.id,
+          includeWorkspaceApprovals: canReviewWorkspaceApprovals
+        }),
+        canReviewWorkspaceApprovals
+          ? listAuditLogs(workspace.id, {
+              limit: 40,
+              resourceType: 'oauth_client_approval',
+              actionPrefix: 'oauth_client.'
+            })
+          : Promise.resolve<AuditLogRecord[]>([]),
+        canReviewWorkspaceApprovals ? listToolInvocations(workspace.id, { limit: 40 }) : Promise.resolve<ToolInvocationRecord[]>([])
+      ])
+    : [[], [], []];
   const baseUrl = process.env.APP_URL ?? 'http://localhost:3000';
+  const activeApprovals = approvals.filter((approval) => approval.status === 'active').length;
+  const revokedApprovals = approvals.filter((approval) => approval.status === 'revoked').length;
+  const recentlyUsedApprovals = approvals.filter((approval) => isRecent(approval.last_used_at, 7)).length;
+  const clientActivity = buildClientActivitySummaries(approvals, approvalActivity, recentInvocations);
+  const activeClients = clientActivity.filter((entry) => entry.recentToolCalls > 0 || entry.recentAuditEvents > 0).length;
 
   return (
     <div className="space-y-5">
+      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <Card className="space-y-2">
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Registered clients</p>
+          <p className="text-4xl font-semibold text-ink">{clients.length}</p>
+          <p className="text-sm text-slate-700">OAuth clients created by the current operator account.</p>
+        </Card>
+        <Card className="space-y-2">
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Active approvals</p>
+          <p className="text-4xl font-semibold text-ink">{activeApprovals}</p>
+          <p className="text-sm text-slate-700">Delegated grants that can still mint or refresh tokens. {revokedApprovals} revoked.</p>
+        </Card>
+        <Card className="space-y-2">
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Used in the last 7 days</p>
+          <p className="text-4xl font-semibold text-ink">{recentlyUsedApprovals}</p>
+          <p className="text-sm text-slate-700">Approvals with recent token usage recorded on the approval itself.</p>
+        </Card>
+        <Card className="space-y-2">
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Recent active clients</p>
+          <p className="text-4xl font-semibold text-ink">{canReviewWorkspaceApprovals ? activeClients : 0}</p>
+          <p className="text-sm text-slate-700">
+            {canReviewWorkspaceApprovals ? 'Clients with recent approval or tool activity in this workspace.' : 'Detailed activity requires owner or admin access.'}
+          </p>
+        </Card>
+      </div>
+
       <div className="grid gap-5 md:grid-cols-[1.2fr_1fr]">
         <Card>
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -112,11 +247,15 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
             {canReviewWorkspaceApprovals === false ? (
               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Showing approvals you personally granted.</p>
             ) : null}
+            {canReviewWorkspaceApprovals ? (
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Recent tool calls now record MCP client IDs for approval-to-runtime correlation.</p>
+            ) : null}
             {approvals.length === 0 ? (
               <p className="text-sm text-slate-700">No approvals recorded for this workspace yet.</p>
             ) : (
               approvals.map((approval) => {
                 const canRevoke = approval.status === 'active' && (approval.user_id === user.id || canReviewWorkspaceApprovals);
+                const summary = clientActivity.find((entry) => entry.clientId === approval.client_id);
 
                 return (
                   <div key={approval.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
@@ -142,7 +281,22 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                       <p>Approved at {approval.approved_at}</p>
                       <p>{approval.last_used_at ? `Last token issued ${approval.last_used_at}` : 'No token exchanges recorded yet.'}</p>
                       {approval.revoked_at ? <p>Revoked at {approval.revoked_at}</p> : null}
+                      {summary && canReviewWorkspaceApprovals ? (
+                        <p>
+                          Recent MCP calls {summary.recentToolCalls} • audit events {summary.recentAuditEvents} • errors {summary.recentErrors}
+                        </p>
+                      ) : null}
                     </div>
+                    {canReviewWorkspaceApprovals ? (
+                      <div className="mt-4 flex flex-wrap items-center gap-3">
+                        <Link
+                          href={buildClientAuditHref(workspace.id, approval.client_id)}
+                          className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:-translate-y-0.5 hover:bg-white"
+                        >
+                          Inspect audit trail
+                        </Link>
+                      </div>
+                    ) : null}
                     {canRevoke ? (
                       <div className="mt-4">
                         <RevokeApprovalButton workspaceId={workspace.id} approvalId={approval.id} />
@@ -155,6 +309,64 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
           </div>
         ) : null}
       </Card>
+
+      {workspace && canReviewWorkspaceApprovals ? (
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold">Recent client activity</h2>
+              <p className="mt-3 text-sm leading-7 text-slate-700">
+                Review which registered clients are actively calling MCP tools and generating approval lifecycle events.
+              </p>
+            </div>
+            <Badge tone={clientActivity.length ? 'moss' : 'brass'}>{clientActivity.length} tracked clients</Badge>
+          </div>
+          <div className="mt-6 space-y-3">
+            {clientActivity.length === 0 ? (
+              <p className="text-sm text-slate-700">No recent approval or invocation activity for this workspace yet.</p>
+            ) : (
+              clientActivity.map((entry) => (
+                <div key={entry.clientId} className="rounded-2xl border border-black/5 bg-white/70 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-ink">{entry.clientName}</p>
+                      <p className="text-sm text-slate-700">{entry.clientId}</p>
+                    </div>
+                    <Badge tone={entry.recentErrors ? 'brass' : 'moss'}>{entry.recentErrors ? `${entry.recentErrors} errors` : 'healthy'}</Badge>
+                  </div>
+                  <div className="mt-4 grid gap-3 md:grid-cols-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Approvals</p>
+                      <p className="mt-1 text-lg font-semibold text-ink">{entry.activeApprovals}</p>
+                      <p className="text-xs text-slate-500">{entry.revokedApprovals} revoked</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Tool calls</p>
+                      <p className="mt-1 text-lg font-semibold text-ink">{entry.recentToolCalls}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Audit events</p>
+                      <p className="mt-1 text-lg font-semibold text-ink">{entry.recentAuditEvents}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Last activity</p>
+                      <p className="mt-1 text-sm font-medium text-slate-700">{entry.lastActivityAt ?? 'No activity yet'}</p>
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    <Link
+                      href={buildClientAuditHref(workspace.id, entry.clientId)}
+                      className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:-translate-y-0.5 hover:bg-white"
+                    >
+                      Open filtered audit view
+                    </Link>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </Card>
+      ) : null}
 
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3">

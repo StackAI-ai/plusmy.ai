@@ -53,6 +53,17 @@ export async function executeToolCall(authContext: McpAuthContext, toolName: str
   });
 
   if (!rateLimit.allowed) {
+    await logAuditEvent({
+      workspaceId: authContext.workspaceId,
+      actorType: 'mcp_client',
+      actorUserId: authContext.userId,
+      actorClientId: authContext.clientId,
+      action: 'mcp.tool.rate_limited',
+      resourceType: 'tool',
+      resourceId: toolName,
+      status: 'error',
+      metadata: { provider }
+    });
     throw new Error(`Rate limit exceeded for ${toolName}.`);
   }
 
@@ -64,6 +75,8 @@ export async function executeToolCall(authContext: McpAuthContext, toolName: str
     await recordToolInvocation({
       workspaceId: authContext.workspaceId,
       connectionId: connection.id,
+      actorUserId: authContext.userId,
+      actorClientId: authContext.clientId,
       provider,
       toolName,
       status: 'success',
@@ -86,12 +99,28 @@ export async function executeToolCall(authContext: McpAuthContext, toolName: str
     await recordToolInvocation({
       workspaceId: authContext.workspaceId,
       connectionId: connection.id,
+      actorUserId: authContext.userId,
+      actorClientId: authContext.clientId,
       provider,
       toolName,
       status: 'error',
       latencyMs: Date.now() - startedAt,
       requestPayload: input,
       errorMessage: error instanceof Error ? error.message : 'Tool execution failed.'
+    });
+    await logAuditEvent({
+      workspaceId: authContext.workspaceId,
+      actorType: 'mcp_client',
+      actorUserId: authContext.userId,
+      actorClientId: authContext.clientId,
+      action: 'mcp.tool.failed',
+      resourceType: 'tool',
+      resourceId: toolName,
+      status: 'error',
+      metadata: {
+        provider,
+        error: error instanceof Error ? error.message : 'Tool execution failed.'
+      }
     });
     throw error;
   }

@@ -1,9 +1,52 @@
 import { randomUUID } from 'node:crypto';
-import type { ConnectionRecord, ConnectionScope, ProviderId, ProviderTokenSet, ResolvedConnectionCredentials } from '@plusmy/contracts';
+import type {
+  AuditActorType,
+  AuditLogRecord,
+  ConnectionRecord,
+  ConnectionScope,
+  ProviderId,
+  ProviderTokenSet,
+  ResolvedConnectionCredentials,
+  ToolInvocationRecord
+} from '@plusmy/contracts';
 import { getIntegration } from '@plusmy/integrations';
 import { createServiceRoleClient } from '@plusmy/supabase';
 
 const REFRESH_SKEW_MS = 5 * 60 * 1000;
+
+export interface AuditLogFilters {
+  limit?: number;
+  status?: string | null;
+  actorType?: AuditActorType | null;
+  actorClientId?: string | null;
+  resourceType?: string | null;
+  resourceId?: string | null;
+  actionPrefix?: string | null;
+  clientId?: string | null;
+}
+
+export interface ToolInvocationFilters {
+  limit?: number;
+  status?: string | null;
+  provider?: string | null;
+  toolName?: string | null;
+  actorClientId?: string | null;
+  actorUserId?: string | null;
+}
+
+function normalizeLimit(value: number | null | undefined, fallback: number) {
+  const limit = Number(value ?? fallback);
+  if (!Number.isFinite(limit)) return fallback;
+  return Math.min(Math.max(Math.trunc(limit), 1), 200);
+}
+
+function auditRecordClientId(record: AuditLogRecord) {
+  if (record.actor_client_id) return record.actor_client_id;
+  const metadata = record.metadata;
+  if (!metadata || Array.isArray(metadata) || typeof metadata !== 'object') return null;
+  const value = metadata.client_id;
+  return typeof value === 'string' ? value : null;
+}
 
 export function buildConnectionKey(input: {
   workspaceId: string;
@@ -23,7 +66,7 @@ export function buildConnectionKey(input: {
 
 export async function logAuditEvent(input: {
   workspaceId: string;
-  actorType: 'user' | 'mcp_client' | 'system';
+  actorType: AuditActorType;
   actorUserId?: string | null;
   actorClientId?: string | null;
   action: string;
@@ -325,6 +368,8 @@ export async function resolveProviderExecutionContext(workspaceId: string, userI
 export async function recordToolInvocation(input: {
   workspaceId: string;
   connectionId: string;
+  actorUserId?: string | null;
+  actorClientId?: string | null;
   provider: string;
   toolName: string;
   status: string;
@@ -337,6 +382,8 @@ export async function recordToolInvocation(input: {
   await supabase.schema('app').from('tool_invocations').insert({
     workspace_id: input.workspaceId,
     connection_id: input.connectionId,
+    actor_user_id: input.actorUserId ?? null,
+    actor_client_id: input.actorClientId ?? null,
     provider: input.provider,
     tool_name: input.toolName,
     status: input.status,
@@ -366,22 +413,60 @@ export async function consumeRateLimit(input: {
   return data as { allowed: boolean; remaining: number; count: number };
 }
 
-export async function listAuditLogs(workspaceId: string, limit = 25) {
+export async function listAuditLogs(workspaceId: string, optionsOrLimit: number | AuditLogFilters = 25) {
   const supabase = createServiceRoleClient();
-  const { data } = await supabase
+  const options = typeof optionsOrLimit === 'number' ? { limit: optionsOrLimit } : optionsOrLimit;
+  const limit = normalizeLimit(options.limit, 25);
+  const queryLimit = options.clientId && !options.actorClientId ? Math.min(limit * 4, 200) : limit;
+
+  let query = supabase
     .schema('app')
     .from('audit_logs')
     .select('*')
     .eq('workspace_id', workspaceId)
     .order('created_at', { ascending: false })
-    .limit(limit);
+    .limit(queryLimit);
 
-  return data ?? [];
+  if (options.status) {
+    query = query.eq('status', options.status);
+  }
+
+  if (options.actorType) {
+    query = query.eq('actor_type', options.actorType);
+  }
+
+  if (options.actorClientId) {
+    query = query.eq('actor_client_id', options.actorClientId);
+  }
+
+  if (options.resourceType) {
+    query = query.eq('resource_type', options.resourceType);
+  }
+
+  if (options.resourceId) {
+    query = query.eq('resource_id', options.resourceId);
+  }
+
+  if (options.actionPrefix) {
+    query = query.ilike('action', `${options.actionPrefix}%`);
+  }
+
+  const { data } = await query;
+  let rows = (data ?? []) as AuditLogRecord[];
+
+  if (options.clientId) {
+    rows = rows.filter((record) => auditRecordClientId(record) === options.clientId);
+  }
+
+  return rows.slice(0, limit);
 }
 
-export async function listToolInvocations(workspaceId: string, limit = 25) {
+export async function listToolInvocations(workspaceId: string, optionsOrLimit: number | ToolInvocationFilters = 25) {
   const supabase = createServiceRoleClient();
-  const { data } = await supabase
+  const options = typeof optionsOrLimit === 'number' ? { limit: optionsOrLimit } : optionsOrLimit;
+  const limit = normalizeLimit(options.limit, 25);
+
+  let query = supabase
     .schema('app')
     .from('tool_invocations')
     .select('*')
@@ -389,7 +474,28 @@ export async function listToolInvocations(workspaceId: string, limit = 25) {
     .order('created_at', { ascending: false })
     .limit(limit);
 
-  return data ?? [];
+  if (options.status) {
+    query = query.eq('status', options.status);
+  }
+
+  if (options.provider) {
+    query = query.eq('provider', options.provider);
+  }
+
+  if (options.toolName) {
+    query = query.eq('tool_name', options.toolName);
+  }
+
+  if (options.actorClientId) {
+    query = query.eq('actor_client_id', options.actorClientId);
+  }
+
+  if (options.actorUserId) {
+    query = query.eq('actor_user_id', options.actorUserId);
+  }
+
+  const { data } = await query;
+  return (data ?? []) as ToolInvocationRecord[];
 }
 
 export async function revokeConnection(input: {

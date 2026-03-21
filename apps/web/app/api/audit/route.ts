@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@plusmy/supabase';
-import { getAuthorizedWorkspace, listAuditLogs, listToolInvocations } from '@plusmy/core';
+import { getAuthorizedWorkspace, listAuditLogs, listToolInvocations, listUserWorkspaces } from '@plusmy/core';
 
 export const runtime = 'nodejs';
+
+function canManageWorkspace(role: string | undefined) {
+  return role === 'owner' || role === 'admin';
+}
 
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -20,8 +24,37 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'workspace_required' }, { status: 404 });
   }
 
+  const workspaces = await listUserWorkspaces(user.id);
+  const membership = workspaces.find((entry) => entry.id === workspace.id);
+  if (!canManageWorkspace(membership?.role)) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
+
   const limit = Number(url.searchParams.get('limit') ?? 25);
-  const audit = await listAuditLogs(workspace.id, limit);
-  const invocations = await listToolInvocations(workspace.id, limit);
+  const status = url.searchParams.get('status');
+  const actorType = url.searchParams.get('actor') ?? url.searchParams.get('actor_type');
+  const resourceType = url.searchParams.get('resource') ?? url.searchParams.get('resource_type');
+  const resourceId = url.searchParams.get('resource_id');
+  const actionPrefix = url.searchParams.get('action') ?? url.searchParams.get('action_prefix');
+  const clientId = url.searchParams.get('client') ?? url.searchParams.get('client_id');
+  const provider = url.searchParams.get('provider');
+  const toolName = url.searchParams.get('tool') ?? url.searchParams.get('tool_name');
+
+  const audit = await listAuditLogs(workspace.id, {
+    limit,
+    status,
+    actorType: actorType as 'user' | 'mcp_client' | 'system' | null,
+    resourceType,
+    resourceId,
+    actionPrefix,
+    clientId
+  });
+  const invocations = await listToolInvocations(workspace.id, {
+    limit,
+    status,
+    provider,
+    toolName,
+    actorClientId: clientId
+  });
   return NextResponse.json({ workspace, audit, invocations });
 }

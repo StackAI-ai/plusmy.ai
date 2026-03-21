@@ -11,8 +11,9 @@
 - Completed: repo scaffold, shared packages, initial Supabase schema, workspace/member/invite management, provider connection install/revoke flows, context asset/prompt/skill management, MCP discovery/token/resource/tool routes, dynamic OAuth client registration, and audit/tool invocation views.
 - Completed: persisted OAuth client approvals with workspace-scoped review and revoke controls, plus refresh-token invalidation when an approval is revoked.
 - Completed: workspace-scoped context binding management for shared prompts and skills on the operator context surface.
+- Completed: deeper MCP approval and audit visibility on operator pages with per-client tool invocation correlation, filtered audit views, and admin-only audit access.
 - In progress: rounding out operator surfaces called out in the web product plan so they reflect live authorization, context binding, and connection state instead of scaffold-only summaries.
-- Next up: background worker coverage for queued token refresh and sync jobs, binding-aware MCP/runtime resolution, and deeper MCP approval/audit visibility on operator pages.
+- Next up: background worker coverage for queued token refresh and sync jobs, plus binding-aware MCP/runtime resolution.
 
 ## Implementation changes
 1. Fresh repo bootstrap: replace the current empty workspace with a clean clone of the GitHub repo, set the default branch as the base, and treat the first commit after clone as the canonical scaffold baseline for all subsequent work.

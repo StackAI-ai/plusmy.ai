@@ -6,6 +6,7 @@ out
 dist
 coverage
 .expo
+*.tsbuildinfo
 .env
 .env.local
 .env.*.local
