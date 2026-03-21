@@ -7,6 +7,7 @@
     "build": "turbo build",
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",
+    "doctor": "node ./scripts/doctor.mjs",
     "dev:web": "pnpm --filter @plusmy/web dev",
     "dev:mobile": "pnpm --filter @plusmy/mobile dev",
     "supabase:start": "node_modules/supabase/bin/supabase start",

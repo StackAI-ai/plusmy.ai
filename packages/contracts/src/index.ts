@@ -7,7 +7,7 @@ export type ProviderId = 'google' | 'slack' | 'notion';
 export type ToolCapability = 'read' | 'write' | 'search' | 'execute';
 export type ContextAssetType = 'document' | 'prompt' | 'brand_guideline' | 'workflow' | 'knowledge_base';
 export type AuditActorType = 'user' | 'mcp_client' | 'system';
-export const connectionJobStatuses = ['queued', 'processing', 'succeeded', 'failed', 'canceled'] as const;
+export const connectionJobStatuses = ['queued', 'processing', 'succeeded', 'failed', 'dead_letter', 'canceled'] as const;
 export type ConnectionJobStatus = (typeof connectionJobStatuses)[number];
 export const contextBindingTypes = ['workspace', 'provider', 'tool'] as const;
 export type ContextBindingType = (typeof contextBindingTypes)[number];
@@ -52,6 +52,8 @@ export interface ConnectionJobRecord {
   worker_id: string | null;
   started_at: string | null;
   completed_at: string | null;
+  dead_lettered_at: string | null;
+  alerted_at: string | null;
   created_at: string;
   updated_at: string;
 }

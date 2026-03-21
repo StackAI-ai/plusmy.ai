@@ -20,7 +20,7 @@ import {
 
 function jobTone(status: string) {
   if (status === 'succeeded') return 'moss' as const;
-  if (status === 'failed' || status === 'canceled') return 'brass' as const;
+  if (status === 'failed' || status === 'dead_letter' || status === 'canceled') return 'brass' as const;
   return 'default' as const;
 }
 
@@ -73,6 +73,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
   const queuedJobs = connectionJobs.filter((job) => job.status === 'queued').length;
   const processingJobs = connectionJobs.filter((job) => job.status === 'processing').length;
   const failedJobs = connectionJobs.filter((job) => job.status === 'failed').length;
+  const deadLetterJobs = connectionJobs.filter((job) => job.status === 'dead_letter').length;
   const staleConnections = connections.filter(
     (connection) => getConnectionHealth(connection).value === 'stale'
   ).length;
@@ -94,12 +95,21 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
   const failedJobsAuditHref = workspace
     ? buildAuditHref(workspace.id, { resource: 'connection_job', action: 'connection_job.', status: 'error' })
     : '/audit';
+  const deadLetterJobsAuditHref = workspace
+    ? buildAuditHref(workspace.id, { resource: 'connection_job', action: 'connection_job.dead_lettered', status: 'error' })
+    : '/audit';
   const staleConnectionsHref = workspace
     ? buildConnectionsHref(workspace.id, currentSearchParams, { health: 'stale' })
     : '/connections';
   const revokedConnectionsHref = workspace
     ? buildConnectionsHref(workspace.id, currentSearchParams, { health: 'revoked' })
     : '/connections';
+  const deadLetterAlerts = connections
+    .map((connection) => {
+      const job = (jobsByConnection.get(connection.id) ?? []).find((entry) => entry.status === 'dead_letter');
+      return job ? { connection, job } : null;
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
 
   return (
     <div className="space-y-5">
@@ -137,6 +147,9 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
               </Link>
               <Link className="inline-flex" href={failedJobsAuditHref}>
                 <Badge tone={failedJobs ? 'brass' : 'moss'}>{failedJobs} failed</Badge>
+              </Link>
+              <Link className="inline-flex" href={deadLetterJobsAuditHref}>
+                <Badge tone={deadLetterJobs ? 'brass' : 'moss'}>{deadLetterJobs} dead-lettered</Badge>
               </Link>
               <Link className="inline-flex" href={staleConnectionsHref}>
                 <Badge tone={healthTone}>{staleConnections} stale refreshes</Badge>
@@ -194,6 +207,44 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
               <Badge tone={matchingProviders.size ? 'moss' : 'brass'}>{matchingProviders.size} matching providers</Badge>
               {hasActiveFilters ? <Badge tone="brass">Filtered view</Badge> : <Badge>All installs</Badge>}
             </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {workspace && deadLetterAlerts.length ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Operator alerts</CardTitle>
+            <CardDescription>
+              These jobs exhausted their retry budget and need an owner or admin to inspect the connection, fix the provider issue, and queue a fresh sync.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {deadLetterAlerts.slice(0, 5).map(({ connection, job }) => (
+              <div key={job.id} className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-foreground">{connection.display_name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {connection.provider} · {connection.scope} · {job.job_type.replaceAll('_', ' ')}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge tone="brass">Retry budget exhausted</Badge>
+                    <Badge>{job.attempts}/{job.max_attempts} attempts</Badge>
+                  </div>
+                </div>
+                {job.last_error ? <p className="mt-2 text-sm text-red-700">{job.last_error}</p> : null}
+                <div className="mt-3 flex flex-wrap gap-3 text-sm">
+                  <Link className="text-foreground underline-offset-4 hover:underline" href={deadLetterJobsAuditHref}>
+                    Open audit trail
+                  </Link>
+                  <Link className="text-foreground underline-offset-4 hover:underline" href={buildConnectionsHref(workspace.id, currentSearchParams, { provider: connection.provider })}>
+                    Filter this provider
+                  </Link>
+                </div>
+              </div>
+            ))}
           </CardContent>
         </Card>
       ) : null}

@@ -61,6 +61,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
   const queuedConnectionJobs = connectionJobs.filter((job) => job.status === 'queued').length
   const processingConnectionJobs = connectionJobs.filter((job) => job.status === 'processing').length
   const failedConnectionJobs = connectionJobs.filter((job) => job.status === 'failed').length
+  const deadLetterConnectionJobs = connectionJobs.filter((job) => job.status === 'dead_letter').length
   const activeApprovals = approvals.filter((approval) => approval.status === 'active').length
   const revokedApprovals = approvals.filter((approval) => approval.status === 'revoked').length
   const approvalSignal = approvals.length === 0 ? 'none' : `${activeApprovals} active / ${approvals.length} total`
@@ -69,6 +70,9 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
     : null
   const failedJobsAuditHref = activeWorkspace
     ? buildAuditHref(activeWorkspace.id, { resource: 'connection_job', action: 'connection_job.', status: 'error' })
+    : null
+  const deadLetterJobsAuditHref = activeWorkspace
+    ? buildAuditHref(activeWorkspace.id, { resource: 'connection_job', action: 'connection_job.dead_lettered', status: 'error' })
     : null
   const approvalsHref = activeWorkspace ? `/mcp-clients?workspace=${activeWorkspace.id}` : null
 
@@ -159,7 +163,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
           <CardContent>
             <p className="text-4xl font-semibold text-foreground">{processingConnectionJobs + queuedConnectionJobs}</p>
             <p className="mt-2 text-sm text-muted-foreground">
-              {processingConnectionJobs} processing · {queuedConnectionJobs} queued · {failedConnectionJobs} failed
+              {processingConnectionJobs} processing · {queuedConnectionJobs} queued · {deadLetterConnectionJobs} dead-lettered
             </p>
           </CardContent>
         </Card>
@@ -181,6 +185,9 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
           <li className="flex flex-wrap items-center gap-2">
             <LinkBadge href={failedJobsAuditHref} tone={healthTone(failedConnectionJobs > 0)}>
               {failedConnectionJobs} failed sync jobs
+            </LinkBadge>
+            <LinkBadge href={deadLetterJobsAuditHref} tone={healthTone(deadLetterConnectionJobs > 0)}>
+              {deadLetterConnectionJobs} dead-letter jobs
             </LinkBadge>
             {processingConnectionJobs > 0 ? `${processingConnectionJobs} jobs running now` : 'No jobs currently processing'}
           </li>

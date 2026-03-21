@@ -144,8 +144,15 @@ function asJsonObject(value: Json | null | undefined) {
   return value as Record<string, Json>;
 }
 
-function calculateRetryDelaySeconds(attempts: number) {
-  return Math.min(60 * 2 ** Math.max(attempts - 1, 0), 60 * 60);
+function calculateRetryDelaySeconds(jobType: string, attempts: number) {
+  const normalizedAttempts = Math.max(attempts - 1, 0);
+  const isTokenRefresh = jobType === 'token_refresh';
+  const baseDelaySeconds = isTokenRefresh ? 5 * 60 : 60;
+  const cappedDelaySeconds = isTokenRefresh ? 6 * 60 * 60 : 60 * 60;
+  const exponentialDelaySeconds = Math.min(baseDelaySeconds * 2 ** normalizedAttempts, cappedDelaySeconds);
+  const jitterWindowSeconds = Math.max(Math.round(exponentialDelaySeconds * 0.2), isTokenRefresh ? 30 : 10);
+  const jitterOffsetSeconds = Math.floor(Math.random() * (jitterWindowSeconds * 2 + 1)) - jitterWindowSeconds;
+  return Math.max(baseDelaySeconds, exponentialDelaySeconds + jitterOffsetSeconds);
 }
 
 export function buildConnectionKey(input: {
@@ -601,7 +608,8 @@ async function finalizeConnectionJob(input: {
   runAfter?: string | null;
 }) {
   const supabase = createServiceRoleClient();
-  const completed = input.status === 'succeeded' || input.status === 'failed' || input.status === 'canceled';
+  const completed =
+    input.status === 'succeeded' || input.status === 'failed' || input.status === 'dead_letter' || input.status === 'canceled';
   await supabase
     .schema('app')
     .from('connection_sync_jobs')
@@ -611,9 +619,22 @@ async function finalizeConnectionJob(input: {
       worker_id: input.workerId ?? null,
       run_after: input.runAfter ?? undefined,
       started_at: input.status === 'queued' ? null : undefined,
-      completed_at: completed ? new Date().toISOString() : null
+      completed_at: completed ? new Date().toISOString() : null,
+      dead_lettered_at: input.status === 'dead_letter' ? new Date().toISOString() : null
     })
     .eq('id', input.jobId);
+}
+
+async function markConnectionJobAlerted(jobId: string) {
+  const supabase = createServiceRoleClient();
+  await supabase
+    .schema('app')
+    .from('connection_sync_jobs')
+    .update({
+      alerted_at: new Date().toISOString()
+    })
+    .eq('id', jobId)
+    .is('alerted_at', null);
 }
 
 async function runConnectionSyncJob(job: ConnectionJobRecord, connection: ConnectionRecord) {
@@ -743,7 +764,7 @@ export async function processDueConnectionJobs(input?: { limit?: number; workerI
       const message = error instanceof Error ? error.message : 'Connection job failed.';
 
       if (shouldRetry) {
-        const retryDelaySeconds = calculateRetryDelaySeconds(job.attempts);
+        const retryDelaySeconds = calculateRetryDelaySeconds(job.job_type, job.attempts);
         await finalizeConnectionJob({
           jobId: job.id,
           status: 'queued',
@@ -770,16 +791,17 @@ export async function processDueConnectionJobs(input?: { limit?: number; workerI
         continue;
       }
 
+      const finalStatus = latestConnection?.status === 'revoked' ? 'canceled' : 'dead_letter';
       await finalizeConnectionJob({
         jobId: job.id,
-        status: latestConnection?.status === 'revoked' ? 'canceled' : 'failed',
+        status: finalStatus,
         lastError: message,
         workerId
       });
       await logAuditEvent({
         workspaceId: connection.workspace_id,
         actorType: 'system',
-        action: 'connection_job.failed',
+        action: finalStatus === 'dead_letter' ? 'connection_job.dead_lettered' : 'connection_job.failed',
         resourceType: 'connection_job',
         resourceId: job.id,
         status: 'error',
@@ -787,12 +809,16 @@ export async function processDueConnectionJobs(input?: { limit?: number; workerI
           connection_id: job.connection_id,
           job_type: job.job_type,
           attempts: job.attempts,
+          max_attempts: job.max_attempts,
           error: message
         }
       });
+      if (finalStatus === 'dead_letter') {
+        await markConnectionJobAlerted(job.id);
+      }
       processed.push({
         id: job.id,
-        status: latestConnection?.status === 'revoked' ? 'canceled' : 'failed',
+        status: finalStatus,
         jobType: job.job_type,
         connectionId: job.connection_id
       });
