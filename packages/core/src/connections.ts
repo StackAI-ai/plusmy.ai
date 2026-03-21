@@ -379,6 +379,19 @@ export async function listAuditLogs(workspaceId: string, limit = 25) {
   return data ?? [];
 }
 
+export async function listToolInvocations(workspaceId: string, limit = 25) {
+  const supabase = createServiceRoleClient();
+  const { data } = await supabase
+    .schema('app')
+    .from('tool_invocations')
+    .select('*')
+    .eq('workspace_id', workspaceId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  return data ?? [];
+}
+
 export async function revokeConnection(input: {
   workspaceId: string;
   connectionId: string;

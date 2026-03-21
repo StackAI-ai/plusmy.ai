@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@plusmy/supabase';
-import { getAuthorizedWorkspace, listAuditLogs } from '@plusmy/core';
+import { getAuthorizedWorkspace, listAuditLogs, listToolInvocations } from '@plusmy/core';
 
 export const runtime = 'nodejs';
 
@@ -22,5 +22,6 @@ export async function GET(request: NextRequest) {
 
   const limit = Number(url.searchParams.get('limit') ?? 25);
   const audit = await listAuditLogs(workspace.id, limit);
-  return NextResponse.json({ workspace, audit });
+  const invocations = await listToolInvocations(workspace.id, limit);
+  return NextResponse.json({ workspace, audit, invocations });
 }
