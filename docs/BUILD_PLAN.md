@@ -13,7 +13,8 @@
 - Completed: workspace-scoped context binding management for shared prompts and skills on the operator context surface.
 - Completed: deeper MCP approval and audit visibility on operator pages with per-client tool invocation correlation, filtered audit views, and admin-only audit access.
 - In progress: rounding out operator surfaces called out in the web product plan so they reflect live authorization, context binding, and connection state instead of scaffold-only summaries.
-- Next up: background worker coverage for queued token refresh and sync jobs, plus binding-aware MCP/runtime resolution.
+- Completed: binding-aware MCP/runtime resolution for bound prompt and skill resources, including bound-resource MCP listing/reading and runtime context threading into tool execution.
+- Next up: background worker coverage for queued token refresh and sync jobs, plus deeper context-asset injection into MCP tool/resource responses.
 
 ## Implementation changes
 1. Fresh repo bootstrap: replace the current empty workspace with a clean clone of the GitHub repo, set the default branch as the base, and treat the first commit after clone as the canonical scaffold baseline for all subsequent work.

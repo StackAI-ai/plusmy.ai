@@ -1,10 +1,13 @@
 import type {
+  BoundContextResource,
+  BoundContextResourceKind,
   ContextAssetType,
   ContextBindingRecord,
   ContextBindingType,
   Json,
   McpResourceContent,
-  McpResourceDefinition
+  McpResourceDefinition,
+  ProviderRuntimeContext
 } from '@plusmy/contracts'
 import { createServiceRoleClient } from '@plusmy/supabase'
 import { logAuditEvent } from './connections'
@@ -35,10 +38,44 @@ function slugify(value: string) {
     .slice(0, 64)
 }
 
+interface PromptTemplateResourceRecord {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  content: string
+  owner_user_id: string | null
+}
+
+interface SkillDefinitionResourceRecord {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  instructions: string
+  owner_user_id: string | null
+}
+
 function parseResourceUri(uri: string) {
-  const match = uri.match(/^plusmy:\/\/(prompt|skill)\/([a-f0-9-]+)$/i)
-  if (!match) return null
-  return { kind: match[1], id: match[2] }
+  const directMatch = uri.match(/^plusmy:\/\/(prompt|skill)\/([a-f0-9-]+)$/i)
+  if (directMatch) {
+    return {
+      format: 'direct' as const,
+      kind: directMatch[1].toLowerCase() as BoundContextResourceKind,
+      id: directMatch[2]
+    }
+  }
+
+  const bindingMatch = uri.match(/^plusmy:\/\/binding\/(workspace|provider|tool)\/([^/]+)\/(prompt|skill)\/([a-f0-9-]+)$/i)
+  if (!bindingMatch) return null
+
+  return {
+    format: 'binding' as const,
+    bindingType: normalizeBindingType(bindingMatch[1].toLowerCase()),
+    targetKey: decodeURIComponent(bindingMatch[2]),
+    kind: bindingMatch[3].toLowerCase() as BoundContextResourceKind,
+    id: bindingMatch[4]
+  }
 }
 
 function normalizeJoinedRecord<T>(value: T | T[] | null | undefined) {
@@ -138,6 +175,210 @@ function normalizeBindingTarget(bindingType: ContextBindingType, targetKey: stri
   }
 
   return normalized
+}
+
+function buildBindingResourceUri(resource: {
+  bindingType: ContextBindingType
+  targetKey: string
+  kind: BoundContextResourceKind
+  resourceId: string
+}) {
+  return `plusmy://binding/${resource.bindingType}/${encodeURIComponent(resource.targetKey)}/${resource.kind}/${resource.resourceId}`
+}
+
+function bindingSpecificity(bindingType: ContextBindingType) {
+  if (bindingType === 'tool') return 3
+  if (bindingType === 'provider') return 2
+  return 1
+}
+
+function bindingScopeLabel(bindingType: ContextBindingType, targetKey: string) {
+  if (bindingType === 'workspace') return 'Workspace default'
+  if (bindingType === 'provider') return `Provider ${targetKey}`
+  return `Tool ${targetKey}`
+}
+
+function buildBindingResourceName(resource: BoundContextResource) {
+  const scope = bindingScopeLabel(resource.bindingType, resource.targetKey)
+  const kind = resource.kind === 'prompt' ? 'Prompt' : 'Skill'
+  return `${scope} · ${kind} · ${resource.name}`
+}
+
+function buildBindingResourceDescription(resource: BoundContextResource) {
+  const kind = resource.kind === 'prompt' ? 'Prompt template' : 'Skill definition'
+  const scope = bindingScopeLabel(resource.bindingType, resource.targetKey)
+  return resource.description ?? `${kind} bound to ${scope.toLowerCase()}.`
+}
+
+function matchesBindingTarget(
+  binding: ContextBindingRecord,
+  target: {
+    provider?: string | null
+    toolName?: string | null
+    includeAllBindings?: boolean
+    bindingType?: ContextBindingType | null
+    targetKey?: string | null
+  }
+) {
+  if (target.bindingType && binding.binding_type !== target.bindingType) {
+    return false
+  }
+
+  if (target.targetKey) {
+    return binding.target_key === normalizeBindingTarget(target.bindingType ?? binding.binding_type, target.targetKey)
+  }
+
+  if (target.includeAllBindings) {
+    return true
+  }
+
+  if (binding.binding_type === 'workspace') {
+    return binding.target_key === 'default'
+  }
+
+  if (binding.binding_type === 'provider') {
+    return binding.target_key === String(target.provider ?? '').trim().toLowerCase()
+  }
+
+  return binding.target_key === String(target.toolName ?? '').trim().toLowerCase()
+}
+
+function compareBoundContextResources(left: BoundContextResource, right: BoundContextResource) {
+  const specificity = bindingSpecificity(right.bindingType) - bindingSpecificity(left.bindingType)
+  if (specificity !== 0) return specificity
+
+  if (left.priority !== right.priority) return left.priority - right.priority
+  return left.name.localeCompare(right.name)
+}
+
+async function getPromptTemplateContentMap(workspaceId: string, promptTemplateIds: string[]) {
+  const ids = Array.from(new Set(promptTemplateIds))
+  if (ids.length === 0) return new Map<string, PromptTemplateResourceRecord>()
+
+  const supabase = createServiceRoleClient()
+  const { data } = await supabase
+    .schema('app')
+    .from('prompt_templates')
+    .select('id,name,slug,description,content,owner_user_id')
+    .eq('workspace_id', workspaceId)
+    .in('id', ids)
+
+  return new Map(
+    ((data ?? []) as PromptTemplateResourceRecord[])
+      .filter((item) => !item.owner_user_id)
+      .map((item) => [item.id, item])
+  )
+}
+
+async function getSkillDefinitionContentMap(workspaceId: string, skillDefinitionIds: string[]) {
+  const ids = Array.from(new Set(skillDefinitionIds))
+  if (ids.length === 0) return new Map<string, SkillDefinitionResourceRecord>()
+
+  const supabase = createServiceRoleClient()
+  const { data } = await supabase
+    .schema('app')
+    .from('skill_definitions')
+    .select('id,name,slug,description,instructions,owner_user_id')
+    .eq('workspace_id', workspaceId)
+    .in('id', ids)
+
+  return new Map(
+    ((data ?? []) as SkillDefinitionResourceRecord[])
+      .filter((item) => !item.owner_user_id)
+      .map((item) => [item.id, item])
+  )
+}
+
+async function resolveBoundContextResources(
+  workspaceId: string,
+  userId: string | null | undefined,
+  target: {
+    provider?: string | null
+    toolName?: string | null
+    includeAllBindings?: boolean
+    bindingType?: ContextBindingType | null
+    targetKey?: string | null
+    dedupeByResource?: boolean
+  } = {}
+) {
+  const bindings = (await listContextBindings(workspaceId, userId)).filter((binding) => matchesBindingTarget(binding, target))
+  if (bindings.length === 0) return [] as BoundContextResource[]
+
+  const [promptMap, skillMap] = await Promise.all([
+    getPromptTemplateContentMap(
+      workspaceId,
+      bindings.map((binding) => binding.prompt_template_id).filter((value): value is string => Boolean(value))
+    ),
+    getSkillDefinitionContentMap(
+      workspaceId,
+      bindings.map((binding) => binding.skill_definition_id).filter((value): value is string => Boolean(value))
+    )
+  ])
+
+  const resources: BoundContextResource[] = []
+
+  for (const binding of bindings) {
+    if (binding.prompt_template_id) {
+      const prompt = promptMap.get(binding.prompt_template_id)
+      if (prompt) {
+        resources.push({
+          bindingType: binding.binding_type,
+          targetKey: binding.target_key,
+          priority: binding.priority,
+          kind: 'prompt',
+          resourceId: prompt.id,
+          name: prompt.name,
+          description: prompt.description ?? null,
+          uri: buildBindingResourceUri({
+            bindingType: binding.binding_type,
+            targetKey: binding.target_key,
+            kind: 'prompt',
+            resourceId: prompt.id
+          }),
+          mimeType: 'text/markdown',
+          text: prompt.content
+        })
+      }
+    }
+
+    if (binding.skill_definition_id) {
+      const skill = skillMap.get(binding.skill_definition_id)
+      if (skill) {
+        resources.push({
+          bindingType: binding.binding_type,
+          targetKey: binding.target_key,
+          priority: binding.priority,
+          kind: 'skill',
+          resourceId: skill.id,
+          name: skill.name,
+          description: skill.description ?? null,
+          uri: buildBindingResourceUri({
+            bindingType: binding.binding_type,
+            targetKey: binding.target_key,
+            kind: 'skill',
+            resourceId: skill.id
+          }),
+          mimeType: 'text/markdown',
+          text: skill.instructions
+        })
+      }
+    }
+  }
+
+  const sorted = resources.sort(compareBoundContextResources)
+  if (!target.dedupeByResource) {
+    return sorted
+  }
+
+  const deduped = new Map<string, BoundContextResource>()
+  for (const resource of sorted) {
+    const key = `${resource.kind}:${resource.resourceId}`
+    if (!deduped.has(key)) {
+      deduped.set(key, resource)
+    }
+  }
+
+  return Array.from(deduped.values())
 }
 
 async function getWorkspaceSharedPromptTemplate(workspaceId: string, promptTemplateId: string) {
@@ -520,6 +761,21 @@ export async function deleteContextBinding(input: {
 }
 
 export async function listWorkspaceResources(workspaceId: string, userId: string | null | undefined) {
+  const boundResources = await resolveBoundContextResources(workspaceId, userId, {
+    includeAllBindings: true
+  })
+
+  if (boundResources.length > 0) {
+    return boundResources.map(
+      (resource): McpResourceDefinition => ({
+        uri: resource.uri,
+        name: buildBindingResourceName(resource),
+        description: buildBindingResourceDescription(resource),
+        mimeType: resource.mimeType
+      })
+    )
+  }
+
   const [prompts, skills] = await Promise.all([
     listPromptTemplates(workspaceId, userId),
     listSkillDefinitions(workspaceId, userId)
@@ -550,6 +806,17 @@ export async function readWorkspaceResource(workspaceId: string, userId: string 
   const parsed = parseResourceUri(uri)
   if (!parsed) return []
 
+  if (parsed.format === 'binding') {
+    const boundResources = await resolveBoundContextResources(workspaceId, userId, {
+      includeAllBindings: true,
+      bindingType: parsed.bindingType,
+      targetKey: parsed.targetKey
+    })
+    const resource = boundResources.find((entry) => entry.uri === uri && entry.kind === parsed.kind && entry.resourceId === parsed.id)
+    if (!resource) return []
+    return [{ uri, mimeType: resource.mimeType, text: resource.text }]
+  }
+
   const supabase = createServiceRoleClient()
   if (parsed.kind === 'prompt') {
     const { data } = await supabase
@@ -574,6 +841,27 @@ export async function readWorkspaceResource(workspaceId: string, userId: string 
 
   if (!data || (data.owner_user_id && data.owner_user_id !== userId)) return []
   return [{ uri, mimeType: 'text/markdown', text: data.instructions }]
+}
+
+export async function resolveProviderRuntimeContext(
+  workspaceId: string,
+  userId: string | null | undefined,
+  target: {
+    provider: string
+    toolName?: string | null
+  }
+): Promise<ProviderRuntimeContext> {
+  const resources = await resolveBoundContextResources(workspaceId, userId, {
+    provider: target.provider,
+    toolName: target.toolName,
+    dedupeByResource: true
+  })
+
+  return {
+    resources,
+    prompts: resources.filter((resource) => resource.kind === 'prompt'),
+    skills: resources.filter((resource) => resource.kind === 'skill')
+  }
 }
 
 export async function matchContextChunks(workspaceId: string, query: string, limit = 8) {

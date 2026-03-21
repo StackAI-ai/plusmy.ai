@@ -92,6 +92,27 @@ export interface ContextBindingRecord {
   skill_definition: ContextBindingReference | null;
 }
 
+export type BoundContextResourceKind = 'prompt' | 'skill';
+
+export interface BoundContextResource {
+  bindingType: ContextBindingType;
+  targetKey: string;
+  priority: number;
+  kind: BoundContextResourceKind;
+  resourceId: string;
+  name: string;
+  description: string | null;
+  uri: string;
+  mimeType: string;
+  text: string;
+}
+
+export interface ProviderRuntimeContext {
+  resources: BoundContextResource[];
+  prompts: BoundContextResource[];
+  skills: BoundContextResource[];
+}
+
 export interface AuditLogRecord {
   id: string;
   workspace_id: string;

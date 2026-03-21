@@ -1,4 +1,5 @@
 import type {
+  ProviderRuntimeContext,
   ConnectionRecord,
   McpResourceDefinition,
   McpToolDefinition,
@@ -32,6 +33,7 @@ export interface ResolvedProviderAccount {
 export interface ProviderCallContext {
   connection: ConnectionRecord;
   credentials: ResolvedConnectionCredentials;
+  runtimeContext: ProviderRuntimeContext;
 }
 
 export interface ToolFactory {

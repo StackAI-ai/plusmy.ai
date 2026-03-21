@@ -6,6 +6,7 @@ import {
   logAuditEvent,
   readWorkspaceResource,
   recordToolInvocation,
+  resolveProviderRuntimeContext,
   resolveProviderExecutionContext,
   type McpAuthContext
 } from '@plusmy/core';
@@ -18,13 +19,48 @@ export function createMcpServer(authContext: McpAuthContext) {
   };
 }
 
+function summarizeRuntimeContext(runtimeContext: Awaited<ReturnType<typeof resolveProviderRuntimeContext>>) {
+  return {
+    promptCount: runtimeContext.prompts.length,
+    skillCount: runtimeContext.skills.length,
+    resourceUris: runtimeContext.resources.map((resource) => resource.uri)
+  };
+}
+
+function withRuntimeContextHint(
+  tool: McpToolDefinition,
+  runtimeContext: Awaited<ReturnType<typeof resolveProviderRuntimeContext>>
+): McpToolDefinition {
+  if (runtimeContext.resources.length === 0) {
+    return tool;
+  }
+
+  const promptLabel = runtimeContext.prompts.length === 1 ? '1 bound prompt' : `${runtimeContext.prompts.length} bound prompts`;
+  const skillLabel = runtimeContext.skills.length === 1 ? '1 bound skill' : `${runtimeContext.skills.length} bound skills`;
+  return {
+    ...tool,
+    description: `${tool.description} Runtime context: ${promptLabel}, ${skillLabel}.`
+  };
+}
+
 export async function resolveAvailableTools(authContext: McpAuthContext) {
   const tools: McpToolDefinition[] = [];
   for (const integration of getIntegrations()) {
     try {
       const { connection } = await resolveProviderExecutionContext(authContext.workspaceId, authContext.userId, integration.id);
       const providerTools = await integration.listTools(connection);
-      tools.push(...providerTools);
+      const contextAwareTools = await Promise.all(
+        providerTools.map(async (tool) =>
+          withRuntimeContextHint(
+            tool,
+            await resolveProviderRuntimeContext(authContext.workspaceId, authContext.userId, {
+              provider: integration.id,
+              toolName: tool.name
+            })
+          )
+        )
+      );
+      tools.push(...contextAwareTools);
     } catch {
       continue;
     }
@@ -69,9 +105,13 @@ export async function executeToolCall(authContext: McpAuthContext, toolName: str
 
   const startedAt = Date.now();
   const { connection, credentials } = await resolveProviderExecutionContext(authContext.workspaceId, authContext.userId, provider);
+  const runtimeContext = await resolveProviderRuntimeContext(authContext.workspaceId, authContext.userId, {
+    provider,
+    toolName
+  });
 
   try {
-    const output = await integration.callTool(toolName, input, { connection, credentials });
+    const output = await integration.callTool(toolName, input, { connection, credentials, runtimeContext });
     await recordToolInvocation({
       workspaceId: authContext.workspaceId,
       connectionId: connection.id,
@@ -92,7 +132,10 @@ export async function executeToolCall(authContext: McpAuthContext, toolName: str
       action: 'mcp.tool.called',
       resourceType: 'tool',
       resourceId: toolName,
-      metadata: { provider }
+      metadata: {
+        provider,
+        runtimeContext: summarizeRuntimeContext(runtimeContext)
+      }
     });
     return output;
   } catch (error) {
@@ -119,6 +162,7 @@ export async function executeToolCall(authContext: McpAuthContext, toolName: str
       status: 'error',
       metadata: {
         provider,
+        runtimeContext: summarizeRuntimeContext(runtimeContext),
         error: error instanceof Error ? error.message : 'Tool execution failed.'
       }
     });
