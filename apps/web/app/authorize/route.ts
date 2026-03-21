@@ -1,8 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@plusmy/supabase';
-import { createAuthorizationCode, getAuthorizedWorkspace, getOAuthClient } from '@plusmy/core';
+import {
+  createAuthorizationCode,
+  getAuthorizedWorkspace,
+  getOAuthClient,
+  getOAuthClientApproval,
+  logAuditEvent,
+  upsertOAuthClientApproval
+} from '@plusmy/core';
 
 export const runtime = 'nodejs';
+
+const defaultScopeString = 'mcp:tools mcp:resources';
+
+function parseRequestedScopes(scope: string, client: Record<string, unknown>) {
+  const requestedScopes = scope.split(' ').filter(Boolean);
+  const allowedScopes = Array.isArray(client.scopes) ? client.scopes.map(String) : defaultScopeString.split(' ');
+
+  if (requestedScopes.length === 0) {
+    return allowedScopes;
+  }
+
+  const hasInvalidScope = requestedScopes.some((value) => !allowedScopes.includes(value));
+  return hasInvalidScope ? null : requestedScopes;
+}
+
+function getClientRedirectUris(client: Record<string, unknown>) {
+  return Array.isArray(client.redirect_uris) ? client.redirect_uris.map(String) : [];
+}
+
+function getClientName(client: Record<string, unknown>) {
+  return typeof client.client_name === 'string' ? client.client_name : 'Unknown MCP client';
+}
+
+function formatTimestamp(value: string | null | undefined) {
+  if (!value) return null;
+
+  return (
+    new Date(value).toLocaleString('en-US', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'UTC'
+    }) + ' UTC'
+  );
+}
 
 function renderConsentPage(input: {
   clientName: string;
@@ -14,6 +55,11 @@ function renderConsentPage(input: {
   workspaceName: string;
   codeChallenge: string | null;
   codeChallengeMethod: string | null;
+  existingApproval?: {
+    approvedAt: string;
+    lastUsedAt: string | null;
+    scopes: string;
+  } | null;
 }) {
   return `<!doctype html>
 <html lang="en">
@@ -34,7 +80,18 @@ function renderConsentPage(input: {
       <p style="letter-spacing:.2em;text-transform:uppercase;font-size:12px;color:#55635f">plusmy.ai MCP authorization</p>
       <h1 style="font-size:38px;line-height:1.15;margin:14px 0 10px">Authorize ${input.clientName}</h1>
       <p class="muted">This MCP client will receive delegated access to workspace resources and integration tools for <strong>${input.workspaceName}</strong>.</p>
-      <p class="muted"><strong>Requested scopes:</strong> ${input.scope || 'mcp:tools mcp:resources'}</p>
+      <p class="muted"><strong>Requested scopes:</strong> ${input.scope || defaultScopeString}</p>
+      ${
+        input.existingApproval
+          ? `<div style="margin-top:18px;border:1px solid rgba(19,32,29,.08);border-radius:20px;padding:16px;background:rgba(19,32,29,.03)">
+        <p style="margin:0;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#55635f">Existing approval on file</p>
+        <p class="muted" style="margin:8px 0 0">Approved ${input.existingApproval.approvedAt}. ${
+          input.existingApproval.lastUsedAt ? `Last token issued ${input.existingApproval.lastUsedAt}.` : 'No token has been exchanged from that approval yet.'
+        }</p>
+        <p class="muted" style="margin:8px 0 0"><strong>Previously approved scopes:</strong> ${input.existingApproval.scopes}</p>
+      </div>`
+          : ''
+      }
       <form method="post" action="/authorize" style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
         <input type="hidden" name="client_id" value="${input.clientId}" />
         <input type="hidden" name="redirect_uri" value="${input.redirectUri}" />
@@ -66,8 +123,13 @@ export async function GET(request: NextRequest) {
   }
 
   const client = await getOAuthClient(clientId);
-  if (!client || !client.redirect_uris.includes(redirectUri)) {
+  const redirectUris = client ? getClientRedirectUris(client) : [];
+  if (!client || !redirectUris.includes(redirectUri)) {
     return NextResponse.json({ error: 'invalid_client', error_description: 'Unknown client or redirect URI.' }, { status: 400 });
+  }
+  const requestedScopes = parseRequestedScopes(scope, client);
+  if (requestedScopes == null) {
+    return NextResponse.json({ error: 'invalid_scope', error_description: 'Requested scope is not allowed for this client.' }, { status: 400 });
   }
 
   const supabase = await createServerSupabaseClient();
@@ -84,17 +146,30 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'access_denied', error_description: 'You do not belong to any authorized workspace.' }, { status: 403 });
   }
 
+  const existingApproval = await getOAuthClientApproval({
+    clientId,
+    workspaceId: workspace.id,
+    userId: user.id
+  });
+
   return new NextResponse(
     renderConsentPage({
-      clientName: client.client_name,
+      clientName: getClientName(client),
       clientId,
       redirectUri,
-      scope,
+      scope: requestedScopes.join(' '),
       state,
       workspaceId: workspace.id,
       workspaceName: workspace.name,
       codeChallenge,
-      codeChallengeMethod
+      codeChallengeMethod,
+      existingApproval: existingApproval && existingApproval.status === 'active'
+        ? {
+            approvedAt: formatTimestamp(existingApproval.approved_at) ?? existingApproval.approved_at,
+            lastUsedAt: formatTimestamp(existingApproval.last_used_at),
+            scopes: existingApproval.scopes.join(' ')
+          }
+        : null
     }),
     { headers: { 'content-type': 'text/html; charset=utf-8' } }
   );
@@ -120,11 +195,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'login_required' }, { status: 401 });
   }
 
-  const redirect = new URL(redirectUri);
-  if (decision !== 'approve') {
-    redirect.searchParams.set('error', 'access_denied');
-    if (state) redirect.searchParams.set('state', state);
-    return NextResponse.redirect(redirect);
+  if (!clientId || !redirectUri) {
+    return NextResponse.json({ error: 'invalid_request' }, { status: 400 });
+  }
+
+  const client = await getOAuthClient(clientId);
+  const redirectUris = client ? getClientRedirectUris(client) : [];
+  if (!client || !redirectUris.includes(redirectUri)) {
+    return NextResponse.json({ error: 'invalid_client' }, { status: 400 });
+  }
+
+  const requestedScopes = parseRequestedScopes(scope, client);
+  if (requestedScopes == null) {
+    return NextResponse.json({ error: 'invalid_scope' }, { status: 400 });
   }
 
   const workspace = await getAuthorizedWorkspace(user.id, workspaceId);
@@ -132,12 +215,42 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'access_denied' }, { status: 403 });
   }
 
+  const redirect = new URL(redirectUri);
+  if (decision !== 'approve') {
+    await logAuditEvent({
+      workspaceId: workspace.id,
+      actorType: 'user',
+      actorUserId: user.id,
+      action: 'oauth_client.denied',
+      resourceType: 'oauth_client',
+      resourceId: clientId,
+      metadata: {
+        redirect_uri: redirectUri,
+        scopes: requestedScopes
+      }
+    });
+
+    redirect.searchParams.set('error', 'access_denied');
+    if (state) redirect.searchParams.set('state', state);
+    return NextResponse.redirect(redirect);
+  }
+
+  await upsertOAuthClientApproval({
+    clientId,
+    workspaceId: workspace.id,
+    userId: user.id,
+    scopes: requestedScopes,
+    metadata: {
+      redirect_uri: redirectUri
+    }
+  });
+
   const code = await createAuthorizationCode({
     clientId,
     userId: user.id,
     workspaceId: workspace.id,
     redirectUri,
-    scope: scope.split(' ').filter(Boolean),
+    scope: requestedScopes,
     codeChallenge: codeChallenge || null,
     codeChallengeMethod: codeChallengeMethod || null
   });

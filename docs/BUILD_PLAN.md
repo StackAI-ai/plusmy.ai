@@ -7,6 +7,12 @@
 - Use Supabase Auth for human users; `plusmy.ai` acts as the OAuth 2.1 authorization server and resource server for MCP clients.
 - Store all provider access tokens, refresh tokens, and user API keys in Supabase Vault; application tables store only Vault secret UUIDs and metadata. Decryption is only via security-definer SQL functions or internal workers, never via client-facing tables.
 
+## Implementation status
+- Completed: repo scaffold, shared packages, initial Supabase schema, workspace/member/invite management, provider connection install/revoke flows, context asset/prompt/skill management, MCP discovery/token/resource/tool routes, dynamic OAuth client registration, and audit/tool invocation views.
+- Completed: persisted OAuth client approvals with workspace-scoped review and revoke controls, plus refresh-token invalidation when an approval is revoked.
+- In progress: rounding out operator surfaces called out in the web product plan so they reflect live authorization and connection state instead of scaffold-only summaries.
+- Next up: background worker coverage for queued token refresh and sync jobs, richer context binding management, and deeper MCP approval/audit visibility on operator pages.
+
 ## Implementation changes
 1. Fresh repo bootstrap: replace the current empty workspace with a clean clone of the GitHub repo, set the default branch as the base, and treat the first commit after clone as the canonical scaffold baseline for all subsequent work.
 2. Repo foundation: initialize Turborepo with `apps/web` (Next.js App Router), `apps/mobile` (Expo scaffold only), `packages/ui`, `packages/config`, `packages/contracts`, `packages/supabase`, `packages/integrations`, `packages/mcp`, and `packages/core`; keep `supabase/` at the repo root for migrations, seeds, generated types, and internal Edge Functions.

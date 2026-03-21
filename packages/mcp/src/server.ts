@@ -121,16 +121,16 @@ export async function handleMcpJsonRpcRequest(authContext: McpAuthContext, body:
         return success(body.id, {});
       case 'tools/list': {
         const tools = await resolveAvailableTools(authContext);
-        return success(body.id, { tools });
+        return success(body.id, { tools } as unknown as Json);
       }
       case 'resources/list': {
         const resources = await resolveAvailableResources(authContext);
-        return success(body.id, { resources });
+        return success(body.id, { resources } as unknown as Json);
       }
       case 'resources/read': {
         const uri = String(body.params?.uri ?? '');
         const contents = await readWorkspaceResource(authContext.workspaceId, authContext.userId, uri);
-        return success(body.id, { contents });
+        return success(body.id, { contents } as unknown as Json);
       }
       case 'tools/call': {
         const name = String(body.params?.name ?? '');

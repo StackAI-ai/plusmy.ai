@@ -11,7 +11,8 @@
     "@plusmy/integrations": "workspace:*",
     "@plusmy/supabase": "workspace:*",
     "jose": "^5.9.6",
-    "nanoid": "^5.1.5"
+    "nanoid": "^5.1.5",
+    "next": "^15.2.0"
   },
   "scripts": {
     "build": "tsc --noEmit",

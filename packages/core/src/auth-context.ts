@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { jwtVerify, SignJWT } from 'jose';
+import type { JWTPayload } from 'jose';
 import type { NextRequest } from 'next/server';
 import { getServerEnv } from '@plusmy/config';
 
@@ -15,7 +16,7 @@ export interface McpAccessTokenClaims {
 
 export interface McpAuthContext extends McpAccessTokenClaims {}
 
-interface ProviderStateClaims {
+interface ProviderStateClaims extends JWTPayload {
   provider: string;
   userId: string;
   workspaceId: string;

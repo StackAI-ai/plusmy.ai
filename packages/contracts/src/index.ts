@@ -28,6 +28,7 @@ export interface ConnectionRecord {
   external_account_email: string | null;
   granted_scopes: string[];
   expires_at: string | null;
+  reauth_required_reason: string | null;
   metadata: Json;
 }
 
@@ -103,6 +104,25 @@ export interface DynamicClientRegistrationResponse {
   scope: string;
   token_endpoint_auth_method: string;
   client_secret?: string;
+}
+
+export type OAuthClientApprovalStatus = 'active' | 'revoked';
+
+export interface OAuthClientApprovalRecord {
+  id: string;
+  client_id: string;
+  workspace_id: string;
+  user_id: string;
+  scopes: string[];
+  status: OAuthClientApprovalStatus;
+  approved_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  metadata: Json;
+  created_at: string;
+  updated_at: string;
+  client_name?: string | null;
+  token_endpoint_auth_method?: string | null;
 }
 
 export interface OAuthTokenResponse {

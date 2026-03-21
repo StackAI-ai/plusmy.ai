@@ -1,5 +1,5 @@
 import { getServerEnv } from '@plusmy/config';
-import type { ConnectionRecord, McpResourceDefinition, McpToolDefinition, ProviderTokenSet } from '@plusmy/contracts';
+import type { ConnectionRecord, Json, McpResourceDefinition, McpToolDefinition, ProviderTokenSet } from '@plusmy/contracts';
 import type { AuthorizationCodeInput, AuthorizationUrlInput, IntegrationDefinition, ProviderCallContext } from '../types';
 
 const oauth = {
@@ -104,7 +104,7 @@ export const notionIntegration: IntegrationDefinition = {
       tokenType: 'Bearer',
       expiresAt: null,
       scopes: oauth.defaultScopes,
-      raw: data
+      raw: data as Json
     };
   },
   async refreshTokens({ refreshToken }) {
@@ -127,7 +127,7 @@ export const notionIntegration: IntegrationDefinition = {
       tokenType: 'Bearer',
       expiresAt: null,
       scopes: oauth.defaultScopes,
-      raw: data
+      raw: data as Json
     };
   },
   async resolveAccount(tokenSet) {

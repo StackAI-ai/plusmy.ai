@@ -1,5 +1,5 @@
 import { getServerEnv } from '@plusmy/config';
-import type { ConnectionRecord, McpResourceDefinition, McpToolDefinition, ProviderTokenSet } from '@plusmy/contracts';
+import type { ConnectionRecord, Json, McpResourceDefinition, McpToolDefinition, ProviderTokenSet } from '@plusmy/contracts';
 import type { AuthorizationCodeInput, AuthorizationUrlInput, IntegrationDefinition, ProviderCallContext, ResolvedProviderAccount } from '../types';
 
 const oauth = {
@@ -40,7 +40,7 @@ async function exchange(code: string, redirectUri: string) {
     tokenType: 'Bearer',
     expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null,
     scopes: String(data.scope ?? oauth.defaultScopes.join(',')).split(/[, ]/).filter(Boolean),
-    raw: data
+    raw: data as Json
   } satisfies ProviderTokenSet;
 }
 
@@ -122,7 +122,7 @@ export const slackIntegration: IntegrationDefinition = {
       tokenType: 'Bearer',
       expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null,
       scopes: String(data.scope ?? oauth.defaultScopes.join(',')).split(/[, ]/).filter(Boolean),
-      raw: data
+      raw: data as Json
     };
   },
   async resolveAccount(tokenSet: ProviderTokenSet) {

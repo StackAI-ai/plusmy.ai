@@ -15,7 +15,10 @@ export async function listWorkspaceMembers(workspaceId: string) {
     .eq('workspace_id', workspaceId)
     .order('created_at', { ascending: true });
 
-  return data ?? [];
+  return (data ?? []).map((entry) => ({
+    ...entry,
+    profile: Array.isArray(entry.profile) ? entry.profile[0] ?? null : entry.profile
+  }));
 }
 
 export async function listWorkspaceInvites(workspaceId: string) {

@@ -27,6 +27,43 @@ function pkceChallenge(verifier: string) {
   return createHash('sha256').update(verifier).digest('base64url');
 }
 
+async function assertOAuthClientApprovalActive(input: {
+  clientId: string;
+  userId: string;
+  workspaceId: string;
+}) {
+  const supabase = createServiceRoleClient();
+  const { data } = await supabase
+    .schema('app')
+    .from('oauth_client_approvals')
+    .select('status,revoked_at')
+    .eq('client_id', input.clientId)
+    .eq('user_id', input.userId)
+    .eq('workspace_id', input.workspaceId)
+    .maybeSingle();
+
+  if (!data || data.status !== 'active' || data.revoked_at) {
+    throw new Error('OAuth client approval is no longer active.');
+  }
+}
+
+async function markOAuthClientApprovalUsed(input: {
+  clientId: string;
+  userId: string;
+  workspaceId: string;
+}) {
+  const supabase = createServiceRoleClient();
+  await supabase
+    .schema('app')
+    .from('oauth_client_approvals')
+    .update({ last_used_at: new Date().toISOString() })
+    .eq('client_id', input.clientId)
+    .eq('user_id', input.userId)
+    .eq('workspace_id', input.workspaceId)
+    .eq('status', 'active')
+    .is('revoked_at', null);
+}
+
 export async function getOAuthClient(clientId: string) {
   const supabase = createServiceRoleClient();
   const { data } = await supabase.schema('app').from('oauth_clients').select('*').eq('client_id', clientId).maybeSingle();
@@ -203,6 +240,11 @@ export async function exchangeAuthorizationCode(input: {
   if (codeRow.redirect_uri !== input.redirectUri) throw new Error('Redirect URI mismatch.');
   if (codeRow.consumed_at) throw new Error('Authorization code already consumed.');
   if (new Date(codeRow.expires_at).getTime() < Date.now()) throw new Error('Authorization code expired.');
+  await assertOAuthClientApprovalActive({
+    clientId: input.clientId,
+    userId: String(codeRow.user_id),
+    workspaceId: String(codeRow.workspace_id)
+  });
   if (codeRow.code_challenge && pkceChallenge(input.codeVerifier) !== codeRow.code_challenge) {
     throw new Error('PKCE verifier mismatch.');
   }
@@ -213,12 +255,20 @@ export async function exchangeAuthorizationCode(input: {
     .update({ consumed_at: new Date().toISOString() })
     .eq('code_hash', hashOpaqueToken(input.code));
 
-  return await issueTokenPair({
+  const tokenPair = await issueTokenPair({
     clientId: input.clientId,
     userId: String(codeRow.user_id),
     workspaceId: String(codeRow.workspace_id),
     scopes: (codeRow.scopes as string[]) ?? ['mcp:tools', 'mcp:resources']
   });
+
+  await markOAuthClientApprovalUsed({
+    clientId: input.clientId,
+    userId: String(codeRow.user_id),
+    workspaceId: String(codeRow.workspace_id)
+  });
+
+  return tokenPair;
 }
 
 export async function exchangeRefreshToken(input: {
@@ -242,6 +292,11 @@ export async function exchangeRefreshToken(input: {
   if (!tokenRow) throw new Error('Refresh token not found.');
   if (tokenRow.revoked_at) throw new Error('Refresh token revoked.');
   if (new Date(tokenRow.expires_at).getTime() < Date.now()) throw new Error('Refresh token expired.');
+  await assertOAuthClientApprovalActive({
+    clientId: input.clientId,
+    userId: String(tokenRow.user_id),
+    workspaceId: String(tokenRow.workspace_id)
+  });
 
   const replacement = nanoid(64);
   const replacementHash = hashOpaqueToken(replacement);
@@ -270,6 +325,12 @@ export async function exchangeRefreshToken(input: {
     },
     900
   );
+
+  await markOAuthClientApprovalUsed({
+    clientId: input.clientId,
+    userId: String(tokenRow.user_id),
+    workspaceId: String(tokenRow.workspace_id)
+  });
 
   return {
     access_token: accessToken,

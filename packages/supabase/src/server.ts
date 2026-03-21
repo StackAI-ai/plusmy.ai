@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type SetAllCookies } from '@supabase/ssr';
 import { getPublicEnv } from '@plusmy/config';
 import type { Database } from './database.types';
 
@@ -12,7 +12,7 @@ export async function createServerSupabaseClient() {
       getAll() {
         return cookieStore.getAll();
       },
-      setAll(cookiesToSet) {
+      setAll(cookiesToSet: Parameters<SetAllCookies>[0]) {
         for (const cookie of cookiesToSet) {
           cookieStore.set(cookie.name, cookie.value, cookie.options);
         }
