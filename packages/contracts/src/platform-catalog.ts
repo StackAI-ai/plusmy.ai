@@ -390,6 +390,6 @@ export function getPlatformCategoryCounts() {
   }, {});
 }
 
-export function getProviderMetadata(providerId: 'google' | 'slack' | 'notion') {
+export function getProviderMetadata(providerId: (typeof supportedProviders)[number]['providerId']) {
   return supportedProviders.find((provider) => provider.providerId === providerId) ?? null;
 }

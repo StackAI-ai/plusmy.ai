@@ -3,7 +3,16 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type WorkspaceRole = 'owner' | 'admin' | 'member';
 export type ConnectionScope = 'workspace' | 'personal';
 export type ConnectionStatus = 'pending' | 'active' | 'reauth_required' | 'revoked' | 'error';
-export type ProviderId = 'google' | 'slack' | 'notion';
+export type ProviderId =
+  | 'google'
+  | 'slack'
+  | 'notion'
+  | 'microsoft365'
+  | 'github'
+  | 'linear'
+  | 'jira'
+  | 'zendesk'
+  | 'confluence';
 export type ToolCapability = 'read' | 'write' | 'search' | 'execute';
 export type ContextAssetType = 'document' | 'prompt' | 'brand_guideline' | 'workflow' | 'knowledge_base';
 export type AuditActorType = 'user' | 'mcp_client' | 'system';
