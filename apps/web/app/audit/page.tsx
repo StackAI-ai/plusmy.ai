@@ -45,6 +45,26 @@ function buildAuditHref(
   return query ? `/audit?${query}` : '/audit';
 }
 
+function summarizeErrorsByProvider(invocations: ToolInvocationRecord[]) {
+  const counts = new Map<string, number>();
+  for (const invocation of invocations) {
+    if (invocation.status !== 'error') continue;
+    counts.set(invocation.provider, (counts.get(invocation.provider) ?? 0) + 1);
+  }
+  return Array.from(counts.entries()).sort((left, right) => right[1] - left[1]);
+}
+
+function summarizeErrorsByAction(audit: AuditLogRecord[]) {
+  const counts = new Map<string, number>();
+  for (const entry of audit) {
+    if (entry.status !== 'error') continue;
+    counts.set(entry.action, (counts.get(entry.action) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 5);
+}
+
 function filterLinkClass(active: boolean) {
   return [
     'rounded-full border px-4 py-2 text-sm font-medium transition',
@@ -165,6 +185,8 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
     : [[], []];
   const auditErrorCount = audit.filter((entry) => entry.status === 'error').length;
   const invocationErrorCount = invocations.filter((entry) => entry.status === 'error').length;
+  const invocationErrorsByProvider = summarizeErrorsByProvider(invocations);
+  const auditErrorsByAction = summarizeErrorsByAction(audit);
   const focusedView =
     clientId ?? resourceId ?? toolName ?? provider ?? resourceType ?? actionPrefix ?? actorType ?? status ?? null;
 
@@ -207,7 +229,56 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
           <p className="text-4xl font-semibold text-ink">{invocationErrorCount}</p>
           <p className="text-sm text-slate-700">Failed calls after provider, client, and status filters.</p>
         </Card>
+        <Card className="space-y-2">
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Combined error load</p>
+          <p className="text-4xl font-semibold text-ink">{auditErrorCount + invocationErrorCount}</p>
+          <p className="text-sm text-slate-700">Cross-table failures in the active filter window.</p>
+        </Card>
       </div>
+
+      <Card className="space-y-3">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold">Error focus</h2>
+            <p className="mt-2 text-sm text-slate-700">Top failure signals for immediate remediation.</p>
+          </div>
+          <Badge tone={invocationErrorCount || auditErrorCount ? 'brass' : 'moss'}>
+            {invocationErrorCount || auditErrorCount ? 'Attention needed' : 'Healthy'}
+          </Badge>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Errors by provider</p>
+            {invocationErrorsByProvider.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-700">No failing tool calls.</p>
+            ) : (
+              <ul className="mt-2 space-y-2">
+                {invocationErrorsByProvider.map(([entryProvider, count]) => (
+                  <li key={entryProvider} className="text-sm text-slate-700">
+                    <span className="font-semibold text-ink">{entryProvider}</span>{' '}
+                    <span>{count} failed invocations</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Top audit actions</p>
+            {auditErrorsByAction.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-700">No failing audit events.</p>
+            ) : (
+              <ul className="mt-2 space-y-2">
+                {auditErrorsByAction.map(([action, count]) => (
+                  <li key={action} className="text-sm text-slate-700">
+                    <span className="font-semibold text-ink">{action}</span>{' '}
+                    <span>{count} failed</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </Card>
 
       <Card className="space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">

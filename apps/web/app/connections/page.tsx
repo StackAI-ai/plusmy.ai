@@ -18,6 +18,13 @@ function jobTone(status: string) {
   return 'default' as const;
 }
 
+function isStaleRefresh(value: string | null, maxAgeDays = 14) {
+  if (!value) return true;
+  const ageMs = Date.now() - new Date(value).getTime();
+  const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
+  return ageMs > maxAgeMs;
+}
+
 function formatTimestamp(value: string | null) {
   if (!value) return null;
   return new Date(value).toLocaleString();
@@ -58,6 +65,13 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
   }
   const queuedJobs = connectionJobs.filter((job) => job.status === 'queued').length;
   const processingJobs = connectionJobs.filter((job) => job.status === 'processing').length;
+  const failedJobs = connectionJobs.filter((job) => job.status === 'failed').length;
+  const staleConnections = connections.filter(
+    (connection) => connection.status === 'active' && isStaleRefresh(connection.last_refreshed_at)
+  ).length;
+  const reauthRequiredConnections = connections.filter((connection) => connection.status === 'reauth_required').length;
+  const revokedConnections = connections.filter((connection) => connection.status === 'revoked').length;
+  const healthTone = reauthRequiredConnections || failedJobs || staleConnections ? 'brass' : 'moss';
   const statusTone = status === 'connected' ? 'moss' : 'brass';
 
   return (
@@ -85,9 +99,17 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
             : 'Create a workspace first, then connect providers via the OAuth callback routes.'}
         </p>
         {workspace ? (
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Badge tone={processingJobs ? 'brass' : 'moss'}>{processingJobs} processing</Badge>
-            <Badge tone={queuedJobs ? 'default' : 'moss'}>{queuedJobs} queued</Badge>
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Badge tone={processingJobs ? 'brass' : 'moss'}>{processingJobs} processing</Badge>
+              <Badge tone={queuedJobs ? 'default' : 'moss'}>{queuedJobs} queued</Badge>
+              <Badge tone={failedJobs ? 'brass' : 'moss'}>{failedJobs} failed</Badge>
+              <Badge tone={healthTone}>{staleConnections} stale refreshes</Badge>
+              <Badge tone={revokedConnections ? 'brass' : 'moss'}>{revokedConnections} revoked</Badge>
+            </div>
+            {reauthRequiredConnections ? (
+              <p className="text-sm text-red-700">{reauthRequiredConnections} connection(s) need re-auth.</p>
+            ) : null}
           </div>
         ) : null}
       </Card>
@@ -110,11 +132,31 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
                 <h2 className="text-xl font-semibold capitalize">{providerKey}</h2>
                 <Badge tone={activeCount ? 'moss' : 'brass'}>{activeCount ? `${activeCount} active` : 'not connected'}</Badge>
               </div>
+              {providerConnections.length === 0 ? (
+                <p className="mt-2 text-xs text-slate-500">No provider installs yet.</p>
+              ) : null}
               <ul className="mt-4 space-y-2 text-sm text-slate-700">
                 {tools.map((tool) => (
                   <li key={tool}>{tool}</li>
                 ))}
               </ul>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(() => {
+                  const providerConnectionIds = providerConnections.map((connection) => connection.id);
+                  const providerJobs = providerConnectionIds.flatMap((connectionId) => jobsByConnection.get(connectionId) ?? []);
+                  const providerFailedJobs = providerJobs.filter((job) => job.status === 'failed').length;
+                  const providerQueuedJobs = providerJobs.filter((job) => job.status === 'queued').length;
+                  const providerProcessingJobs = providerJobs.filter((job) => job.status === 'processing').length;
+
+                  return (
+                    <>
+                      <Badge tone={providerFailedJobs ? 'brass' : 'moss'}>{providerFailedJobs} failed jobs</Badge>
+                      <Badge tone={providerQueuedJobs ? 'default' : 'moss'}>{providerQueuedJobs} queued jobs</Badge>
+                      <Badge tone={providerProcessingJobs ? 'brass' : 'moss'}>{providerProcessingJobs} processing</Badge>
+                    </>
+                  );
+                })()}
+              </div>
               <div className="mt-5 flex flex-wrap gap-3">
                 {canManageWorkspaceConnections ? (
                   <Button asChild>
@@ -147,6 +189,9 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
                           ) : null}
                           {connection.reauth_required_reason ? (
                             <p className="mt-2 text-xs text-red-700">{connection.reauth_required_reason}</p>
+                          ) : null}
+                          {connection.status === 'active' && isStaleRefresh(connection.last_refreshed_at) ? (
+                            <p className="mt-2 text-xs text-amber-700">Token refresh is stale and may need manual recheck.</p>
                           ) : null}
                           <div className="mt-3 flex flex-wrap gap-2">
                             {(connection.granted_scopes as string[] | null | undefined)?.map((scope) => (

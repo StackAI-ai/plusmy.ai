@@ -12,11 +12,12 @@
 - Completed: persisted OAuth client approvals with workspace-scoped review and revoke controls, plus refresh-token invalidation when an approval is revoked.
 - Completed: workspace-scoped context binding management for shared prompts and skills on the operator context surface.
 - Completed: deeper MCP approval and audit visibility on operator pages with per-client tool invocation correlation, filtered audit views, and admin-only audit access.
-- In progress: rounding out operator surfaces called out in the web product plan so they reflect live authorization, context binding, and connection state instead of scaffold-only summaries.
+- Completed: dashboard-level workspace summaries and health views now reflect live authorization, context binding, and connection state signals.
+- In progress: continue product hardening across operator dashboards and activity views.
 - Completed: binding-aware MCP/runtime resolution for bound prompt and skill resources, including bound-resource MCP listing/reading and runtime context threading into tool execution.
 - Completed: background worker coverage for queued token refresh and connection sync jobs, including queued job state, retries, worker claiming, and operator-facing visibility on the connections surface.
 - Completed: semantic context-asset injection into MCP resource reads and tool-call responses, including top-match workspace snippets threaded from `match_context_chunks`.
-- Next up: finish the remaining operator-surface polish so dashboard-level workspace summaries and health views surface more live authorization and connection state.
+- In progress: continue operator-surface polish across non-dashboard pages (connections, MCP clients, audit) to surface degraded authorization and connection state inline.
 
 ## Implementation changes
 1. Fresh repo bootstrap: replace the current empty workspace with a clean clone of the GitHub repo, set the default branch as the base, and treat the first commit after clone as the canonical scaffold baseline for all subsequent work.

@@ -16,6 +16,10 @@ function isRecent(isoTimestamp: string | null | undefined, windowDays: number) {
   return Date.now() - new Date(isoTimestamp).getTime() <= windowDays * 24 * 60 * 60 * 1000;
 }
 
+function isStaleApproval(approval: OAuthClientApprovalRecord) {
+  return approval.status === 'active' && !isRecent(approval.last_used_at, 14);
+}
+
 function extractAuditClientId(entry: AuditLogRecord) {
   if (entry.actor_client_id) return entry.actor_client_id;
   const metadata = entry.metadata;
@@ -148,6 +152,8 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
   const activeApprovals = approvals.filter((approval) => approval.status === 'active').length;
   const revokedApprovals = approvals.filter((approval) => approval.status === 'revoked').length;
   const recentlyUsedApprovals = approvals.filter((approval) => isRecent(approval.last_used_at, 7)).length;
+  const staleApprovals = approvals.filter((approval) => isStaleApproval(approval)).length;
+  const userScopedApprovals = approvals.filter((approval) => approval.user_id === user.id).length;
   const clientActivity = buildClientActivitySummaries(approvals, approvalActivity, recentInvocations);
   const activeClients = clientActivity.filter((entry) => entry.recentToolCalls > 0 || entry.recentAuditEvents > 0).length;
 
@@ -170,11 +176,21 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
           <p className="text-sm text-slate-700">Approvals with recent token usage recorded on the approval itself.</p>
         </Card>
         <Card className="space-y-2">
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Stale approvals</p>
+          <p className="text-4xl font-semibold text-ink">{staleApprovals}</p>
+          <p className="text-sm text-slate-700">Active approvals with no token usage in the last 14 days.</p>
+        </Card>
+        <Card className="space-y-2">
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Recent active clients</p>
           <p className="text-4xl font-semibold text-ink">{canReviewWorkspaceApprovals ? activeClients : 0}</p>
           <p className="text-sm text-slate-700">
             {canReviewWorkspaceApprovals ? 'Clients with recent approval or tool activity in this workspace.' : 'Detailed activity requires owner or admin access.'}
           </p>
+        </Card>
+        <Card className="space-y-2">
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Owner approvals visible</p>
+          <p className="text-4xl font-semibold text-ink">{userScopedApprovals}</p>
+          <p className="text-sm text-slate-700">Approvals created by the signed-in operator.</p>
         </Card>
       </div>
 
@@ -280,6 +296,9 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                       <p>{approval.user_id === user.id ? 'Approved by you' : `Approved by ${approval.user_id}`}</p>
                       <p>Approved at {approval.approved_at}</p>
                       <p>{approval.last_used_at ? `Last token issued ${approval.last_used_at}` : 'No token exchanges recorded yet.'}</p>
+                      {approval.status === 'active' && isStaleApproval(approval) ? (
+                        <p className="text-amber-700">Active approval with no token usage in the last 14 days.</p>
+                      ) : null}
                       {approval.revoked_at ? <p>Revoked at {approval.revoked_at}</p> : null}
                       {summary && canReviewWorkspaceApprovals ? (
                         <p>
