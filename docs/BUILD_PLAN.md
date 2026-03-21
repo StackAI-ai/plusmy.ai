@@ -9,6 +9,7 @@
 
 ## Implementation status
 - Completed: repo scaffold, shared packages, initial Supabase schema, workspace/member/invite management, provider connection install/revoke flows, context asset/prompt/skill management, MCP discovery/token/resource/tool routes, dynamic OAuth client registration, and audit/tool invocation views.
+- Completed: shared platform catalog now documents live provider support (Google Workspace, Slack, Notion), current MCP client targets (OpenAI, Anthropic, Gemini, Cursor), and reviewed next-wave integrations directly in the repo and web app.
 - Completed: persisted OAuth client approvals with workspace-scoped review and revoke controls, plus refresh-token invalidation when an approval is revoked.
 - Completed: workspace-scoped context binding management for shared prompts and skills on the operator context surface.
 - Completed: deeper MCP approval and audit visibility on operator pages with per-client tool invocation correlation, filtered audit views, and admin-only audit access.
@@ -27,6 +28,7 @@
 - Prioritize adjacent MCP client follow-up work in `NIC-45`, `NIC-44`, and `NIC-43` so approval remediation is easier to operate locally and across multi-user workspaces.
 - Continue with operator drill-down/pagination work in `NIC-13` and `NIC-14` once the approval list becomes easier to filter and read.
 - Return to reliability hardening in `NIC-16` and `NIC-17` after the current operator-surface remediation loop is complete.
+- Use the new platform catalog to decide the next adapter scaffolds; the most obvious candidates are Microsoft 365, GitHub, Linear, Jira, Confluence, HubSpot, Salesforce, Zendesk, Dropbox, and Airtable.
 
 ## Implementation changes
 1. Fresh repo bootstrap: replace the current empty workspace with a clean clone of the GitHub repo, set the default branch as the base, and treat the first commit after clone as the canonical scaffold baseline for all subsequent work.

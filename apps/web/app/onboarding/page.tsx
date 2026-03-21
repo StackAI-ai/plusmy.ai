@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
+import { getPlatformCounts, plannedProviderPlatforms, supportedProviders } from '@plusmy/contracts';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import {
   getAuthorizedWorkspace,
@@ -23,6 +24,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
   const connections = workspace && user ? await listConnectionsForWorkspace(workspace.id, user.id) : [];
   const clients = user ? await listOAuthClients(user.id) : [];
 
+  const platformCounts = getPlatformCounts();
   const workspaceLabel = workspace
     ? workspace.name
     : workspaces.length > 0
@@ -37,10 +39,10 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
       detail: workspaces.length > 0 ? String(workspaces.length) + ' workspace(s) ready' : 'Seed tenancy and default prompts'
     },
     {
-      label: 'Invite operators',
+      label: 'Select an active workspace',
       done: workspace != null,
       href: workspace ? '/workspaces?workspace=' + workspace.id : '/workspaces',
-      detail: workspace ? 'Manage members inside ' + workspace.name : 'Open a workspace first'
+      detail: workspace ? 'Currently working in ' + workspace.name : 'Open a workspace first'
     },
     {
       label: 'Install providers',
@@ -69,6 +71,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
       detail: workspace ? 'Use ' + workspace.name + ' for MCP consent and discovery' : 'Select a workspace before connecting a client'
     }
   ];
+  const completedSteps = checklist.filter((step) => step.done).length;
 
   return (
     <div className="space-y-5">
@@ -81,7 +84,10 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
               static checklist.
             </CardDescription>
           </div>
-          <Badge tone={workspace ? 'moss' : 'brass'}>{workspaceLabel}</Badge>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone={workspace ? 'moss' : 'brass'}>{workspaceLabel}</Badge>
+            <Badge>{completedSteps}/{checklist.length} complete</Badge>
+          </div>
         </CardHeader>
       </Card>
 
@@ -145,6 +151,26 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
               Client registration, consent, and the protected `/mcp` endpoint are ready to layer on top of the
               selected workspace.
             </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base uppercase tracking-[0.22em] text-muted-foreground">Platforms</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="moss">{platformCounts.liveProviders} live</Badge>
+              <Badge>{platformCounts.supportedClients} clients</Badge>
+              <Badge tone="brass">{platformCounts.plannedPlatforms} next</Badge>
+            </div>
+            <p className="text-sm leading-7 text-muted-foreground">
+              Live today: {supportedProviders.map((provider) => provider.name).join(', ')}. Next wave:
+              {' '}
+              {plannedProviderPlatforms.slice(0, 3).map((platform) => platform.name).join(', ')}.
+            </p>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/platforms">Open platform catalog</Link>
+            </Button>
           </CardContent>
         </Card>
       </div>

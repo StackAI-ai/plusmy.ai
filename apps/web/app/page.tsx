@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ArrowRight, BrainCircuit, Cable, ShieldCheck, Waypoints } from 'lucide-react';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
+import { getPlatformCounts, plannedProviderPlatforms, supportedProviders } from '@plusmy/contracts';
 
 const pillars = [
   {
@@ -21,6 +22,8 @@ const pillars = [
 ];
 
 export default function HomePage() {
+  const counts = getPlatformCounts();
+
   return (
     <div className="space-y-8">
       <section className="relative overflow-hidden rounded-[36px] border border-border/60 bg-card/75 p-8 shadow-glow backdrop-blur-xl md:p-12">
@@ -92,6 +95,64 @@ export default function HomePage() {
             </Card>
           );
         })}
+      </section>
+
+      <section className="grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="moss">{counts.liveProviders} providers live</Badge>
+              <Badge>{counts.supportedClients} client targets</Badge>
+              <Badge tone="brass">{counts.plannedPlatforms} next-wave integrations</Badge>
+            </div>
+            <CardTitle>Supported now</CardTitle>
+            <CardDescription>
+              The product is currently implemented for three provider surfaces: Google Workspace, Slack, and
+              Notion. Each one already flows through workspace-aware OAuth, Vault-backed credential storage, and
+              MCP tool exposure.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {supportedProviders.map((provider) => (
+              <div key={provider.id} className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-medium text-foreground">{provider.name}</p>
+                  <Badge tone="moss">live</Badge>
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">{provider.summary}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Coming next</CardTitle>
+            <CardDescription>
+              The most obvious gaps are enterprise document suites, engineering systems, CRM, and support
+              tooling. Those can fit the existing workspace + approval model without changing the architecture.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {plannedProviderPlatforms.slice(0, 6).map((platform) => (
+                <div key={platform.id} className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-medium text-foreground">{platform.name}</p>
+                    <Badge tone="brass">planned</Badge>
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">{platform.rationale}</p>
+                </div>
+              ))}
+            </div>
+            <Button asChild variant="outline">
+              <Link href="/platforms">
+                Review platform catalog
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
       </section>
     </div>
   );

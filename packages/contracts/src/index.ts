@@ -256,3 +256,5 @@ export interface ProviderTokenSet {
   scopes: string[];
   raw: Json;
 }
+
+export * from './platform-catalog';

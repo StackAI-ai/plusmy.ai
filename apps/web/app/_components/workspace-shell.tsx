@@ -3,12 +3,13 @@
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Badge, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, buttonVariants, cn } from '@plusmy/ui';
-import { Activity, Bot, BookText, Cable, LayoutDashboard, Rocket, Users, Waypoints } from 'lucide-react';
+import { Activity, Bot, BookText, Cable, LayoutDashboard, Layers3, Rocket, Users, Waypoints } from 'lucide-react';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/workspaces', label: 'Workspaces', icon: Users },
   { href: '/connections', label: 'Connections', icon: Cable },
+  { href: '/platforms', label: 'Platforms', icon: Layers3 },
   { href: '/context', label: 'Context', icon: BookText },
   { href: '/audit', label: 'Audit', icon: Activity },
   { href: '/mcp-clients', label: 'MCP clients', icon: Bot },

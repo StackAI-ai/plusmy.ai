@@ -1,7 +1,9 @@
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
+import { supportedMcpClients } from '@plusmy/contracts';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import { getAuthorizedWorkspace, listUserWorkspaces } from '@plusmy/core';
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
+import { getAppOrigin } from '../_lib/origin';
 
 const exampleClient = {
   name: 'Cursor',
@@ -9,7 +11,7 @@ const exampleClient = {
 };
 
 export default async function McpSetupPage({ searchParams }: { searchParams?: AppSearchParams }) {
-  const baseUrl = process.env.APP_URL ?? 'http://localhost:3000';
+  const baseUrl = await getAppOrigin();
   const supabase = await createServerSupabaseClient();
   const {
     data: { user }
@@ -54,6 +56,22 @@ export default async function McpSetupPage({ searchParams }: { searchParams?: Ap
             <p>Redirect URI: {exampleClient.redirectUri}</p>
             <p>Scopes: mcp:tools mcp:resources</p>
             <p>Workspace target: {workspace ? workspace.name : 'optional, chosen at consent time'}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base uppercase tracking-[0.22em] text-muted-foreground">Client compatibility</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            {supportedMcpClients.map((client) => (
+              <div key={client.id} className="rounded-2xl border border-border/70 bg-background/70 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-medium text-foreground">{client.name}</p>
+                  <Badge>{client.status}</Badge>
+                </div>
+                <p className="mt-2">{client.summary}</p>
+              </div>
+            ))}
           </CardContent>
         </Card>
       </div>
