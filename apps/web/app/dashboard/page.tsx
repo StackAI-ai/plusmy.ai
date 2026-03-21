@@ -9,6 +9,9 @@ import {
   listUserWorkspaces
 } from '@plusmy/core'
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params'
+import { LinkBadge } from '../_components/link-badge'
+import { buildAuditHref } from '../_lib/audit-href'
+import { buildConnectionsHref } from '../connections/filters'
 
 function healthTone(hasIssue: boolean) {
   return hasIssue ? 'brass' : 'moss'
@@ -61,6 +64,13 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
   const activeApprovals = approvals.filter((approval) => approval.status === 'active').length
   const revokedApprovals = approvals.filter((approval) => approval.status === 'revoked').length
   const approvalSignal = approvals.length === 0 ? 'none' : `${activeApprovals} active / ${approvals.length} total`
+  const reauthConnectionsHref = activeWorkspace
+    ? buildConnectionsHref(activeWorkspace.id, {}, { health: 'reauth_required' })
+    : null
+  const failedJobsAuditHref = activeWorkspace
+    ? buildAuditHref(activeWorkspace.id, { resource: 'connection_job', action: 'connection_job.', status: 'error' })
+    : null
+  const approvalsHref = activeWorkspace ? `/mcp-clients?workspace=${activeWorkspace.id}` : null
 
   return (
     <div className="space-y-6">
@@ -163,15 +173,21 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
         <CardContent>
           <ul className="space-y-3 text-sm leading-7 text-muted-foreground">
           <li className="flex flex-wrap items-center gap-2">
-            <Badge tone={healthTone(reauthRequiredConnections > 0)}>{reauthRequiredConnections} connections need reauth</Badge>
+            <LinkBadge href={reauthConnectionsHref} tone={healthTone(reauthRequiredConnections > 0)}>
+              {reauthRequiredConnections} connections need reauth
+            </LinkBadge>
             {connections.length ? `${connections.length} total provider installs` : 'No provider installs yet'}
           </li>
           <li className="flex flex-wrap items-center gap-2">
-            <Badge tone={healthTone(failedConnectionJobs > 0)}>{failedConnectionJobs} failed sync jobs</Badge>
+            <LinkBadge href={failedJobsAuditHref} tone={healthTone(failedConnectionJobs > 0)}>
+              {failedConnectionJobs} failed sync jobs
+            </LinkBadge>
             {processingConnectionJobs > 0 ? `${processingConnectionJobs} jobs running now` : 'No jobs currently processing'}
           </li>
           <li className="flex flex-wrap items-center gap-2">
-            <Badge tone={healthTone(approvals.length === 0)}>{approvals.length} approvals</Badge>
+            <LinkBadge href={approvalsHref} tone={healthTone(approvals.length === 0)}>
+              {approvals.length} approvals
+            </LinkBadge>
             {canReviewWorkspaceApprovals ? 'Workspace-level MCP approvals included' : 'Showing only user-scoped approvals'}
           </li>
           </ul>

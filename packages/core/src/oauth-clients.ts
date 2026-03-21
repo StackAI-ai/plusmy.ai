@@ -177,13 +177,24 @@ export async function revokeOAuthClientApproval(input: {
 
   const supabase = createServiceRoleClient();
   const revokedAt = approval.revoked_at ?? new Date().toISOString();
+  const metadata =
+    approval.metadata && typeof approval.metadata === 'object' && !Array.isArray(approval.metadata)
+      ? approval.metadata
+      : {};
+  const revocationReason =
+    input.actorUserId === approval.user_id ? 'Revoked by approving user.' : 'Revoked by workspace operator.';
 
   const { error } = await supabase
     .schema('app')
     .from('oauth_client_approvals')
     .update({
       status: 'revoked',
-      revoked_at: revokedAt
+      revoked_at: revokedAt,
+      metadata: {
+        ...metadata,
+        revoked_by_user_id: input.actorUserId,
+        revocation_reason: revocationReason
+      }
     })
     .eq('id', approval.id)
     .eq('workspace_id', input.workspaceId);

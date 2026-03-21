@@ -35,6 +35,7 @@ export interface ToolInvocationFilters {
   toolName?: string | null;
   actorClientId?: string | null;
   actorUserId?: string | null;
+  connectionId?: string | null;
 }
 
 export interface ConnectionJobFilters {
@@ -865,6 +866,10 @@ export async function listToolInvocations(workspaceId: string, optionsOrLimit: n
 
   if (options.actorUserId) {
     query = query.eq('actor_user_id', options.actorUserId);
+  }
+
+  if (options.connectionId) {
+    query = query.eq('connection_id', options.connectionId);
   }
 
   const { data } = await query;

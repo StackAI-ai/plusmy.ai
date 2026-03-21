@@ -4,6 +4,7 @@ import type { AuditLogRecord, ToolInvocationRecord } from '@plusmy/contracts';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import { getAuthorizedWorkspace, listAuditLogs, listToolInvocations, listUserWorkspaces } from '@plusmy/core';
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
+import { buildAuditHref } from '../_lib/audit-href';
 
 function canManageWorkspace(role: string | undefined) {
   return role === 'owner' || role === 'admin';
@@ -13,36 +14,6 @@ function readParam(params: Record<string, string | string[] | undefined>, key: s
   const value = params[key];
   if (Array.isArray(value)) return value[0] ?? null;
   return typeof value === 'string' ? value : null;
-}
-
-function buildAuditHref(
-  workspaceId: string | null | undefined,
-  current: Record<string, string | null>,
-  updates: Record<string, string | null | undefined>
-) {
-  const params = new URLSearchParams();
-
-  if (workspaceId) {
-    params.set('workspace', workspaceId);
-  }
-
-  for (const [key, value] of Object.entries(current)) {
-    if (value) {
-      params.set(key, value);
-    }
-  }
-
-  for (const [key, value] of Object.entries(updates)) {
-    if (!value) {
-      params.delete(key);
-      continue;
-    }
-
-    params.set(key, value);
-  }
-
-  const query = params.toString();
-  return query ? `/audit?${query}` : '/audit';
 }
 
 function summarizeErrorsByProvider(invocations: ToolInvocationRecord[]) {
@@ -149,6 +120,7 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
   const clientId = readParam(resolvedSearchParams, 'client');
   const provider = readParam(resolvedSearchParams, 'provider');
   const toolName = readParam(resolvedSearchParams, 'tool');
+  const connectionId = readParam(resolvedSearchParams, 'connection');
   const currentFilters = {
     status,
     actor: actorType,
@@ -157,7 +129,8 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
     action: actionPrefix,
     client: clientId,
     provider,
-    tool: toolName
+    tool: toolName,
+    connection: connectionId
   };
 
   const [audit, invocations] = workspace
@@ -176,7 +149,8 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
           status,
           provider,
           toolName,
-          actorClientId: clientId
+          actorClientId: clientId,
+          connectionId
         })
       ])
     : [[], []];
@@ -185,7 +159,7 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
   const invocationErrorsByProvider = summarizeErrorsByProvider(invocations);
   const auditErrorsByAction = summarizeErrorsByAction(audit);
   const focusedView =
-    clientId ?? resourceId ?? toolName ?? provider ?? resourceType ?? actionPrefix ?? actorType ?? status ?? null;
+    clientId ?? connectionId ?? resourceId ?? toolName ?? provider ?? resourceType ?? actionPrefix ?? actorType ?? status ?? null;
 
   return (
     <div className="space-y-5">
@@ -305,7 +279,7 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
           </div>
           <Button asChild size="sm" variant="outline">
             <Link
-              href={buildAuditHref(workspace.id, currentFilters, {
+              href={buildAuditHref(workspace.id, {
                 status: null,
                 actor: null,
                 resource: null,
@@ -313,8 +287,9 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
                 action: null,
                 client: null,
                 provider: null,
-                tool: null
-              })}
+                tool: null,
+                connection: null
+              }, currentFilters)}
             >
               Reset filters
             </Link>
@@ -324,58 +299,58 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
             <Button asChild size="sm" variant={!resourceType && !actionPrefix ? 'default' : 'outline'}>
-              <Link href={buildAuditHref(workspace.id, currentFilters, { resource: null, action: null })}>All activity</Link>
+              <Link href={buildAuditHref(workspace.id, { resource: null, action: null }, currentFilters)}>All activity</Link>
             </Button>
             <Button asChild size="sm" variant={resourceType === 'oauth_client_approval' ? 'default' : 'outline'}>
-              <Link href={buildAuditHref(workspace.id, currentFilters, { resource: 'oauth_client_approval', action: 'oauth_client.' })}>Approvals</Link>
+              <Link href={buildAuditHref(workspace.id, { resource: 'oauth_client_approval', action: 'oauth_client.' }, currentFilters)}>Approvals</Link>
             </Button>
             <Button asChild size="sm" variant={resourceType === 'connection' ? 'default' : 'outline'}>
-              <Link href={buildAuditHref(workspace.id, currentFilters, { resource: 'connection', action: 'connection.' })}>Connections</Link>
+              <Link href={buildAuditHref(workspace.id, { resource: 'connection', action: 'connection.' }, currentFilters)}>Connections</Link>
             </Button>
             <Button asChild size="sm" variant={resourceType === 'context_binding' ? 'default' : 'outline'}>
-              <Link href={buildAuditHref(workspace.id, currentFilters, { resource: 'context_binding', action: 'context.' })}>Context bindings</Link>
+              <Link href={buildAuditHref(workspace.id, { resource: 'context_binding', action: 'context.' }, currentFilters)}>Context bindings</Link>
             </Button>
             <Button asChild size="sm" variant={resourceType === 'connection_job' ? 'default' : 'outline'}>
-              <Link href={buildAuditHref(workspace.id, currentFilters, { resource: 'connection_job', action: 'connection_job.' })}>Background jobs</Link>
+              <Link href={buildAuditHref(workspace.id, { resource: 'connection_job', action: 'connection_job.' }, currentFilters)}>Background jobs</Link>
             </Button>
             <Button asChild size="sm" variant={actorType === 'mcp_client' ? 'default' : 'outline'}>
-              <Link href={buildAuditHref(workspace.id, currentFilters, { actor: 'mcp_client', action: 'mcp.' })}>MCP clients</Link>
+              <Link href={buildAuditHref(workspace.id, { actor: 'mcp_client', action: 'mcp.' }, currentFilters)}>MCP clients</Link>
             </Button>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <Button asChild size="sm" variant={!status ? 'default' : 'outline'}>
-              <Link href={buildAuditHref(workspace.id, currentFilters, { status: null })}>Any status</Link>
+              <Link href={buildAuditHref(workspace.id, { status: null }, currentFilters)}>Any status</Link>
             </Button>
             <Button asChild size="sm" variant={status === 'success' ? 'default' : 'outline'}>
-              <Link href={buildAuditHref(workspace.id, currentFilters, { status: 'success' })}>Success</Link>
+              <Link href={buildAuditHref(workspace.id, { status: 'success' }, currentFilters)}>Success</Link>
             </Button>
             <Button asChild size="sm" variant={status === 'error' ? 'default' : 'outline'}>
-              <Link href={buildAuditHref(workspace.id, currentFilters, { status: 'error' })}>Error</Link>
+              <Link href={buildAuditHref(workspace.id, { status: 'error' }, currentFilters)}>Error</Link>
             </Button>
             <Button asChild size="sm" variant={!actorType ? 'default' : 'outline'}>
-              <Link href={buildAuditHref(workspace.id, currentFilters, { actor: null })}>Any actor</Link>
+              <Link href={buildAuditHref(workspace.id, { actor: null }, currentFilters)}>Any actor</Link>
             </Button>
             <Button asChild size="sm" variant={actorType === 'user' ? 'default' : 'outline'}>
-              <Link href={buildAuditHref(workspace.id, currentFilters, { actor: 'user' })}>Users</Link>
+              <Link href={buildAuditHref(workspace.id, { actor: 'user' }, currentFilters)}>Users</Link>
             </Button>
             <Button asChild size="sm" variant={actorType === 'system' ? 'default' : 'outline'}>
-              <Link href={buildAuditHref(workspace.id, currentFilters, { actor: 'system' })}>System</Link>
+              <Link href={buildAuditHref(workspace.id, { actor: 'system' }, currentFilters)}>System</Link>
             </Button>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <Button asChild size="sm" variant={!provider && !toolName ? 'default' : 'outline'}>
-              <Link href={buildAuditHref(workspace.id, currentFilters, { provider: null, tool: null })}>All providers</Link>
+              <Link href={buildAuditHref(workspace.id, { provider: null, tool: null }, currentFilters)}>All providers</Link>
             </Button>
             <Button asChild size="sm" variant={provider === 'google' ? 'default' : 'outline'}>
-              <Link href={buildAuditHref(workspace.id, currentFilters, { provider: 'google', tool: null })}>Google</Link>
+              <Link href={buildAuditHref(workspace.id, { provider: 'google', tool: null }, currentFilters)}>Google</Link>
             </Button>
             <Button asChild size="sm" variant={provider === 'slack' ? 'default' : 'outline'}>
-              <Link href={buildAuditHref(workspace.id, currentFilters, { provider: 'slack', tool: null })}>Slack</Link>
+              <Link href={buildAuditHref(workspace.id, { provider: 'slack', tool: null }, currentFilters)}>Slack</Link>
             </Button>
             <Button asChild size="sm" variant={provider === 'notion' ? 'default' : 'outline'}>
-              <Link href={buildAuditHref(workspace.id, currentFilters, { provider: 'notion', tool: null })}>Notion</Link>
+              <Link href={buildAuditHref(workspace.id, { provider: 'notion', tool: null }, currentFilters)}>Notion</Link>
             </Button>
           </div>
         </CardContent>

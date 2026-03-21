@@ -7,6 +7,7 @@ import { RefreshConnectionButton } from './refresh-button';
 import { DisconnectConnectionButton } from './disconnect-button';
 import { SyncConnectionButton } from './sync-button';
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
+import { buildAuditHref } from '../_lib/audit-href';
 import {
   buildConnectionsHref,
   connectionHealthFilters,
@@ -87,6 +88,18 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
     selectedProvider === 'all'
       ? supportedProviders
       : supportedProviders.filter((entry) => entry.providerId === selectedProvider);
+  const reauthConnectionsHref = workspace
+    ? buildConnectionsHref(workspace.id, currentSearchParams, { health: 'reauth_required' })
+    : '/connections';
+  const failedJobsAuditHref = workspace
+    ? buildAuditHref(workspace.id, { resource: 'connection_job', action: 'connection_job.', status: 'error' })
+    : '/audit';
+  const staleConnectionsHref = workspace
+    ? buildConnectionsHref(workspace.id, currentSearchParams, { health: 'stale' })
+    : '/connections';
+  const revokedConnectionsHref = workspace
+    ? buildConnectionsHref(workspace.id, currentSearchParams, { health: 'revoked' })
+    : '/connections';
 
   return (
     <div className="space-y-5">
@@ -119,13 +132,19 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
             <div className="flex flex-wrap gap-2">
               <Badge tone={processingJobs ? 'brass' : 'moss'}>{processingJobs} processing</Badge>
               <Badge tone={queuedJobs ? 'default' : 'moss'}>{queuedJobs} queued</Badge>
-              <Badge tone={failedJobs ? 'brass' : 'moss'}>{failedJobs} failed</Badge>
-              <Badge tone={healthTone}>{staleConnections} stale refreshes</Badge>
-              <Badge tone={revokedConnections ? 'brass' : 'moss'}>{revokedConnections} revoked</Badge>
+              <Link className="inline-flex" href={reauthConnectionsHref}>
+                <Badge tone={reauthRequiredConnections ? 'brass' : 'moss'}>{reauthRequiredConnections} need reauth</Badge>
+              </Link>
+              <Link className="inline-flex" href={failedJobsAuditHref}>
+                <Badge tone={failedJobs ? 'brass' : 'moss'}>{failedJobs} failed</Badge>
+              </Link>
+              <Link className="inline-flex" href={staleConnectionsHref}>
+                <Badge tone={healthTone}>{staleConnections} stale refreshes</Badge>
+              </Link>
+              <Link className="inline-flex" href={revokedConnectionsHref}>
+                <Badge tone={revokedConnections ? 'brass' : 'moss'}>{revokedConnections} revoked</Badge>
+              </Link>
             </div>
-            {reauthRequiredConnections ? (
-              <p className="text-sm text-red-700">{reauthRequiredConnections} connection(s) need re-auth.</p>
-            ) : null}
           </CardContent>
         ) : null}
       </Card>
@@ -260,7 +279,19 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
 
                     return (
                       <>
-                        <Badge tone={providerFailedJobs ? 'brass' : 'moss'}>{providerFailedJobs} failed jobs</Badge>
+                        <Link
+                          className="inline-flex"
+                          href={
+                            workspace
+                              ? buildConnectionsHref(workspace.id, currentSearchParams, {
+                                  provider: provider.providerId,
+                                  health: 'attention'
+                                })
+                              : '/connections'
+                          }
+                        >
+                          <Badge tone={providerFailedJobs ? 'brass' : 'moss'}>{providerFailedJobs} failed jobs</Badge>
+                        </Link>
                         <Badge tone={providerQueuedJobs ? 'default' : 'moss'}>{providerQueuedJobs} queued jobs</Badge>
                         <Badge tone={providerProcessingJobs ? 'brass' : 'moss'}>{providerProcessingJobs} processing</Badge>
                       </>
@@ -289,6 +320,14 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
                     providerConnections.map((connection) => {
                       const recentJobs = (jobsByConnection.get(connection.id) ?? []).slice(0, 3);
                       const connectionHealth = getConnectionHealth(connection);
+                      const connectionAuditHref = workspace
+                        ? buildAuditHref(workspace.id, {
+                            resource: 'connection',
+                            resource_id: connection.id,
+                            action: 'connection.',
+                            connection: connection.id
+                          })
+                        : '/audit';
                       return (
                         <div key={connection.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
                           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -298,7 +337,9 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
                                 {connection.scope} • {connection.status}
                               </p>
                               <div className="mt-2 flex flex-wrap gap-2">
-                                <Badge tone={connectionHealth.tone}>{connectionHealth.label}</Badge>
+                                <Link className="inline-flex" href={connectionAuditHref}>
+                                  <Badge tone={connectionHealth.tone}>{connectionHealth.label}</Badge>
+                                </Link>
                                 <Badge tone={connection.scope === 'workspace' ? 'moss' : 'default'}>{connection.scope}</Badge>
                               </div>
                               {connection.external_account_email ? (
@@ -308,7 +349,12 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
                                 <p className="mt-2 text-xs text-red-700">{connection.reauth_required_reason}</p>
                               ) : null}
                               {connection.status === 'active' && connectionHealth.value === 'stale' ? (
-                                <p className="mt-2 text-xs text-amber-700">Token refresh is stale and may need manual recheck.</p>
+                                <p className="mt-2 text-xs text-amber-700">
+                                  Token refresh is stale and may need manual recheck.{' '}
+                                  <Link className="font-medium underline underline-offset-4" href={connectionAuditHref}>
+                                    Inspect audit trail
+                                  </Link>
+                                </p>
                               ) : null}
                               <div className="mt-3 flex flex-wrap gap-2">
                                 {(connection.granted_scopes as string[] | null | undefined)?.map((scope) => (

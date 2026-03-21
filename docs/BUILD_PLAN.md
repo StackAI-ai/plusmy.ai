@@ -23,11 +23,13 @@
 - Completed: MCP approval remediation on the operator surface, including stale-vs-pending token exchange state, one-click self-reauthorization for approval owners, and operator-initiated renewal messaging on the OAuth consent screen.
 - 2026-03-21 execution checkpoint: shipped `NIC-11` and `NIC-12`, validated the web app locally, and created follow-on operator backlog items `NIC-43` through `NIC-45` for local origin handling, member identity labels, and approval-health filtering.
 - 2026-03-21 execution checkpoint: migrated the web app onto actual shadcn-style UI primitives in `packages/ui`, updated theme tokens/Tailwind wiring, and refactored the main operator surfaces to use shared `Card`, `Button`, `Input`, `Select`, and layout composition instead of ad hoc wrappers.
+- 2026-03-21 execution checkpoint: shipped `NIC-13` and `NIC-15` by wiring degraded dashboard, connection, and approval health surfaces into focused audit views and surfacing explicit approval health reasons plus revocation metadata directly on the MCP clients page.
+- 2026-03-21 execution checkpoint: verified the bundled Supabase CLI via `node_modules/supabase/bin/supabase --version` (`2.83.0`), restarted the web app cleanly on `http://localhost:3009`, and validated `/dashboard`, `/connections`, `/mcp-clients`, and `/audit` after a scoped typecheck.
 
 ## Next execution slice (2026-03-21)
-- Prioritize adjacent MCP client follow-up work in `NIC-45`, `NIC-44`, and `NIC-43` so approval remediation is easier to operate locally and across multi-user workspaces.
-- Continue with operator drill-down/pagination work in `NIC-13` and `NIC-14` once the approval list becomes easier to filter and read.
-- Return to reliability hardening in `NIC-16` and `NIC-17` after the current operator-surface remediation loop is complete.
+- Prioritize `NIC-14` next; the operator drill-down links now exist, but the shared audit/tool-invocation loaders still need deterministic pagination and cursor semantics before high-volume workspaces are safe.
+- Continue with reliability hardening in `NIC-16` and `NIC-17` after `NIC-14` so dead-letter, retry, and degraded-job investigation can build on the new audit entry points.
+- Return to adjacent MCP client follow-up work in `NIC-45`, `NIC-44`, and `NIC-43` only if local/operator consent friction remains after the latest approval-health improvements.
 - Use the broader platform catalog to decide the next adapter scaffolds; the most obvious candidates are Microsoft 365, GitHub, Linear, Jira, Confluence, HubSpot, Salesforce, Zendesk, Dropbox, Airtable, Box, Asana, monday.com, ServiceNow, Zoom, and Okta.
 
 ## Implementation changes

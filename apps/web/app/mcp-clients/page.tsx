@@ -6,6 +6,8 @@ import { getAuthorizedWorkspace, listAuditLogs, listOAuthClientApprovals, listOA
 import { ClientRegistrationForm } from './client-registration-form';
 import { RevokeApprovalButton } from './revoke-approval-button';
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
+import { LinkBadge } from '../_components/link-badge';
+import { buildAuditHref } from '../_lib/audit-href';
 
 const staleApprovalWindowDays = 14;
 const approvalExchangeGraceWindowDays = 3;
@@ -50,11 +52,7 @@ function latestTimestamp(left: string | null, right: string | null) {
 }
 
 function buildClientAuditHref(workspaceId: string, clientId: string) {
-  const params = new URLSearchParams({
-    workspace: workspaceId,
-    client: clientId
-  });
-  return `/audit?${params.toString()}`;
+  return buildAuditHref(workspaceId, { client: clientId });
 }
 
 function getApprovalMetadataString(approval: OAuthClientApprovalRecord, key: string) {
@@ -94,44 +92,57 @@ function getRedirectHostLabel(redirectUri: string | null) {
   }
 }
 
-function getApprovalHealth(approval: OAuthClientApprovalRecord) {
+type ApprovalHealthReason = {
+  key: string;
+  label: string;
+  detail: string;
+  tone: 'default' | 'moss' | 'brass';
+};
+
+function getApprovalHealthReasons(approval: OAuthClientApprovalRecord): ApprovalHealthReason[] {
   if (approval.status === 'revoked') {
-    return {
-      tone: 'brass' as const,
-      label: 'Revoked',
-      detail: approval.revoked_at ? `Revoked at ${approval.revoked_at}.` : 'This approval has already been revoked.'
-    };
+    const revokedByUserId = getApprovalMetadataString(approval, 'revoked_by_user_id');
+    const label = revokedByUserId && revokedByUserId !== approval.user_id ? 'Revoked by operator' : 'Revoked';
+    const detail =
+      getApprovalMetadataString(approval, 'revocation_reason') ??
+      (approval.revoked_at ? `Revoked at ${approval.revoked_at}.` : 'This approval has already been revoked.');
+
+    return [{ key: 'revoked', tone: 'brass', label, detail }];
   }
 
   if (isApprovalAwaitingTokenExchange(approval)) {
-    return {
-      tone: 'default' as const,
+    return [{
+      key: 'awaiting_token_exchange',
+      tone: 'default',
       label: 'Awaiting token exchange',
       detail: 'Recently approved or reauthorized. The client still needs to exchange a fresh code before token activity updates.'
-    };
+    }];
   }
 
   if (isStaleApproval(approval)) {
-    return {
-      tone: 'brass' as const,
+    return [{
+      key: 'stale',
+      tone: 'brass',
       label: 'Stale approval',
       detail: `No token usage recorded in the last ${staleApprovalWindowDays} days.`
-    };
+    }];
   }
 
   if (isRecent(approval.last_used_at, 7)) {
-    return {
-      tone: 'moss' as const,
+    return [{
+      key: 'recently_used',
+      tone: 'moss',
       label: 'Recently used',
       detail: 'Token usage was recorded during the last 7 days.'
-    };
+    }];
   }
 
-  return {
-    tone: 'moss' as const,
+  return [{
+    key: 'active',
+    tone: 'moss',
     label: 'Active',
     detail: 'This approval can still mint or refresh MCP access tokens.'
-  };
+  }];
 }
 
 type ClientActivitySummary = {
@@ -397,10 +408,11 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                 const canRevoke = approval.status === 'active' && (approval.user_id === user.id || canReviewWorkspaceApprovals);
                 const canReauthorize = approval.status === 'active' && approval.user_id === user.id;
                 const summary = clientActivity.find((entry) => entry.clientId === approval.client_id);
-                const approvalHealth = getApprovalHealth(approval);
+                const approvalHealthReasons = getApprovalHealthReasons(approval);
                 const storedRedirectUri = getApprovalMetadataString(approval, 'redirect_uri');
                 const reauthorizeHref = canReauthorize ? buildApprovalAuthorizeHref(workspace.id, approval) : null;
                 const redirectHostLabel = getRedirectHostLabel(storedRedirectUri);
+                const approvalAuditHref = buildClientAuditHref(workspace.id, approval.client_id);
 
                 return (
                   <div key={approval.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
@@ -411,8 +423,14 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         {approval.token_endpoint_auth_method ? <Badge>{approval.token_endpoint_auth_method}</Badge> : null}
-                        <Badge tone={approval.status === 'revoked' ? 'brass' : 'moss'}>{approval.status}</Badge>
-                        <Badge tone={approvalHealth.tone}>{approvalHealth.label}</Badge>
+                        <LinkBadge href={approvalAuditHref} tone={approval.status === 'revoked' ? 'brass' : 'moss'}>
+                          {approval.status}
+                        </LinkBadge>
+                        {approvalHealthReasons.map((reason) => (
+                          <Link key={reason.key} className="inline-flex" href={approvalAuditHref}>
+                            <Badge tone={reason.tone}>{reason.label}</Badge>
+                          </Link>
+                        ))}
                       </div>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -426,7 +444,11 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                       <p>{approval.user_id === user.id ? 'Approved by you' : `Approved by ${approval.user_id}`}</p>
                       <p>Approved at {approval.approved_at}</p>
                       <p>{approval.last_used_at ? `Last token issued ${approval.last_used_at}` : 'No token exchanges recorded yet.'}</p>
-                      <p className={approvalHealth.tone === 'brass' ? 'text-amber-700' : 'text-slate-700'}>{approvalHealth.detail}</p>
+                      {approvalHealthReasons.map((reason) => (
+                        <p key={reason.key} className={reason.tone === 'brass' ? 'text-amber-700' : 'text-slate-700'}>
+                          {reason.detail}
+                        </p>
+                      ))}
                       {redirectHostLabel ? <p>Reauthorization returns to {redirectHostLabel}.</p> : null}
                       {approval.status === 'active' && isStaleApproval(approval) && approval.user_id !== user.id ? (
                         <p className="text-amber-700">Only the original approving user can renew this stale approval.</p>
@@ -444,7 +466,7 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                     {canReviewWorkspaceApprovals ? (
                       <div className="mt-4 flex flex-wrap items-center gap-3">
                         <Button asChild size="sm" variant="outline">
-                          <Link href={buildClientAuditHref(workspace.id, approval.client_id)}>Inspect audit trail</Link>
+                          <Link href={approvalAuditHref}>Inspect audit trail</Link>
                         </Button>
                         {reauthorizeHref ? (
                           <Button asChild size="sm" variant="outline">
@@ -499,7 +521,12 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                       <p className="font-semibold text-ink">{entry.clientName}</p>
                       <p className="text-sm text-slate-700">{entry.clientId}</p>
                     </div>
-                    <Badge tone={entry.recentErrors ? 'brass' : 'moss'}>{entry.recentErrors ? `${entry.recentErrors} errors` : 'healthy'}</Badge>
+                    <LinkBadge
+                      href={buildAuditHref(workspace.id, { client: entry.clientId, status: entry.recentErrors ? 'error' : null })}
+                      tone={entry.recentErrors ? 'brass' : 'moss'}
+                    >
+                      {entry.recentErrors ? `${entry.recentErrors} errors` : 'healthy'}
+                    </LinkBadge>
                   </div>
                   <div className="mt-4 grid gap-3 md:grid-cols-4">
                     <div>
