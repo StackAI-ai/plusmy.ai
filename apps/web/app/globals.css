@@ -4,27 +4,56 @@
 
 :root {
   color-scheme: light;
-  --canvas: #f4efe6;
-  --panel: rgba(255, 255, 255, 0.78);
-  --ink: #13201d;
-  --muted: #55635f;
-  --ember: #f06432;
-  --moss: #2d5a44;
-  --brass: #c8a24d;
+  --background: 36 43% 97%;
+  --foreground: 158 27% 13%;
+  --card: 0 0% 100%;
+  --card-foreground: 158 27% 13%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 158 27% 13%;
+  --primary: 160 31% 18%;
+  --primary-foreground: 37 57% 97%;
+  --secondary: 36 31% 92%;
+  --secondary-foreground: 160 16% 18%;
+  --muted: 36 23% 89%;
+  --muted-foreground: 155 10% 38%;
+  --accent: 19 85% 58%;
+  --accent-foreground: 0 0% 100%;
+  --border: 34 19% 84%;
+  --input: 34 21% 86%;
+  --ring: 19 85% 58%;
+  --radius: 1rem;
+  --canvas: 36 45% 95%;
+  --ink: 158 27% 13%;
+  --ember: 19 85% 58%;
+  --moss: 153 33% 34%;
+  --brass: 38 69% 58%;
 }
 
 html {
   scroll-behavior: smooth;
 }
 
+@layer base {
+  * {
+    border-color: hsl(var(--border) / 1);
+  }
+
+  body {
+    background-color: hsl(var(--background) / 1);
+    color: hsl(var(--foreground) / 1);
+    font-family: var(--font-sans), ui-sans-serif, system-ui;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+}
+
 body {
   min-height: 100vh;
-  color: var(--ink);
   background:
-    radial-gradient(circle at top left, rgba(240, 100, 50, 0.18), transparent 28%),
-    radial-gradient(circle at top right, rgba(45, 90, 68, 0.16), transparent 34%),
-    linear-gradient(180deg, #f7f1e8 0%, #efe7da 100%);
-  font-family: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+    radial-gradient(circle at top, hsl(var(--accent) / 0.22), transparent 34%),
+    radial-gradient(circle at 20% 18%, hsl(var(--moss) / 0.14), transparent 30%),
+    linear-gradient(180deg, hsl(var(--background)) 0%, hsl(36 37% 94%) 100%);
+  position: relative;
 }
 
 a {
@@ -32,6 +61,19 @@ a {
   text-decoration: none;
 }
 
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, hsl(var(--border) / 0.2) 1px, transparent 1px),
+    linear-gradient(to bottom, hsl(var(--border) / 0.2) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(circle at top, black, transparent 72%);
+  opacity: 0.55;
+}
+
 ::selection {
-  background: rgba(240, 100, 50, 0.24);
+  background: hsl(var(--accent) / 0.24);
 }

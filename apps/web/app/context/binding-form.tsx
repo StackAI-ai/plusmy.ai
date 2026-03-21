@@ -3,7 +3,17 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { ContextBindingType } from '@plusmy/contracts'
-import { Button, Card } from '@plusmy/ui'
+import {
+  Button,
+  Card,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@plusmy/ui'
 
 type SelectOption = {
   id: string
@@ -29,6 +39,8 @@ const bindingTargetOptions: Record<ContextBindingType, Array<{ value: string; la
     { value: 'notion.create_page', label: 'Notion create page' }
   ]
 }
+
+const emptySelectionValue = '__none__'
 
 export function ContextBindingForm({
   workspaceId,
@@ -104,95 +116,84 @@ export function ContextBindingForm({
       </div>
 
       <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-        <div>
-          <label className="text-sm font-semibold text-slate-700" htmlFor="binding-type">
-            Binding type
-          </label>
-          <select
-            id="binding-type"
-            value={bindingType}
-            onChange={(event) => handleBindingTypeChange(event.target.value as ContextBindingType)}
-            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
-          >
-            <option value="workspace">Workspace default</option>
-            <option value="provider">Provider</option>
-            <option value="tool">Tool</option>
-          </select>
+        <div className="space-y-2">
+          <Label htmlFor="binding-type">Binding type</Label>
+          <Select value={bindingType} onValueChange={(value) => handleBindingTypeChange(value as ContextBindingType)}>
+            <SelectTrigger id="binding-type">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="workspace">Workspace default</SelectItem>
+              <SelectItem value="provider">Provider</SelectItem>
+              <SelectItem value="tool">Tool</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
-        <div>
-          <label className="text-sm font-semibold text-slate-700" htmlFor="binding-target">
-            Target
-          </label>
-          <select
-            id="binding-target"
-            value={targetKey}
-            onChange={(event) => setTargetKey(event.target.value)}
-            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
-          >
-            {targetOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+        <div className="space-y-2">
+          <Label htmlFor="binding-target">Target</Label>
+          <Select value={targetKey} onValueChange={setTargetKey}>
+            <SelectTrigger id="binding-target">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {targetOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
-        <div>
-          <label className="text-sm font-semibold text-slate-700" htmlFor="binding-priority">
-            Priority
-          </label>
-          <input
+        <div className="space-y-2">
+          <Label htmlFor="binding-priority">Priority</Label>
+          <Input
             id="binding-priority"
             type="number"
             min={0}
             step={1}
             value={priority}
             onChange={(event) => setPriority(event.target.value)}
-            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
           />
-          <p className="mt-2 text-xs text-slate-500">Lower numbers win when multiple bindings target the same surface.</p>
+          <p className="mt-2 text-xs text-muted-foreground">Lower numbers win when multiple bindings target the same surface.</p>
         </div>
 
-        <div>
-          <label className="text-sm font-semibold text-slate-700" htmlFor="binding-prompt">
-            Prompt template
-          </label>
-          <select
-            id="binding-prompt"
-            value={promptTemplateId}
-            onChange={(event) => setPromptTemplateId(event.target.value)}
-            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
-          >
-            <option value="">No prompt</option>
-            {prompts.map((prompt) => (
-              <option key={prompt.id} value={prompt.id}>
-                {prompt.name}
-              </option>
-            ))}
-          </select>
+        <div className="space-y-2">
+          <Label htmlFor="binding-prompt">Prompt template</Label>
+          <Select value={promptTemplateId || emptySelectionValue} onValueChange={(value) => setPromptTemplateId(value === emptySelectionValue ? '' : value)}>
+            <SelectTrigger id="binding-prompt">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={emptySelectionValue}>No prompt</SelectItem>
+              {prompts.map((prompt) => (
+                <SelectItem key={prompt.id} value={prompt.id}>
+                  {prompt.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
-        <div>
-          <label className="text-sm font-semibold text-slate-700" htmlFor="binding-skill">
-            Skill definition
-          </label>
-          <select
-            id="binding-skill"
-            value={skillDefinitionId}
-            onChange={(event) => setSkillDefinitionId(event.target.value)}
-            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
-          >
-            <option value="">No skill</option>
-            {skills.map((skill) => (
-              <option key={skill.id} value={skill.id}>
-                {skill.name}
-              </option>
-            ))}
-          </select>
+        <div className="space-y-2">
+          <Label htmlFor="binding-skill">Skill definition</Label>
+          <Select value={skillDefinitionId || emptySelectionValue} onValueChange={(value) => setSkillDefinitionId(value === emptySelectionValue ? '' : value)}>
+            <SelectTrigger id="binding-skill">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={emptySelectionValue}>No skill</SelectItem>
+              {skills.map((skill) => (
+                <SelectItem key={skill.id} value={skill.id}>
+                  {skill.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
-        <p className="text-xs leading-6 text-slate-500">
+        <p className="text-xs leading-6 text-muted-foreground">
           Only workspace-shared prompts and skills can be bound. Personal context stays user-scoped and does not appear here.
         </p>
 
@@ -201,9 +202,9 @@ export function ContextBindingForm({
         </Button>
 
         {!canSubmit ? (
-          <p className="text-sm text-slate-700">Create a workspace-shared prompt or skill before adding a binding.</p>
+          <p className="text-sm text-muted-foreground">Create a workspace-shared prompt or skill before adding a binding.</p>
         ) : null}
-        {status ? <p className="text-sm text-slate-700">{status}</p> : null}
+        {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
       </form>
     </Card>
   )

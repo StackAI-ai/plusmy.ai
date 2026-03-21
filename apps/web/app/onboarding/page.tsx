@@ -87,19 +87,19 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
       <Card>
         <div className="space-y-4">
           {checklist.map((step, index) => (
-            <div key={step.label} className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-black/5 bg-white/70 p-4">
+            <div key={step.label} className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-border/70 bg-card/90 p-4 shadow-sm">
               <div className="flex min-w-0 items-start gap-3">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-black/10 bg-white font-semibold">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/70 bg-background font-semibold">
                   {index + 1}
                 </span>
                 <div>
                   <p className="font-semibold text-ink">{step.label}</p>
-                  <p className="mt-1 text-sm text-slate-700">{step.detail}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{step.detail}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
                 <Badge tone={step.done ? 'moss' : 'brass'}>{step.done ? 'ready' : 'pending'}</Badge>
-                <Link href={step.href} className="text-sm font-medium text-ink underline decoration-black/20 underline-offset-4">
+                <Link href={step.href} className="text-sm font-medium text-foreground underline decoration-border underline-offset-4">
                   Open
                 </Link>
               </div>
@@ -111,19 +111,19 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Workspace</p>
-          <p className="mt-4 text-sm leading-7 text-slate-700">
+          <p className="mt-4 text-sm leading-7 text-muted-foreground">
             `workspaces`, member roles, invites, and join links are the tenancy boundary for every provider and MCP grant.
           </p>
         </Card>
         <Card>
           <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Connections</p>
-          <p className="mt-4 text-sm leading-7 text-slate-700">
+          <p className="mt-4 text-sm leading-7 text-muted-foreground">
             Provider installs, refresh flows, revocation, and workspace-vs-personal scope all resolve through the connection vault.
           </p>
         </Card>
         <Card>
           <p className="text-sm uppercase tracking-[0.22em] text-slate-500">MCP</p>
-          <p className="mt-4 text-sm leading-7 text-slate-700">
+          <p className="mt-4 text-sm leading-7 text-muted-foreground">
             Client registration, consent, and the protected `/mcp` endpoint are ready to layer on top of the selected workspace.
           </p>
         </Card>

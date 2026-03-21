@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Card } from '@plusmy/ui';
+import { Button, Card, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@plusmy/ui';
 
 export function ClientRegistrationForm() {
   const router = useRouter();
@@ -45,49 +45,41 @@ export function ClientRegistrationForm() {
   return (
     <Card>
       <form className="space-y-4" onSubmit={handleSubmit}>
-        <div>
-          <label className="text-sm font-semibold text-slate-700" htmlFor="client-name">
-            MCP client name
-          </label>
-          <input
+        <div className="space-y-2">
+          <Label htmlFor="client-name">MCP client name</Label>
+          <Input
             id="client-name"
             type="text"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
           />
         </div>
-        <div>
-          <label className="text-sm font-semibold text-slate-700" htmlFor="redirect-uri">
-            Redirect URI
-          </label>
-          <input
+        <div className="space-y-2">
+          <Label htmlFor="redirect-uri">Redirect URI</Label>
+          <Input
             id="redirect-uri"
             type="url"
             value={redirectUri}
             onChange={(event) => setRedirectUri(event.target.value)}
-            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
           />
         </div>
-        <div>
-          <label className="text-sm font-semibold text-slate-700" htmlFor="auth-method">
-            Token auth method
-          </label>
-          <select
-            id="auth-method"
-            value={authMethod}
-            onChange={(event) => setAuthMethod(event.target.value === 'client_secret_post' ? 'client_secret_post' : 'none')}
-            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
-          >
-            <option value="none">Public client (PKCE only)</option>
-            <option value="client_secret_post">Confidential client</option>
-          </select>
+        <div className="space-y-2">
+          <Label htmlFor="auth-method">Token auth method</Label>
+          <Select value={authMethod} onValueChange={(value) => setAuthMethod(value === 'client_secret_post' ? 'client_secret_post' : 'none')}>
+            <SelectTrigger id="auth-method">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Public client (PKCE only)</SelectItem>
+              <SelectItem value="client_secret_post">Confidential client</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <Button disabled={submitting} type="submit">
           {submitting ? 'Registering…' : 'Register client'}
         </Button>
-        {status ? <p className="text-sm text-slate-700">{status}</p> : null}
-        {secret ? <p className="text-xs text-slate-500">Client secret: {secret}</p> : null}
+        {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
+        {secret ? <p className="font-mono text-xs text-muted-foreground">Client secret: {secret}</p> : null}
       </form>
     </Card>
   );

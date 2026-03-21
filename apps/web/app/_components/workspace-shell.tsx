@@ -2,17 +2,18 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Badge } from '@plusmy/ui';
+import { Badge, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, buttonVariants, cn } from '@plusmy/ui';
+import { Activity, Bot, BookText, Cable, LayoutDashboard, Rocket, Users, Waypoints } from 'lucide-react';
 
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/workspaces', label: 'Workspaces' },
-  { href: '/connections', label: 'Connections' },
-  { href: '/context', label: 'Context' },
-  { href: '/audit', label: 'Audit' },
-  { href: '/mcp-clients', label: 'MCP clients' },
-  { href: '/mcp-setup', label: 'MCP setup' },
-  { href: '/onboarding', label: 'Onboarding' }
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/workspaces', label: 'Workspaces', icon: Users },
+  { href: '/connections', label: 'Connections', icon: Cable },
+  { href: '/context', label: 'Context', icon: BookText },
+  { href: '/audit', label: 'Audit', icon: Activity },
+  { href: '/mcp-clients', label: 'MCP clients', icon: Bot },
+  { href: '/mcp-setup', label: 'MCP setup', icon: Waypoints },
+  { href: '/onboarding', label: 'Onboarding', icon: Rocket }
 ];
 
 type WorkspaceOption = {
@@ -61,51 +62,61 @@ export function WorkspaceShell({
 
   return (
     <>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-black/5 bg-white/55 px-4 py-3 text-sm text-slate-700 backdrop-blur">
-        <div className="flex flex-wrap items-center gap-3">
+      <div className="mb-5 flex flex-col gap-4 rounded-[28px] border border-border/60 bg-card/70 p-4 shadow-panel backdrop-blur-xl lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-1 flex-col gap-3 lg:flex-row lg:items-center">
           {activeWorkspace ? (
-            <>
+            <div className="flex flex-wrap items-center gap-2">
               <Badge tone="moss">{activeWorkspace.name}</Badge>
-              <span className="text-xs uppercase tracking-[0.18em] text-slate-500">{activeWorkspace.role}</span>
-            </>
+              <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{activeWorkspace.role}</span>
+              <span className="font-mono text-xs text-muted-foreground">{activeWorkspace.slug}</span>
+            </div>
           ) : (
-            <span className="text-sm text-slate-600">No active workspace</span>
+            <span className="text-sm text-muted-foreground">No active workspace</span>
           )}
           {workspaces.length ? (
-            <select
-              aria-label="Select workspace"
-              className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm outline-none"
-              value={activeWorkspace?.id ?? ''}
-              onChange={(event) => handleWorkspaceChange(event.target.value)}
-            >
-              {workspaces.map((workspace) => (
-                <option key={workspace.id} value={workspace.id}>
-                  {workspace.name} ({workspace.role})
-                </option>
-              ))}
-            </select>
+            <div className="w-full max-w-sm">
+              <Select value={activeWorkspace?.id} onValueChange={handleWorkspaceChange}>
+                <SelectTrigger aria-label="Select workspace" className="bg-background/70">
+                  <SelectValue placeholder="Select workspace" />
+                </SelectTrigger>
+                <SelectContent>
+                  {workspaces.map((workspace) => (
+                    <SelectItem key={workspace.id} value={workspace.id}>
+                      {workspace.name} ({workspace.role})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          {userEmail ? <span className="text-sm text-slate-600">{userEmail}</span> : null}
-          <Link
-            href={userEmail ? '/logout' : '/login'}
-            className="rounded-full border border-black/10 bg-white/80 px-4 py-2 font-medium transition hover:-translate-y-0.5 hover:bg-white"
-          >
-            {userEmail ? 'Logout' : 'Login'}
-          </Link>
+          {userEmail ? <span className="font-mono text-xs text-muted-foreground sm:text-sm">{userEmail}</span> : null}
+          <Button asChild variant="outline" size="sm">
+            <Link href={userEmail ? '/logout' : '/login'}>{userEmail ? 'Logout' : 'Login'}</Link>
+          </Button>
         </div>
       </div>
-      <nav className="mb-8 flex flex-wrap gap-2 text-sm font-medium text-slate-800">
-        {navItems.map((item) => (
-          <Link
-            key={item.href}
-            href={withWorkspace(item.href, activeWorkspaceId, new URLSearchParams(searchParams.toString()))}
-            className="rounded-full border border-black/10 bg-white/70 px-4 py-2 transition hover:-translate-y-0.5 hover:bg-white"
-          >
-            {item.label}
-          </Link>
-        ))}
+      <nav className="mb-8 flex flex-wrap gap-2">
+        {navItems.map((item) => {
+          const active = pathname === item.href;
+          const Icon = item.icon;
+
+          return (
+            <Link
+              key={item.href}
+              href={withWorkspace(item.href, activeWorkspaceId, new URLSearchParams(searchParams.toString()))}
+              className={cn(
+                buttonVariants({ variant: active ? 'default' : 'ghost', size: 'sm' }),
+                'rounded-full px-4',
+                !active && 'border border-border/60 bg-card/55'
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {item.label}
+            </Link>
+          );
+        })}
       </nav>
     </>
   );

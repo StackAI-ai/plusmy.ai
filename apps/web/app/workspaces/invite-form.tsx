@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Card } from '@plusmy/ui';
+import { Button, Card, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@plusmy/ui';
 
 export function InviteForm({ workspaceId }: { workspaceId: string }) {
   const router = useRouter();
@@ -42,39 +42,34 @@ export function InviteForm({ workspaceId }: { workspaceId: string }) {
   return (
     <Card>
       <form className="space-y-4" onSubmit={handleSubmit}>
-        <div>
-          <label className="text-sm font-semibold text-slate-700" htmlFor="invite-email">
-            Invite teammate
-          </label>
-          <input
+        <div className="space-y-2">
+          <Label htmlFor="invite-email">Invite teammate</Label>
+          <Input
             id="invite-email"
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
             placeholder="operator@company.com"
             required
           />
         </div>
-        <div>
-          <label className="text-sm font-semibold text-slate-700" htmlFor="invite-role">
-            Role
-          </label>
-          <select
-            id="invite-role"
-            value={role}
-            onChange={(event) => setRole(event.target.value === 'admin' ? 'admin' : 'member')}
-            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
-          >
-            <option value="member">Member</option>
-            <option value="admin">Admin</option>
-          </select>
+        <div className="space-y-2">
+          <Label htmlFor="invite-role">Role</Label>
+          <Select value={role} onValueChange={(value) => setRole(value === 'admin' ? 'admin' : 'member')}>
+            <SelectTrigger id="invite-role">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="member">Member</SelectItem>
+              <SelectItem value="admin">Admin</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <Button disabled={submitting} type="submit">
           {submitting ? 'Sending…' : 'Create invite'}
         </Button>
-        {status ? <p className="text-sm text-slate-700">{status}</p> : null}
-        {inviteLink ? <p className="text-xs text-slate-500">Invite link: {inviteLink}</p> : null}
+        {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
+        {inviteLink ? <p className="font-mono text-xs text-muted-foreground">Invite link: {inviteLink}</p> : null}
       </form>
     </Card>
   );

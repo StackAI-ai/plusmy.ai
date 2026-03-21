@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { createBrowserSupabaseClient } from '@plusmy/supabase/browser';
-import { Button, Card } from '@plusmy/ui';
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from '@plusmy/ui';
 
 export function LoginForm() {
   const [email, setEmail] = useState('');
@@ -35,26 +35,29 @@ export function LoginForm() {
 
   return (
     <Card>
-      <form className="space-y-4" onSubmit={handleSubmit}>
-        <div>
-          <label className="text-sm font-semibold text-slate-700" htmlFor="email">
-            Email address
-          </label>
-          <input
-            id="email"
-            type="email"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
-            placeholder="you@company.com"
-          />
-        </div>
-        <Button disabled={submitting} type="submit">
-          {submitting ? 'Sending…' : 'Send magic link'}
-        </Button>
-        {status ? <p className="text-sm text-slate-700">{status}</p> : null}
-      </form>
+      <CardHeader>
+        <CardTitle>Sign in</CardTitle>
+        <CardDescription>Use a magic link to access the operator surfaces for workspaces, connections, and MCP approvals.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <div className="space-y-2">
+            <Label htmlFor="email">Email address</Label>
+            <Input
+              id="email"
+              type="email"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="you@company.com"
+            />
+          </div>
+          <Button disabled={submitting} type="submit" className="w-full">
+            {submitting ? 'Sending…' : 'Send magic link'}
+          </Button>
+          {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
+        </form>
+      </CardContent>
     </Card>
   );
 }

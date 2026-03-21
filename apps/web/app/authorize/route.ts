@@ -69,22 +69,77 @@ function renderConsentPage(input: {
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Authorize ${input.clientName}</title>
     <style>
-      body{font-family:ui-serif,Georgia,serif;background:#f4efe6;color:#13201d;margin:0;padding:32px}
-      .panel{max-width:680px;margin:0 auto;background:rgba(255,255,255,.86);backdrop-filter:blur(12px);border-radius:28px;padding:32px;box-shadow:0 20px 60px rgba(19,32,29,.12)}
-      button{border:0;border-radius:999px;padding:14px 18px;font:inherit;font-weight:600;cursor:pointer}
-      .primary{background:#13201d;color:#fff}.secondary{background:#fff;color:#13201d;border:1px solid rgba(19,32,29,.12)}
-      .muted{color:#55635f;font-size:14px;line-height:1.8}
+      :root{color-scheme:light}
+      *{box-sizing:border-box}
+      body{
+        margin:0;
+        min-height:100vh;
+        padding:24px;
+        font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+        color:#11221d;
+        background:
+          radial-gradient(circle at top, rgba(244,114,47,.2), transparent 34%),
+          radial-gradient(circle at 15% 20%, rgba(63,126,97,.14), transparent 28%),
+          linear-gradient(180deg, #fbf8f3 0%, #f4ecde 100%);
+      }
+      .panel{
+        max-width:720px;
+        margin:0 auto;
+        border:1px solid rgba(191,181,162,.55);
+        border-radius:32px;
+        padding:32px;
+        background:rgba(255,255,255,.82);
+        backdrop-filter:blur(24px);
+        box-shadow:0 28px 90px -42px rgba(15,23,42,.45);
+      }
+      .eyebrow{
+        display:inline-flex;
+        align-items:center;
+        gap:8px;
+        margin:0;
+        padding:8px 12px;
+        border:1px solid rgba(191,181,162,.7);
+        border-radius:999px;
+        background:rgba(255,255,255,.7);
+        color:#4e5f58;
+        font-size:11px;
+        font-weight:700;
+        letter-spacing:.24em;
+        text-transform:uppercase;
+      }
+      .muted{color:#56655f;font-size:14px;line-height:1.8}
+      .panel-card{
+        margin-top:18px;
+        border:1px solid rgba(191,181,162,.55);
+        border-radius:22px;
+        padding:16px;
+        background:rgba(255,255,255,.55);
+      }
+      .operator-card{background:rgba(244,114,47,.08)}
+      .actions{margin-top:28px;display:flex;gap:12px;flex-wrap:wrap}
+      button{
+        border:0;
+        border-radius:14px;
+        padding:14px 18px;
+        font:inherit;
+        font-weight:600;
+        cursor:pointer;
+        transition:transform .18s ease, background-color .18s ease;
+      }
+      button:hover{transform:translateY(-1px)}
+      .primary{background:#18362d;color:#fff;box-shadow:0 16px 40px -24px rgba(24,54,45,.7)}
+      .secondary{background:rgba(255,255,255,.82);color:#11221d;border:1px solid rgba(191,181,162,.8)}
     </style>
   </head>
   <body>
     <div class="panel">
-      <p style="letter-spacing:.2em;text-transform:uppercase;font-size:12px;color:#55635f">plusmy.ai MCP authorization</p>
-      <h1 style="font-size:38px;line-height:1.15;margin:14px 0 10px">Authorize ${input.clientName}</h1>
+      <p class="eyebrow">plusmy.ai MCP authorization</p>
+      <h1 style="font-size:38px;line-height:1.15;margin:18px 0 10px">Authorize ${input.clientName}</h1>
       <p class="muted">This MCP client will receive delegated access to workspace resources and integration tools for <strong>${input.workspaceName}</strong>.</p>
       <p class="muted"><strong>Requested scopes:</strong> ${input.scope || defaultScopeString}</p>
       ${
         input.existingApproval
-          ? `<div style="margin-top:18px;border:1px solid rgba(19,32,29,.08);border-radius:20px;padding:16px;background:rgba(19,32,29,.03)">
+          ? `<div class="panel-card">
         <p style="margin:0;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#55635f">Existing approval on file</p>
         <p class="muted" style="margin:8px 0 0">Approved ${input.existingApproval.approvedAt}. ${
           input.existingApproval.lastUsedAt ? `Last token issued ${input.existingApproval.lastUsedAt}.` : 'No token has been exchanged from that approval yet.'
@@ -95,13 +150,13 @@ function renderConsentPage(input: {
       }
       ${
         input.source === 'operator_ui'
-          ? `<div style="margin-top:18px;border:1px solid rgba(19,32,29,.08);border-radius:20px;padding:16px;background:rgba(200,162,77,.12)">
+          ? `<div class="panel-card operator-card">
         <p style="margin:0;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#55635f">Operator-initiated renewal</p>
         <p class="muted" style="margin:8px 0 0">This consent flow was opened from the MCP clients operator page. After approval, the client still needs to exchange the new authorization code before token activity appears as fresh usage.</p>
       </div>`
           : ''
       }
-      <form method="post" action="/authorize" style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
+      <form method="post" action="/authorize" class="actions">
         <input type="hidden" name="client_id" value="${input.clientId}" />
         <input type="hidden" name="redirect_uri" value="${input.redirectUri}" />
         <input type="hidden" name="scope" value="${input.scope}" />

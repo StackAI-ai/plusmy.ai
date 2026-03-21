@@ -2,7 +2,18 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Card } from '@plusmy/ui';
+import {
+  Button,
+  Card,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Textarea
+} from '@plusmy/ui';
 
 type Mode = 'asset' | 'prompt' | 'skill';
 type ScopeMode = 'workspace' | 'personal';
@@ -79,92 +90,79 @@ export function ContextIngestForm({ workspaceId }: { workspaceId: string }) {
 
   return (
     <Card>
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex flex-wrap gap-2">
         {(['asset', 'prompt', 'skill'] as Mode[]).map((value) => (
-          <button
+          <Button
             key={value}
             type="button"
             onClick={() => setMode(value)}
-            className={`rounded-full px-4 py-2 text-sm font-semibold ${mode === value ? 'bg-[#13201d] text-white' : 'bg-black/5 text-[#13201d]'}`}
+            variant={mode === value ? 'default' : 'secondary'}
+            size="sm"
           >
             {value}
-          </button>
+          </Button>
         ))}
       </div>
       <form className="space-y-4" onSubmit={handleSubmit}>
-        <div>
-          <label className="text-sm font-semibold text-slate-700" htmlFor="context-scope">
-            Visibility
-          </label>
-          <select
-            id="context-scope"
-            value={scope}
-            onChange={(event) => setScope(event.target.value === 'personal' ? 'personal' : 'workspace')}
-            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
-          >
-            <option value="workspace">Workspace shared</option>
-            <option value="personal">Personal only</option>
-          </select>
+        <div className="space-y-2">
+          <Label htmlFor="context-scope">Visibility</Label>
+          <Select value={scope} onValueChange={(value) => setScope(value === 'personal' ? 'personal' : 'workspace')}>
+            <SelectTrigger id="context-scope">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="workspace">Workspace shared</SelectItem>
+              <SelectItem value="personal">Personal only</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <div>
-          <label className="text-sm font-semibold text-slate-700" htmlFor="context-title">
-            {mode === 'asset' ? 'Asset title' : 'Name'}
-          </label>
-          <input
+        <div className="space-y-2">
+          <Label htmlFor="context-title">{mode === 'asset' ? 'Asset title' : 'Name'}</Label>
+          <Input
             id="context-title"
             type="text"
             required
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
           />
         </div>
         {mode !== 'asset' ? (
-          <div>
-            <label className="text-sm font-semibold text-slate-700" htmlFor="context-description">
-              Description
-            </label>
-            <input
+          <div className="space-y-2">
+            <Label htmlFor="context-description">Description</Label>
+            <Input
               id="context-description"
               type="text"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
-              className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
             />
           </div>
         ) : null}
         {mode === 'asset' ? (
-          <div>
-            <label className="text-sm font-semibold text-slate-700" htmlFor="context-source-uri">
-              Source URI
-            </label>
-            <input
+          <div className="space-y-2">
+            <Label htmlFor="context-source-uri">Source URI</Label>
+            <Input
               id="context-source-uri"
               type="text"
               value={sourceUri}
               onChange={(event) => setSourceUri(event.target.value)}
-              className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
               placeholder="notion://page/123 or https://docs.google.com/..."
             />
           </div>
         ) : null}
-        <div>
-          <label className="text-sm font-semibold text-slate-700" htmlFor="context-body">
-            {mode === 'skill' ? 'Instructions' : 'Content'}
-          </label>
-          <textarea
+        <div className="space-y-2">
+          <Label htmlFor="context-body">{mode === 'skill' ? 'Instructions' : 'Content'}</Label>
+          <Textarea
             id="context-body"
             required
             value={body}
             onChange={(event) => setBody(event.target.value)}
             rows={8}
-            className="mt-2 w-full rounded-3xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
           />
         </div>
         <Button disabled={submitting} type="submit">
           {submitting ? 'Saving…' : `Create ${mode}`}
         </Button>
-        {status ? <p className="text-sm text-slate-700">{status}</p> : null}
+        {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
       </form>
     </Card>
   );

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Card } from '@plusmy/ui';
+import { Button, Card, Input, Label } from '@plusmy/ui';
 
 export function CreateWorkspaceForm() {
   const router = useRouter();
@@ -46,24 +46,21 @@ export function CreateWorkspaceForm() {
   return (
     <Card>
       <form className="space-y-4" onSubmit={handleSubmit}>
-        <div>
-          <label className="text-sm font-semibold text-slate-700" htmlFor="workspace-name">
-            Workspace name
-          </label>
-          <input
+        <div className="space-y-2">
+          <Label htmlFor="workspace-name">Workspace name</Label>
+          <Input
             id="workspace-name"
             type="text"
             required
             value={name}
             onChange={(event) => setName(event.target.value)}
-            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
             placeholder="Acme Revenue Ops"
           />
         </div>
         <Button disabled={submitting} type="submit">
           {submitting ? 'Creating…' : 'Create workspace'}
         </Button>
-        {status ? <p className="text-sm text-slate-700">{status}</p> : null}
+        {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
       </form>
     </Card>
   );

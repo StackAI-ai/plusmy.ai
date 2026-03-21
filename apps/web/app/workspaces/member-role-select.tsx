@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@plusmy/ui';
 
 export function MemberRoleSelect({
   workspaceId,
@@ -45,18 +46,17 @@ export function MemberRoleSelect({
 
   return (
     <div className="space-y-1">
-      <select
-        aria-label="Update member role"
-        className="rounded-full border border-black/10 bg-white px-3 py-2 text-sm outline-none"
-        disabled={submitting}
-        value={role}
-        onChange={(event) => handleChange(event.target.value as 'owner' | 'admin' | 'member')}
-      >
-        {canAssignOwner ? <option value="owner">Owner</option> : null}
-        <option value="admin">Admin</option>
-        <option value="member">Member</option>
-      </select>
-      {status ? <p className="text-xs text-slate-500">{status}</p> : null}
+      <Select disabled={submitting} value={role} onValueChange={(value) => handleChange(value as 'owner' | 'admin' | 'member')}>
+        <SelectTrigger aria-label="Update member role" className="h-9 rounded-full px-3">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {canAssignOwner ? <SelectItem value="owner">Owner</SelectItem> : null}
+          <SelectItem value="admin">Admin</SelectItem>
+          <SelectItem value="member">Member</SelectItem>
+        </SelectContent>
+      </Select>
+      {status ? <p className="text-xs text-muted-foreground">{status}</p> : null}
     </div>
   );
 }

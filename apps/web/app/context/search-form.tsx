@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Card } from '@plusmy/ui';
+import { Button, Card, Label, Textarea } from '@plusmy/ui';
 
 type Match = {
   chunk_id: string;
@@ -42,33 +42,30 @@ export function ContextSearchForm({ workspaceId }: { workspaceId: string }) {
   return (
     <Card>
       <form className="space-y-4" onSubmit={handleSubmit}>
-        <div>
-          <label className="text-sm font-semibold text-slate-700" htmlFor="context-query">
-            Semantic search
-          </label>
-          <textarea
+        <div className="space-y-2">
+          <Label htmlFor="context-query">Semantic search</Label>
+          <Textarea
             id="context-query"
             rows={4}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="mt-2 w-full rounded-3xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
             placeholder="Find onboarding instructions for Slack approvals"
           />
         </div>
         <Button disabled={submitting} type="submit">
           {submitting ? 'Searching…' : 'Search context'}
         </Button>
-        {status ? <p className="text-sm text-slate-700">{status}</p> : null}
+        {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
       </form>
       {matches.length ? (
         <div className="mt-5 space-y-3">
           {matches.map((match) => (
-            <div key={match.chunk_id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
+            <div key={match.chunk_id} className="rounded-2xl border border-border/70 bg-card/90 p-4">
               <div className="flex items-center justify-between gap-2">
                 <p className="font-semibold text-ink">{match.title}</p>
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{match.similarity?.toFixed?.(3) ?? match.similarity}</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{match.similarity?.toFixed?.(3) ?? match.similarity}</p>
               </div>
-              <p className="mt-2 text-sm leading-6 text-slate-700">{match.content}</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{match.content}</p>
             </div>
           ))}
         </div>
