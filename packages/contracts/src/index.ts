@@ -128,6 +128,20 @@ export interface BoundContextResource {
   text: string;
 }
 
+export interface ContextChunkMatch {
+  chunkId: string;
+  assetId: string;
+  title: string;
+  content: string;
+  similarity: number;
+  metadata: Json;
+}
+
+export interface ContextInjectionResult {
+  query: string;
+  matches: ContextChunkMatch[];
+}
+
 export interface ProviderRuntimeContext {
   resources: BoundContextResource[];
   prompts: BoundContextResource[];

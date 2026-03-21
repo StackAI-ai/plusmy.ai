@@ -4,6 +4,8 @@ import type {
   ContextAssetType,
   ContextBindingRecord,
   ContextBindingType,
+  ContextChunkMatch,
+  ContextInjectionResult,
   Json,
   McpResourceContent,
   McpResourceDefinition,
@@ -54,6 +56,23 @@ interface SkillDefinitionResourceRecord {
   description: string | null
   instructions: string
   owner_user_id: string | null
+}
+
+interface WorkspaceResourceRecord {
+  uri: string
+  mimeType: string
+  text: string
+  name: string
+  description: string | null
+}
+
+interface ContextChunkMatchRow {
+  chunk_id: string
+  asset_id: string
+  title: string
+  content: string
+  similarity: number
+  metadata: Json
 }
 
 function parseResourceUri(uri: string) {
@@ -208,6 +227,39 @@ function buildBindingResourceDescription(resource: BoundContextResource) {
   const kind = resource.kind === 'prompt' ? 'Prompt template' : 'Skill definition'
   const scope = bindingScopeLabel(resource.bindingType, resource.targetKey)
   return resource.description ?? `${kind} bound to ${scope.toLowerCase()}.`
+}
+
+function normalizeContextQueryPart(value: string | null | undefined, maxChars = 1600) {
+  const normalized = String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+  return normalized.slice(0, maxChars)
+}
+
+function buildContextQuery(parts: Array<string | null | undefined>, maxChars = 4000) {
+  const seen = new Set<string>()
+  const normalizedParts = parts
+    .map((part) => normalizeContextQueryPart(part))
+    .filter((part): part is string => Boolean(part))
+    .filter((part) => {
+      if (seen.has(part)) return false
+      seen.add(part)
+      return true
+    })
+
+  let query = ''
+  for (const part of normalizedParts) {
+    const next = query ? `${query}\n${part}` : part
+    if (next.length > maxChars) {
+      query = next.slice(0, maxChars).trim()
+      break
+    }
+    query = next
+  }
+
+  return query.trim()
 }
 
 function matchesBindingTarget(
@@ -802,9 +854,13 @@ export async function listWorkspaceResources(workspaceId: string, userId: string
   return [...promptResources, ...skillResources]
 }
 
-export async function readWorkspaceResource(workspaceId: string, userId: string | null | undefined, uri: string): Promise<McpResourceContent[]> {
+async function resolveWorkspaceResourceRecord(
+  workspaceId: string,
+  userId: string | null | undefined,
+  uri: string
+): Promise<WorkspaceResourceRecord | null> {
   const parsed = parseResourceUri(uri)
-  if (!parsed) return []
+  if (!parsed) return null
 
   if (parsed.format === 'binding') {
     const boundResources = await resolveBoundContextResources(workspaceId, userId, {
@@ -813,8 +869,14 @@ export async function readWorkspaceResource(workspaceId: string, userId: string 
       targetKey: parsed.targetKey
     })
     const resource = boundResources.find((entry) => entry.uri === uri && entry.kind === parsed.kind && entry.resourceId === parsed.id)
-    if (!resource) return []
-    return [{ uri, mimeType: resource.mimeType, text: resource.text }]
+    if (!resource) return null
+    return {
+      uri,
+      mimeType: resource.mimeType,
+      text: resource.text,
+      name: resource.name,
+      description: resource.description
+    }
   }
 
   const supabase = createServiceRoleClient()
@@ -822,25 +884,67 @@ export async function readWorkspaceResource(workspaceId: string, userId: string 
     const { data } = await supabase
       .schema('app')
       .from('prompt_templates')
-      .select('id,content,owner_user_id')
+      .select('id,name,description,content,owner_user_id')
       .eq('workspace_id', workspaceId)
       .eq('id', parsed.id)
       .maybeSingle()
 
-    if (!data || (data.owner_user_id && data.owner_user_id !== userId)) return []
-    return [{ uri, mimeType: 'text/markdown', text: data.content }]
+    if (!data || (data.owner_user_id && data.owner_user_id !== userId)) return null
+    return {
+      uri,
+      mimeType: 'text/markdown',
+      text: data.content,
+      name: data.name,
+      description: data.description ?? null
+    }
   }
 
   const { data } = await supabase
     .schema('app')
     .from('skill_definitions')
-    .select('id,instructions,owner_user_id')
+    .select('id,name,description,instructions,owner_user_id')
     .eq('workspace_id', workspaceId)
     .eq('id', parsed.id)
     .maybeSingle()
 
-  if (!data || (data.owner_user_id && data.owner_user_id !== userId)) return []
-  return [{ uri, mimeType: 'text/markdown', text: data.instructions }]
+  if (!data || (data.owner_user_id && data.owner_user_id !== userId)) return null
+  return {
+    uri,
+    mimeType: 'text/markdown',
+    text: data.instructions,
+    name: data.name,
+    description: data.description ?? null
+  }
+}
+
+export async function readWorkspaceResource(workspaceId: string, userId: string | null | undefined, uri: string): Promise<McpResourceContent[]> {
+  const resource = await resolveWorkspaceResourceRecord(workspaceId, userId, uri)
+  if (!resource) return []
+
+  return [{ uri: resource.uri, mimeType: resource.mimeType, text: resource.text }]
+}
+
+export async function readWorkspaceResourceWithContext(workspaceId: string, userId: string | null | undefined, uri: string) {
+  const resource = await resolveWorkspaceResourceRecord(workspaceId, userId, uri)
+  if (!resource) {
+    return {
+      contents: [] as McpResourceContent[],
+      contextInjection: { query: '', matches: [] } satisfies ContextInjectionResult,
+      resourceName: null as string | null
+    }
+  }
+
+  const contextInjection = await resolveContextInjection(
+    workspaceId,
+    [resource.name, resource.description ?? null, resource.text, resource.uri],
+    3
+  )
+
+  return {
+    contents: [{ uri: resource.uri, mimeType: resource.mimeType, text: resource.text }] as McpResourceContent[],
+    contextInjection,
+    resourceName: resource.name
+  }
 }
 
 export async function resolveProviderRuntimeContext(
@@ -864,7 +968,19 @@ export async function resolveProviderRuntimeContext(
   }
 }
 
-export async function matchContextChunks(workspaceId: string, query: string, limit = 8) {
+export async function resolveContextInjection(workspaceId: string, parts: Array<string | null | undefined>, limit = 3): Promise<ContextInjectionResult> {
+  const query = buildContextQuery(parts)
+  if (!query) {
+    return { query: '', matches: [] }
+  }
+
+  return {
+    query,
+    matches: await matchContextChunks(workspaceId, query, limit)
+  }
+}
+
+export async function matchContextChunks(workspaceId: string, query: string, limit = 8): Promise<ContextChunkMatch[]> {
   const embedding = await createEmbedding(query)
   if (!embedding) return []
 
@@ -877,5 +993,12 @@ export async function matchContextChunks(workspaceId: string, query: string, lim
   })
 
   if (error) throw error
-  return data ?? []
+  return ((data ?? []) as ContextChunkMatchRow[]).map((item) => ({
+    chunkId: item.chunk_id,
+    assetId: item.asset_id,
+    title: item.title,
+    content: item.content,
+    similarity: item.similarity,
+    metadata: item.metadata ?? {}
+  }))
 }
