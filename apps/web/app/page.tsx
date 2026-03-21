@@ -54,6 +54,9 @@ export default function HomePage() {
               <Button asChild variant="outline" size="lg">
                 <Link href="/onboarding">Review onboarding</Link>
               </Button>
+              <Button asChild variant="outline" size="lg">
+                <Link href="/mcp-setup/quickstart">Open MCP quickstart</Link>
+              </Button>
             </div>
           </div>
           <Card className="border-border/70 bg-background/80">

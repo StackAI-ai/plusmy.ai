@@ -87,6 +87,9 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
           <div className="flex flex-wrap gap-2">
             <Badge tone={workspace ? 'moss' : 'brass'}>{workspaceLabel}</Badge>
             <Badge>{completedSteps}/{checklist.length} complete</Badge>
+            <Button asChild variant="outline" size="sm">
+              <Link href={workspace ? `/mcp-setup/quickstart?workspace=${workspace.id}` : '/mcp-setup/quickstart'}>Open MCP quickstart</Link>
+            </Button>
           </div>
         </CardHeader>
       </Card>
@@ -168,9 +171,14 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
               {' '}
               {plannedProviderPlatforms.slice(0, 3).map((platform) => platform.name).join(', ')}.
             </p>
-            <Button asChild size="sm" variant="outline">
-              <Link href="/platforms">Open platform catalog</Link>
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild size="sm" variant="outline">
+                <Link href="/platforms">Open platform catalog</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href={workspace ? `/mcp-setup/quickstart?workspace=${workspace.id}` : '/mcp-setup/quickstart'}>Open MCP quickstart</Link>
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
