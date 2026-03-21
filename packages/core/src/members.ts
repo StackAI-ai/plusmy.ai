@@ -91,6 +91,18 @@ export async function acceptWorkspaceInvite(input: { token: string; userId: stri
     throw new Error('Invite email does not match current user.');
   }
 
+  const { data: existingMember } = await supabase
+    .schema('app')
+    .from('workspace_members')
+    .select('id,role')
+    .eq('workspace_id', invite.workspace_id)
+    .eq('user_id', input.userId)
+    .maybeSingle();
+
+  if (existingMember) {
+    throw new Error('You are already a member of this workspace.');
+  }
+
   await supabase.schema('app').from('workspace_members').upsert(
     {
       workspace_id: invite.workspace_id,

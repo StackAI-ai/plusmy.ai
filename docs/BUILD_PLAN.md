@@ -29,12 +29,12 @@
 - 2026-03-21 execution checkpoint: shipped `NIC-16`, `NIC-17`, `NIC-30`, and `NIC-31` by introducing dead-letter tracking for exhausted connection jobs, jittered exponential backoff for token refresh retries, a root `npm run doctor` bootstrap check, and a new operator troubleshooting runbook for provider/worker remediation.
 - 2026-03-21 execution checkpoint: shipped `NIC-18` by adding per-tool provider scope requirements, shared scope-drift detection, MCP runtime filtering/blocking for underscoped tools, and approval-surface remediation links that point operators back to the affected provider installs. Reconfirmed the live support matrix remains Google Workspace, Slack, and Notion for providers plus OpenAI-compatible, Anthropic-compatible, Gemini-adjacent, and Cursor MCP clients; the highest-value reviewed gaps are still Microsoft 365, GitHub, Linear, Jira, and Confluence.
 - 2026-03-21 execution checkpoint: shipped `NIC-21` by adding HTTP rate-limit metadata on MCP tool calls, plus operator-side connection notifications and reconnect entry points for degraded installs. Added non-live provider scaffolds for Microsoft 365, GitHub, Linear, Jira, Zendesk, and Confluence in `packages/integrations` while keeping the live registry limited to Google Workspace, Slack, and Notion.
+- 2026-03-21 execution checkpoint: shipped `NIC-35`, `NIC-44`, and `NIC-45` by reclaiming stale processing connection jobs in the queue claim RPC, enriching MCP approval actor labels with workspace member/profile identities, and adding URL-backed approval-health filters plus clear-filter controls on the MCP clients page.
 
 ## Next execution slice (2026-03-21)
 - Prioritize `NIC-19` next so OAuth callback replay/state handling is covered before broadening operator/runtime behavior further.
-- Continue with security/reliability test hardening in `NIC-20`, `NIC-21`, and `NIC-22` before expanding the live provider matrix further.
-- Continue with security/reliability test hardening in `NIC-19`, `NIC-20`, and `NIC-22`; `NIC-21` is now covered by MCP HTTP rate-limit metadata.
-- Return to adjacent MCP client follow-up work in `NIC-45` and `NIC-44` only if local/operator consent friction remains after the latest approval-health improvements.
+- Continue with security/reliability test hardening in `NIC-19`, `NIC-20`, `NIC-22`, `NIC-25`, and `NIC-37`; these still need a real DB/test harness before they can be closed confidently.
+- If invite UX is revisited next, split the remaining ownership-transfer edge case out of `NIC-41` instead of widening the existing accept flow further.
 - Use the broader platform catalog to decide the next adapter promotions and remaining scaffolds; Microsoft 365, GitHub, Linear, Jira, Zendesk, and Confluence now have non-live registry scaffolds, while HubSpot, Salesforce, Dropbox, Airtable, Box, Asana, monday.com, ServiceNow, Zoom, and Okta remain catalog-only.
 
 ## Implementation changes

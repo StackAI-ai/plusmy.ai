@@ -249,6 +249,8 @@ export interface OAuthClientApprovalRecord {
   updated_at: string;
   client_name?: string | null;
   token_endpoint_auth_method?: string | null;
+  approved_by_display_name?: string | null;
+  approved_by_avatar_url?: string | null;
 }
 
 export interface OAuthTokenResponse {

@@ -4,6 +4,26 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
 
+function formatInviteError(message: string) {
+  if (message === 'Invite expired.') {
+    return 'This invite expired. Ask the workspace owner for a new link.';
+  }
+
+  if (message === 'Invite already accepted.') {
+    return 'This invite was already used.';
+  }
+
+  if (message === 'Invite email does not match current user.') {
+    return 'Sign in with the invited email address before accepting this invite.';
+  }
+
+  if (message === 'You are already a member of this workspace.') {
+    return 'You are already in this workspace. Open Workspaces instead.';
+  }
+
+  return message;
+}
+
 export function AcceptInviteForm({ token }: { token: string }) {
   const router = useRouter();
   const [status, setStatus] = useState<string | null>(null);
@@ -21,7 +41,7 @@ export function AcceptInviteForm({ token }: { token: string }) {
 
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
-      setStatus(payload?.error ?? 'Unable to accept invite.');
+      setStatus(formatInviteError(payload?.error ?? 'Unable to accept invite.'));
       setSubmitting(false);
       return;
     }

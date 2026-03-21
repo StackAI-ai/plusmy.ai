@@ -2,40 +2,36 @@ import Link from 'next/link';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
 import type { AuditLogRecord, ConnectionRecord, OAuthClientApprovalRecord, ToolInvocationRecord } from '@plusmy/contracts';
 import { createServerSupabaseClient } from '@plusmy/supabase';
-import { getAuthorizedWorkspace, listAuditLogs, listConnectionsForWorkspace, listOAuthClientApprovals, listOAuthClients, listToolInvocations, listUserWorkspaces } from '@plusmy/core';
+import {
+  getAuthorizedWorkspace,
+  listAuditLogs,
+  listConnectionsForWorkspace,
+  listOAuthClientApprovals,
+  listOAuthClients,
+  listToolInvocations,
+  listUserWorkspaces
+} from '@plusmy/core';
 import { getIntegration, getToolScopeDrift } from '@plusmy/integrations';
 import { ClientRegistrationForm } from './client-registration-form';
 import { RevokeApprovalButton } from './revoke-approval-button';
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
 import { LinkBadge } from '../_components/link-badge';
 import { buildAuditHref } from '../_lib/audit-href';
-
-const staleApprovalWindowDays = 14;
-const approvalExchangeGraceWindowDays = 3;
+import {
+  approvalHealthFilters,
+  buildMcpClientsHref,
+  filterApprovals,
+  getApprovalActorLabel,
+  getApprovalHealthReasons,
+  isApprovalAwaitingTokenExchange,
+  isRecent,
+  isStaleApproval,
+  normalizeApprovalHealthFilter,
+  type ProviderScopeDriftSummary
+} from './filters';
 
 function canManageWorkspace(role: string | undefined) {
   return role === 'owner' || role === 'admin';
-}
-
-function isRecent(isoTimestamp: string | null | undefined, windowDays: number) {
-  if (!isoTimestamp) return false;
-  return Date.now() - new Date(isoTimestamp).getTime() <= windowDays * 24 * 60 * 60 * 1000;
-}
-
-function isStaleApproval(approval: OAuthClientApprovalRecord) {
-  return approval.status === 'active' && !isRecent(approval.last_used_at, staleApprovalWindowDays) && !isApprovalAwaitingTokenExchange(approval);
-}
-
-function isApprovalAwaitingTokenExchange(approval: OAuthClientApprovalRecord) {
-  if (approval.status !== 'active' || !isRecent(approval.approved_at, approvalExchangeGraceWindowDays)) {
-    return false;
-  }
-
-  if (!approval.last_used_at) {
-    return true;
-  }
-
-  return new Date(approval.last_used_at).getTime() < new Date(approval.approved_at).getTime();
 }
 
 function extractAuditClientId(entry: AuditLogRecord) {
@@ -56,15 +52,9 @@ function buildClientAuditHref(workspaceId: string, clientId: string) {
   return buildAuditHref(workspaceId, { client: clientId });
 }
 
-function getApprovalMetadataString(approval: OAuthClientApprovalRecord, key: string) {
-  const metadata = approval.metadata;
-  if (!metadata || Array.isArray(metadata) || typeof metadata !== 'object') return null;
-
-  const value = (metadata as Record<string, unknown>)[key];
-  if (typeof value !== 'string') return null;
-
-  const trimmedValue = value.trim();
-  return trimmedValue.length > 0 ? trimmedValue : null;
+function buildConnectionsProviderHref(workspaceId: string, provider: ConnectionRecord['provider']) {
+  const params = new URLSearchParams({ workspace: workspaceId, provider });
+  return `/connections?${params.toString()}`;
 }
 
 function buildApprovalAuthorizeHref(workspaceId: string, approval: OAuthClientApprovalRecord) {
@@ -93,21 +83,6 @@ function getRedirectHostLabel(redirectUri: string | null) {
   }
 }
 
-type ApprovalHealthReason = {
-  key: string;
-  label: string;
-  detail: string;
-  tone: 'default' | 'moss' | 'brass';
-};
-
-type ProviderScopeDriftSummary = {
-  provider: ConnectionRecord['provider'];
-  providerLabel: string;
-  connectionId: string;
-  missingScopes: string[];
-  affectedTools: string[];
-};
-
 async function listProviderScopeDriftSummaries(connections: ConnectionRecord[]) {
   const activeConnections = connections.filter((connection) => connection.status === 'active');
   const summaries = await Promise.all(
@@ -131,76 +106,6 @@ async function listProviderScopeDriftSummaries(connections: ConnectionRecord[]) 
   );
 
   return summaries.filter((entry): entry is ProviderScopeDriftSummary => entry != null);
-}
-
-function buildConnectionsProviderHref(workspaceId: string, provider: ConnectionRecord['provider']) {
-  const params = new URLSearchParams({ workspace: workspaceId, provider });
-  return `/connections?${params.toString()}`;
-}
-
-function getApprovalHealthReasons(
-  approval: OAuthClientApprovalRecord,
-  providerScopeDriftSummaries: ProviderScopeDriftSummary[]
-): ApprovalHealthReason[] {
-  if (approval.status === 'revoked') {
-    const revokedByUserId = getApprovalMetadataString(approval, 'revoked_by_user_id');
-    const label = revokedByUserId && revokedByUserId !== approval.user_id ? 'Revoked by operator' : 'Revoked';
-    const detail =
-      getApprovalMetadataString(approval, 'revocation_reason') ??
-      (approval.revoked_at ? `Revoked at ${approval.revoked_at}.` : 'This approval has already been revoked.');
-
-    return [{ key: 'revoked', tone: 'brass', label, detail }];
-  }
-
-  if (isApprovalAwaitingTokenExchange(approval)) {
-    return [{
-      key: 'awaiting_token_exchange',
-      tone: 'default',
-      label: 'Awaiting token exchange',
-      detail: 'Recently approved or reauthorized. The client still needs to exchange a fresh code before token activity updates.'
-    }];
-  }
-
-  if (providerScopeDriftSummaries.length > 0) {
-    const detail = providerScopeDriftSummaries
-      .map(
-        (entry) =>
-          `${entry.providerLabel} is missing ${entry.missingScopes.join(', ')} for ${entry.affectedTools.join(', ')}.`
-      )
-      .join(' ');
-
-    return [{
-      key: 'scope_drift',
-      tone: 'brass',
-      label: 'Scope drift',
-      detail
-    }];
-  }
-
-  if (isStaleApproval(approval)) {
-    return [{
-      key: 'stale',
-      tone: 'brass',
-      label: 'Stale approval',
-      detail: `No token usage recorded in the last ${staleApprovalWindowDays} days.`
-    }];
-  }
-
-  if (isRecent(approval.last_used_at, 7)) {
-    return [{
-      key: 'recently_used',
-      tone: 'moss',
-      label: 'Recently used',
-      detail: 'Token usage was recorded during the last 7 days.'
-    }];
-  }
-
-  return [{
-    key: 'active',
-    tone: 'moss',
-    label: 'Active',
-    detail: 'This approval can still mint or refresh MCP access tokens.'
-  }];
 }
 
 type ClientActivitySummary = {
@@ -269,7 +174,19 @@ function buildClientActivitySummaries(
   });
 }
 
+function getApprovalMetadataString(approval: OAuthClientApprovalRecord, key: string) {
+  const metadata = approval.metadata;
+  if (!metadata || Array.isArray(metadata) || typeof metadata !== 'object') return null;
+
+  const value = (metadata as Record<string, unknown>)[key];
+  if (typeof value !== 'string') return null;
+
+  const trimmedValue = value.trim();
+  return trimmedValue.length > 0 ? trimmedValue : null;
+}
+
 export default async function McpClientsPage({ searchParams }: { searchParams?: AppSearchParams }) {
+  const currentSearchParams: Record<string, string | string[] | undefined> = searchParams ? await searchParams : {};
   const supabase = await createServerSupabaseClient();
   const {
     data: { user }
@@ -291,6 +208,7 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
   const clients = await listOAuthClients(user.id);
   const workspaces = await listUserWorkspaces(user.id);
   const requestedWorkspaceId = await getSearchParam(searchParams, 'workspace');
+  const requestedApprovalHealth = await getSearchParam(searchParams, 'approval_health');
   const workspace = await getAuthorizedWorkspace(user.id, requestedWorkspaceId);
   const activeMembership = workspace ? workspaces.find((entry) => entry.id === workspace.id) : null;
   const canReviewWorkspaceApprovals = canManageWorkspace(activeMembership?.role);
@@ -298,11 +216,14 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
     ? await listOAuthClientApprovals({
         workspaceId: workspace.id,
         userId: user.id,
-        includeWorkspaceApprovals: canReviewWorkspaceApprovals
+        includeWorkspaceApprovals: canReviewWorkspaceApprovals,
+        includeMemberIdentity: true
       })
     : [];
+  const selectedApprovalHealth = normalizeApprovalHealthFilter(requestedApprovalHealth);
   const connections = workspace ? await listConnectionsForWorkspace(workspace.id, user.id) : [];
   const providerScopeDriftSummaries = await listProviderScopeDriftSummaries(connections);
+  const visibleApprovals = filterApprovals(approvals, selectedApprovalHealth, providerScopeDriftSummaries);
   const approvalActivity = workspace && canReviewWorkspaceApprovals
     ? await listAuditLogs(workspace.id, {
         limit: 40,
@@ -314,6 +235,9 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
     ? await listToolInvocations(workspace.id, { limit: 40 })
     : { items: [] as ToolInvocationRecord[], pageInfo: null };
   const baseUrl = process.env.APP_URL ?? 'http://localhost:3000';
+  const approvalMemberDisplayNames = new Map(
+    approvals.map((approval) => [approval.user_id, approval.approved_by_display_name ?? null] as const)
+  );
   const activeApprovals = approvals.filter((approval) => approval.status === 'active').length;
   const revokedApprovals = approvals.filter((approval) => approval.status === 'revoked').length;
   const recentlyUsedApprovals = approvals.filter((approval) => isRecent(approval.last_used_at, 7)).length;
@@ -326,6 +250,7 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
     getApprovalHealthReasons(approval, providerScopeDriftSummaries).some((reason) => reason.key === 'scope_drift' || reason.key === 'stale')
   ).length;
   const reauthorizableApprovals = approvals.filter((approval) => approval.status === 'active' && approval.user_id === user.id).length;
+  const hasApprovalFilters = selectedApprovalHealth !== 'all';
   const clientActivity = buildClientActivitySummaries(approvals, approvalActivity.items, recentInvocations.items);
   const activeClients = clientActivity.filter((entry) => entry.recentToolCalls > 0 || entry.recentAuditEvents > 0).length;
 
@@ -368,7 +293,7 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
           <CardContent>
             <p className="text-4xl font-semibold text-foreground">{degradedApprovals}</p>
             <p className="text-sm text-muted-foreground">
-            {scopeDriftApprovals} blocked by provider scope drift. {staleApprovals} stale. {awaitingTokenExchangeApprovals} awaiting client exchange.
+              {scopeDriftApprovals} blocked by provider scope drift. {staleApprovals} stale. {awaitingTokenExchangeApprovals} awaiting client exchange.
             </p>
           </CardContent>
         </Card>
@@ -461,16 +386,43 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
         </CardHeader>
         {workspace ? (
           <CardContent className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {approvalHealthFilters.map((filter) => {
+                const active = selectedApprovalHealth === filter.value;
+                return (
+                  <Button key={filter.value} asChild size="sm" variant={active ? 'default' : 'outline'}>
+                    <Link href={buildMcpClientsHref(workspace.id, currentSearchParams, {
+                      approval_health: filter.value === 'all' ? null : filter.value
+                    })}>
+                      {filter.label}
+                    </Link>
+                  </Button>
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="moss">{visibleApprovals.length} visible approvals</Badge>
+              <Badge tone={hasApprovalFilters ? 'brass' : 'moss'}>{hasApprovalFilters ? 'Filtered approvals' : 'All approvals'}</Badge>
+              {hasApprovalFilters ? (
+                <Button asChild size="sm" variant="outline">
+                  <Link href={buildMcpClientsHref(workspace.id, currentSearchParams, { approval_health: null })}>
+                    Clear approval filters
+                  </Link>
+                </Button>
+              ) : null}
+            </div>
             {canReviewWorkspaceApprovals === false ? (
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Showing approvals you personally granted.</p>
             ) : null}
             {canReviewWorkspaceApprovals ? (
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Recent tool calls now record MCP client IDs for approval-to-runtime correlation.</p>
             ) : null}
-            {approvals.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No approvals recorded for this workspace yet.</p>
+            {visibleApprovals.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {hasApprovalFilters ? 'No approvals match the selected filter.' : 'No approvals recorded for this workspace yet.'}
+              </p>
             ) : (
-              approvals.map((approval) => {
+              visibleApprovals.map((approval) => {
                 const canRevoke = approval.status === 'active' && (approval.user_id === user.id || canReviewWorkspaceApprovals);
                 const canReauthorize = approval.status === 'active' && approval.user_id === user.id;
                 const summary = clientActivity.find((entry) => entry.clientId === approval.client_id);
@@ -511,7 +463,7 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                       ))}
                     </div>
                     <div className="mt-4 space-y-1 text-sm text-slate-700">
-                      <p>{approval.user_id === user.id ? 'Approved by you' : `Approved by ${approval.user_id}`}</p>
+                      <p>{getApprovalActorLabel(approval, user.id, approvalMemberDisplayNames)}</p>
                       <p>Approved at {approval.approved_at}</p>
                       <p>{approval.last_used_at ? `Last token issued ${approval.last_used_at}` : 'No token exchanges recorded yet.'}</p>
                       {approvalHealthReasons.map((reason) => (

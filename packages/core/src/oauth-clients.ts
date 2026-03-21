@@ -36,6 +36,40 @@ function mapApprovalRecord(row: Record<string, unknown>): OAuthClientApprovalRec
   };
 }
 
+type WorkspaceMemberIdentity = {
+  user_id: string;
+  profile: {
+    display_name: string | null;
+    avatar_url: string | null;
+  } | null;
+};
+
+async function listWorkspaceMemberIdentities(workspaceId: string) {
+  const supabase = createServiceRoleClient();
+  const { data } = await supabase
+    .schema('app')
+    .from('workspace_members')
+    .select('user_id,profile:profiles(display_name,avatar_url)')
+    .eq('workspace_id', workspaceId);
+
+  return (data ?? []).map((entry) => ({
+    user_id: String(entry.user_id),
+    profile: Array.isArray(entry.profile) ? entry.profile[0] ?? null : entry.profile
+  })) as WorkspaceMemberIdentity[];
+}
+
+function enrichApprovalWithIdentity(
+  approval: OAuthClientApprovalRecord,
+  identities: Map<string, WorkspaceMemberIdentity>
+): OAuthClientApprovalRecord {
+  const identity = identities.get(approval.user_id);
+  return {
+    ...approval,
+    approved_by_display_name: identity?.profile?.display_name ?? null,
+    approved_by_avatar_url: identity?.profile?.avatar_url ?? null
+  };
+}
+
 export async function listOAuthClients(createdBy: string) {
   const supabase = createServiceRoleClient();
   const { data } = await supabase
@@ -67,7 +101,12 @@ export async function getOAuthClientApproval(input: {
     .eq('user_id', input.userId)
     .maybeSingle();
 
-  return data ? mapApprovalRecord(data as Record<string, unknown>) : null;
+  const approval = data ? mapApprovalRecord(data as Record<string, unknown>) : null;
+  if (!approval) return null;
+
+  const identities = await listWorkspaceMemberIdentities(input.workspaceId);
+  const identityMap = new Map(identities.map((entry) => [entry.user_id, entry]));
+  return enrichApprovalWithIdentity(approval, identityMap);
 }
 
 export async function getOAuthClientApprovalById(approvalId: string) {
@@ -79,13 +118,19 @@ export async function getOAuthClientApprovalById(approvalId: string) {
     .eq('id', approvalId)
     .maybeSingle();
 
-  return data ? mapApprovalRecord(data as Record<string, unknown>) : null;
+  const approval = data ? mapApprovalRecord(data as Record<string, unknown>) : null;
+  if (!approval) return null;
+
+  const identities = await listWorkspaceMemberIdentities(approval.workspace_id);
+  const identityMap = new Map(identities.map((entry) => [entry.user_id, entry]));
+  return enrichApprovalWithIdentity(approval, identityMap);
 }
 
 export async function listOAuthClientApprovals(input: {
   workspaceId: string;
   userId: string;
   includeWorkspaceApprovals?: boolean;
+  includeMemberIdentity?: boolean;
 }) {
   const supabase = createServiceRoleClient();
   let query = supabase
@@ -100,7 +145,14 @@ export async function listOAuthClientApprovals(input: {
   }
 
   const { data } = await query;
-  return (data ?? []).map((row) => mapApprovalRecord(row as Record<string, unknown>));
+  const approvals = (data ?? []).map((row) => mapApprovalRecord(row as Record<string, unknown>));
+  if (!input.includeMemberIdentity || approvals.length === 0) {
+    return approvals;
+  }
+
+  const identities = await listWorkspaceMemberIdentities(input.workspaceId);
+  const identityMap = new Map(identities.map((entry) => [entry.user_id, entry]));
+  return approvals.map((approval) => enrichApprovalWithIdentity(approval, identityMap));
 }
 
 export async function upsertOAuthClientApproval(input: {
