@@ -236,23 +236,23 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
   const workspace = await getAuthorizedWorkspace(user.id, requestedWorkspaceId);
   const activeMembership = workspace ? workspaces.find((entry) => entry.id === workspace.id) : null;
   const canReviewWorkspaceApprovals = canManageWorkspace(activeMembership?.role);
-  const [approvals, approvalActivity, recentInvocations] = workspace
-    ? await Promise.all([
-        listOAuthClientApprovals({
-          workspaceId: workspace.id,
-          userId: user.id,
-          includeWorkspaceApprovals: canReviewWorkspaceApprovals
-        }),
-        canReviewWorkspaceApprovals
-          ? listAuditLogs(workspace.id, {
-              limit: 40,
-              resourceType: 'oauth_client_approval',
-              actionPrefix: 'oauth_client.'
-            })
-          : Promise.resolve<AuditLogRecord[]>([]),
-        canReviewWorkspaceApprovals ? listToolInvocations(workspace.id, { limit: 40 }) : Promise.resolve<ToolInvocationRecord[]>([])
-      ])
-    : [[], [], []];
+  const approvals = workspace
+    ? await listOAuthClientApprovals({
+        workspaceId: workspace.id,
+        userId: user.id,
+        includeWorkspaceApprovals: canReviewWorkspaceApprovals
+      })
+    : [];
+  const approvalActivity = workspace && canReviewWorkspaceApprovals
+    ? await listAuditLogs(workspace.id, {
+        limit: 40,
+        resourceType: 'oauth_client_approval',
+        actionPrefix: 'oauth_client.'
+      })
+    : { items: [] as AuditLogRecord[], pageInfo: null };
+  const recentInvocations = workspace && canReviewWorkspaceApprovals
+    ? await listToolInvocations(workspace.id, { limit: 40 })
+    : { items: [] as ToolInvocationRecord[], pageInfo: null };
   const baseUrl = process.env.APP_URL ?? 'http://localhost:3000';
   const activeApprovals = approvals.filter((approval) => approval.status === 'active').length;
   const revokedApprovals = approvals.filter((approval) => approval.status === 'revoked').length;
@@ -260,7 +260,7 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
   const staleApprovals = approvals.filter((approval) => isStaleApproval(approval)).length;
   const awaitingTokenExchangeApprovals = approvals.filter((approval) => isApprovalAwaitingTokenExchange(approval)).length;
   const reauthorizableApprovals = approvals.filter((approval) => approval.status === 'active' && approval.user_id === user.id).length;
-  const clientActivity = buildClientActivitySummaries(approvals, approvalActivity, recentInvocations);
+  const clientActivity = buildClientActivitySummaries(approvals, approvalActivity.items, recentInvocations.items);
   const activeClients = clientActivity.filter((entry) => entry.recentToolCalls > 0 || entry.recentAuditEvents > 0).length;
 
   return (

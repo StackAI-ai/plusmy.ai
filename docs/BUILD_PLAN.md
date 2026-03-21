@@ -25,10 +25,11 @@
 - 2026-03-21 execution checkpoint: migrated the web app onto actual shadcn-style UI primitives in `packages/ui`, updated theme tokens/Tailwind wiring, and refactored the main operator surfaces to use shared `Card`, `Button`, `Input`, `Select`, and layout composition instead of ad hoc wrappers.
 - 2026-03-21 execution checkpoint: shipped `NIC-13` and `NIC-15` by wiring degraded dashboard, connection, and approval health surfaces into focused audit views and surfacing explicit approval health reasons plus revocation metadata directly on the MCP clients page.
 - 2026-03-21 execution checkpoint: verified the bundled Supabase CLI via `node_modules/supabase/bin/supabase --version` (`2.83.0`), restarted the web app cleanly on `http://localhost:3009`, and validated `/dashboard`, `/connections`, `/mcp-clients`, and `/audit` after a scoped typecheck.
+- 2026-03-21 execution checkpoint: shipped `NIC-14` with deterministic `created_at + id` cursor pagination for audit logs and tool invocations, added independent per-feed page controls plus page-size selectors on the audit surface, updated the audit API to return paged results, and confirmed the bundled Supabase CLI remains available (`2.83.0`). Root `npm run dev` restarted cleanly after cache removal, but Turbo still bound the web app to `http://localhost:3007` instead of the preferred `3009`.
 
 ## Next execution slice (2026-03-21)
-- Prioritize `NIC-14` next; the operator drill-down links now exist, but the shared audit/tool-invocation loaders still need deterministic pagination and cursor semantics before high-volume workspaces are safe.
-- Continue with reliability hardening in `NIC-16` and `NIC-17` after `NIC-14` so dead-letter, retry, and degraded-job investigation can build on the new audit entry points.
+- Prioritize `NIC-16` next so sync jobs have explicit dead-letter handling and actionable operator alerts now that audit pagination can safely expose high-volume failure history.
+- Continue with reliability hardening in `NIC-17` after `NIC-16` so token refresh retries adopt exponential backoff and jitter on the same worker surfaces.
 - Return to adjacent MCP client follow-up work in `NIC-45`, `NIC-44`, and `NIC-43` only if local/operator consent friction remains after the latest approval-health improvements.
 - Use the broader platform catalog to decide the next adapter scaffolds; the most obvious candidates are Microsoft 365, GitHub, Linear, Jira, Confluence, HubSpot, Salesforce, Zendesk, Dropbox, Airtable, Box, Asana, monday.com, ServiceNow, Zoom, and Okta.
 

@@ -8,6 +8,12 @@ function canManageWorkspace(role: string | undefined) {
   return role === 'owner' || role === 'admin';
 }
 
+function normalizeLimit(value: string | null, fallback: number) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(Math.trunc(parsed), 1), 100);
+}
+
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -30,7 +36,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  const limit = Number(url.searchParams.get('limit') ?? 25);
+  const limit = normalizeLimit(url.searchParams.get('limit'), 25);
   const status = url.searchParams.get('status');
   const actorType = url.searchParams.get('actor') ?? url.searchParams.get('actor_type');
   const resourceType = url.searchParams.get('resource') ?? url.searchParams.get('resource_type');
@@ -39,6 +45,10 @@ export async function GET(request: NextRequest) {
   const clientId = url.searchParams.get('client') ?? url.searchParams.get('client_id');
   const provider = url.searchParams.get('provider');
   const toolName = url.searchParams.get('tool') ?? url.searchParams.get('tool_name');
+  const auditCursor = url.searchParams.get('audit_cursor');
+  const auditDirection = url.searchParams.get('audit_direction');
+  const invocationCursor = url.searchParams.get('invocation_cursor');
+  const invocationDirection = url.searchParams.get('invocation_direction');
 
   const audit = await listAuditLogs(workspace.id, {
     limit,
@@ -47,14 +57,19 @@ export async function GET(request: NextRequest) {
     resourceType,
     resourceId,
     actionPrefix,
-    clientId
+    clientId,
+    cursor: auditCursor,
+    direction: auditDirection === 'prev' ? 'prev' : 'next'
   });
   const invocations = await listToolInvocations(workspace.id, {
     limit,
     status,
     provider,
     toolName,
-    actorClientId: clientId
+    actorClientId: clientId,
+    connectionId: url.searchParams.get('connection'),
+    cursor: invocationCursor,
+    direction: invocationDirection === 'prev' ? 'prev' : 'next'
   });
   return NextResponse.json({ workspace, audit, invocations });
 }

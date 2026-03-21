@@ -26,6 +26,8 @@ export interface AuditLogFilters {
   resourceId?: string | null;
   actionPrefix?: string | null;
   clientId?: string | null;
+  cursor?: string | null;
+  direction?: 'next' | 'prev' | null;
 }
 
 export interface ToolInvocationFilters {
@@ -36,6 +38,8 @@ export interface ToolInvocationFilters {
   actorClientId?: string | null;
   actorUserId?: string | null;
   connectionId?: string | null;
+  cursor?: string | null;
+  direction?: 'next' | 'prev' | null;
 }
 
 export interface ConnectionJobFilters {
@@ -49,6 +53,79 @@ function normalizeLimit(value: number | null | undefined, fallback: number) {
   const limit = Number(value ?? fallback);
   if (!Number.isFinite(limit)) return fallback;
   return Math.min(Math.max(Math.trunc(limit), 1), 200);
+}
+
+function normalizeCursorDirection(value: 'next' | 'prev' | null | undefined) {
+  return value === 'prev' ? 'prev' : 'next';
+}
+
+type CursorRecord = {
+  id: string;
+  created_at: string;
+};
+
+type PageInfo = {
+  limit: number;
+  olderCursor: string | null;
+  newerCursor: string | null;
+  hasOlderPage: boolean;
+  hasNewerPage: boolean;
+};
+
+export interface CursorPageResult<T> {
+  items: T[];
+  pageInfo: PageInfo;
+}
+
+function encodeCursor(record: CursorRecord) {
+  return Buffer.from(JSON.stringify({ id: record.id, created_at: record.created_at }), 'utf8').toString('base64url');
+}
+
+function decodeCursor(cursor: string | null | undefined): CursorRecord | null {
+  if (!cursor) return null;
+
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as Partial<CursorRecord>;
+    if (typeof parsed?.id !== 'string' || typeof parsed?.created_at !== 'string') {
+      return null;
+    }
+
+    return { id: parsed.id, created_at: parsed.created_at };
+  } catch {
+    return null;
+  }
+}
+
+function applyCursorFilter<T extends { or: (filter: string) => T }>(
+  query: T,
+  cursor: CursorRecord | null,
+  direction: 'next' | 'prev'
+) {
+  if (!cursor) return query;
+
+  const comparator = direction === 'prev' ? 'gt' : 'lt';
+  return query.or(`created_at.${comparator}.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.${comparator}.${cursor.id})`);
+}
+
+function buildPageInfo<T extends CursorRecord>(
+  items: T[],
+  limit: number,
+  direction: 'next' | 'prev',
+  cursor: CursorRecord | null,
+  hasMore: boolean
+): PageInfo {
+  const firstItem = items[0] ?? null;
+  const lastItem = items.at(-1) ?? null;
+  const hasOlderPage = direction === 'prev' ? Boolean(cursor) : hasMore;
+  const hasNewerPage = direction === 'prev' ? hasMore : Boolean(cursor);
+
+  return {
+    limit,
+    olderCursor: hasOlderPage && lastItem ? encodeCursor(lastItem) : null,
+    newerCursor: hasNewerPage && firstItem ? encodeCursor(firstItem) : null,
+    hasOlderPage,
+    hasNewerPage
+  };
 }
 
 function auditRecordClientId(record: AuditLogRecord) {
@@ -787,66 +864,104 @@ export async function consumeRateLimit(input: {
   return data as { allowed: boolean; remaining: number; count: number };
 }
 
-export async function listAuditLogs(workspaceId: string, optionsOrLimit: number | AuditLogFilters = 25) {
+export async function listAuditLogs(workspaceId: string, optionsOrLimit: number | AuditLogFilters = 25): Promise<CursorPageResult<AuditLogRecord>> {
   const supabase = createServiceRoleClient();
   const options = typeof optionsOrLimit === 'number' ? { limit: optionsOrLimit } : optionsOrLimit;
   const limit = normalizeLimit(options.limit, 25);
-  const queryLimit = options.clientId && !options.actorClientId ? Math.min(limit * 4, 200) : limit;
+  const direction = normalizeCursorDirection(options.direction);
+  const cursor = decodeCursor(options.cursor);
+  const batchLimit = options.clientId && !options.actorClientId ? 200 : limit + 1;
 
-  let query = supabase
-    .schema('app')
-    .from('audit_logs')
-    .select('*')
-    .eq('workspace_id', workspaceId)
-    .order('created_at', { ascending: false })
-    .limit(queryLimit);
+  const collected: AuditLogRecord[] = [];
+  let exhausted = false;
+  let rawCursor = cursor;
 
-  if (options.status) {
-    query = query.eq('status', options.status);
+  while (collected.length < limit + 1 && !exhausted) {
+    let query = supabase
+      .schema('app')
+      .from('audit_logs')
+      .select('*')
+      .eq('workspace_id', workspaceId)
+      .order('created_at', { ascending: direction === 'prev' })
+      .order('id', { ascending: direction === 'prev' })
+      .limit(batchLimit);
+
+    query = applyCursorFilter(query, rawCursor, direction);
+
+    if (options.status) {
+      query = query.eq('status', options.status);
+    }
+
+    if (options.actorType) {
+      query = query.eq('actor_type', options.actorType);
+    }
+
+    if (options.actorClientId) {
+      query = query.eq('actor_client_id', options.actorClientId);
+    }
+
+    if (options.resourceType) {
+      query = query.eq('resource_type', options.resourceType);
+    }
+
+    if (options.resourceId) {
+      query = query.eq('resource_id', options.resourceId);
+    }
+
+    if (options.actionPrefix) {
+      query = query.ilike('action', `${options.actionPrefix}%`);
+    }
+
+    const { data } = await query;
+    const rawRows = (data ?? []) as AuditLogRecord[];
+    if (rawRows.length === 0) {
+      exhausted = true;
+      break;
+    }
+
+    rawCursor = rawRows.at(-1) ?? rawCursor;
+
+    const matchingRows = options.clientId
+      ? rawRows.filter((record) => auditRecordClientId(record) === options.clientId)
+      : rawRows;
+
+    collected.push(...matchingRows);
+
+    if (rawRows.length < batchLimit) {
+      exhausted = true;
+    }
   }
 
-  if (options.actorType) {
-    query = query.eq('actor_type', options.actorType);
-  }
+  const hasMore = collected.length > limit;
+  const pageItems = collected.slice(0, limit);
+  const items = direction === 'prev' ? [...pageItems].reverse() : pageItems;
 
-  if (options.actorClientId) {
-    query = query.eq('actor_client_id', options.actorClientId);
-  }
-
-  if (options.resourceType) {
-    query = query.eq('resource_type', options.resourceType);
-  }
-
-  if (options.resourceId) {
-    query = query.eq('resource_id', options.resourceId);
-  }
-
-  if (options.actionPrefix) {
-    query = query.ilike('action', `${options.actionPrefix}%`);
-  }
-
-  const { data } = await query;
-  let rows = (data ?? []) as AuditLogRecord[];
-
-  if (options.clientId) {
-    rows = rows.filter((record) => auditRecordClientId(record) === options.clientId);
-  }
-
-  return rows.slice(0, limit);
+  return {
+    items,
+    pageInfo: buildPageInfo(items, limit, direction, cursor, hasMore)
+  };
 }
 
-export async function listToolInvocations(workspaceId: string, optionsOrLimit: number | ToolInvocationFilters = 25) {
+export async function listToolInvocations(
+  workspaceId: string,
+  optionsOrLimit: number | ToolInvocationFilters = 25
+): Promise<CursorPageResult<ToolInvocationRecord>> {
   const supabase = createServiceRoleClient();
   const options = typeof optionsOrLimit === 'number' ? { limit: optionsOrLimit } : optionsOrLimit;
   const limit = normalizeLimit(options.limit, 25);
+  const direction = normalizeCursorDirection(options.direction);
+  const cursor = decodeCursor(options.cursor);
 
   let query = supabase
     .schema('app')
     .from('tool_invocations')
     .select('*')
     .eq('workspace_id', workspaceId)
-    .order('created_at', { ascending: false })
-    .limit(limit);
+    .order('created_at', { ascending: direction === 'prev' })
+    .order('id', { ascending: direction === 'prev' })
+    .limit(limit + 1);
+
+  query = applyCursorFilter(query, cursor, direction);
 
   if (options.status) {
     query = query.eq('status', options.status);
@@ -873,7 +988,15 @@ export async function listToolInvocations(workspaceId: string, optionsOrLimit: n
   }
 
   const { data } = await query;
-  return (data ?? []) as ToolInvocationRecord[];
+  const rows = (data ?? []) as ToolInvocationRecord[];
+  const hasMore = rows.length > limit;
+  const pageItems = rows.slice(0, limit);
+  const items = direction === 'prev' ? [...pageItems].reverse() : pageItems;
+
+  return {
+    items,
+    pageInfo: buildPageInfo(items, limit, direction, cursor, hasMore)
+  };
 }
 
 export async function revokeConnection(input: {

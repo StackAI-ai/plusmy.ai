@@ -6,6 +6,8 @@ import { getAuthorizedWorkspace, listAuditLogs, listToolInvocations, listUserWor
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
 import { buildAuditHref } from '../_lib/audit-href';
 
+const pageSizeOptions = [25, 50, 100] as const;
+
 function canManageWorkspace(role: string | undefined) {
   return role === 'owner' || role === 'admin';
 }
@@ -14,6 +16,43 @@ function readParam(params: Record<string, string | string[] | undefined>, key: s
   const value = params[key];
   if (Array.isArray(value)) return value[0] ?? null;
   return typeof value === 'string' ? value : null;
+}
+
+function normalizeLimit(value: string | null, fallback = 50) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(Math.trunc(parsed), 1), 100);
+}
+
+function normalizePage(value: string | null) {
+  const parsed = Number(value ?? 1);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.max(Math.trunc(parsed), 1);
+}
+
+function buildFeedHref(
+  workspaceId: string,
+  currentFilters: Record<string, string | null | undefined>,
+  updates: Record<string, string | null | undefined>
+) {
+  return buildAuditHref(workspaceId, updates, currentFilters);
+}
+
+function buildFeedPaginationHref(input: {
+  workspaceId: string;
+  currentFilters: Record<string, string | null | undefined>;
+  cursorKey: 'audit_cursor' | 'invocation_cursor';
+  directionKey: 'audit_direction' | 'invocation_direction';
+  pageKey: 'audit_page' | 'invocation_page';
+  cursor: string | null;
+  direction: 'next' | 'prev';
+  page: number;
+}) {
+  return buildFeedHref(input.workspaceId, input.currentFilters, {
+    [input.cursorKey]: input.cursor,
+    [input.directionKey]: input.cursor ? input.direction : null,
+    [input.pageKey]: String(Math.max(input.page, 1))
+  });
 }
 
 function summarizeErrorsByProvider(invocations: ToolInvocationRecord[]) {
@@ -121,6 +160,13 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
   const provider = readParam(resolvedSearchParams, 'provider');
   const toolName = readParam(resolvedSearchParams, 'tool');
   const connectionId = readParam(resolvedSearchParams, 'connection');
+  const limit = normalizeLimit(readParam(resolvedSearchParams, 'limit'));
+  const auditCursor = readParam(resolvedSearchParams, 'audit_cursor');
+  const auditDirection = readParam(resolvedSearchParams, 'audit_direction') === 'prev' ? 'prev' : 'next';
+  const invocationCursor = readParam(resolvedSearchParams, 'invocation_cursor');
+  const invocationDirection = readParam(resolvedSearchParams, 'invocation_direction') === 'prev' ? 'prev' : 'next';
+  const auditPage = normalizePage(readParam(resolvedSearchParams, 'audit_page'));
+  const invocationPage = normalizePage(readParam(resolvedSearchParams, 'invocation_page'));
   const currentFilters = {
     status,
     actor: actorType,
@@ -130,30 +176,49 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
     client: clientId,
     provider,
     tool: toolName,
-    connection: connectionId
+    connection: connectionId,
+    limit: String(limit),
+    audit_cursor: auditCursor,
+    audit_direction: auditCursor ? auditDirection : null,
+    audit_page: String(auditPage),
+    invocation_cursor: invocationCursor,
+    invocation_direction: invocationCursor ? invocationDirection : null,
+    invocation_page: String(invocationPage)
   };
 
-  const [audit, invocations] = workspace
+  const [auditResult, invocationResult] = workspace
     ? await Promise.all([
         listAuditLogs(workspace.id, {
-          limit: 50,
+          limit,
           status,
           actorType: actorType as 'user' | 'mcp_client' | 'system' | null,
           resourceType,
           resourceId,
           actionPrefix,
-          clientId
+          clientId,
+          cursor: auditCursor,
+          direction: auditDirection
         }),
         listToolInvocations(workspace.id, {
-          limit: 50,
+          limit,
           status,
           provider,
           toolName,
           actorClientId: clientId,
-          connectionId
+          connectionId,
+          cursor: invocationCursor,
+          direction: invocationDirection
         })
       ])
-    : [[], []];
+    : [
+        { items: [] as AuditLogRecord[], pageInfo: { limit, olderCursor: null, newerCursor: null, hasOlderPage: false, hasNewerPage: false } },
+        {
+          items: [] as ToolInvocationRecord[],
+          pageInfo: { limit, olderCursor: null, newerCursor: null, hasOlderPage: false, hasNewerPage: false }
+        }
+      ];
+  const audit = auditResult.items;
+  const invocations = invocationResult.items;
   const auditErrorCount = audit.filter((entry) => entry.status === 'error').length;
   const invocationErrorCount = invocations.filter((entry) => entry.status === 'error').length;
   const invocationErrorsByProvider = summarizeErrorsByProvider(invocations);
@@ -288,7 +353,13 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
                 client: null,
                 provider: null,
                 tool: null,
-                connection: null
+                connection: null,
+                audit_cursor: null,
+                audit_direction: null,
+                audit_page: '1',
+                invocation_cursor: null,
+                invocation_direction: null,
+                invocation_page: '1'
               }, currentFilters)}
             >
               Reset filters
@@ -340,6 +411,26 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
           </div>
 
           <div className="flex flex-wrap gap-2">
+            {pageSizeOptions.map((size) => (
+              <Button key={size} asChild size="sm" variant={limit === size ? 'default' : 'outline'}>
+                <Link
+                  href={buildFeedHref(workspace.id, currentFilters, {
+                    limit: String(size),
+                    audit_cursor: null,
+                    audit_direction: null,
+                    audit_page: '1',
+                    invocation_cursor: null,
+                    invocation_direction: null,
+                    invocation_page: '1'
+                  })}
+                >
+                  {size} rows
+                </Link>
+              </Button>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
             <Button asChild size="sm" variant={!provider && !toolName ? 'default' : 'outline'}>
               <Link href={buildAuditHref(workspace.id, { provider: null, tool: null }, currentFilters)}>All providers</Link>
             </Button>
@@ -359,7 +450,12 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
       <div className="grid gap-5 xl:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
-            <CardTitle className="text-lg">Audit events</CardTitle>
+            <div className="space-y-1">
+              <CardTitle className="text-lg">Audit events</CardTitle>
+              <CardDescription>
+                Page {auditPage} • {audit.length} rows • sorted by newest event first.
+              </CardDescription>
+            </div>
             <Badge tone="moss">{audit.length}</Badge>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -386,12 +482,63 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
                 </div>
               ))
             )}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3">
+              {auditResult.pageInfo.newerCursor ? (
+                <Button asChild size="sm" variant="outline">
+                  <Link
+                    href={buildFeedPaginationHref({
+                      workspaceId: workspace.id,
+                      currentFilters,
+                      cursorKey: 'audit_cursor',
+                      directionKey: 'audit_direction',
+                      pageKey: 'audit_page',
+                      cursor: auditResult.pageInfo.newerCursor,
+                      direction: 'prev',
+                      page: auditPage - 1
+                    })}
+                  >
+                    Newer
+                  </Link>
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" disabled>
+                  Newer
+                </Button>
+              )}
+              {auditResult.pageInfo.olderCursor ? (
+                <Button asChild size="sm" variant="outline">
+                  <Link
+                    href={buildFeedPaginationHref({
+                      workspaceId: workspace.id,
+                      currentFilters,
+                      cursorKey: 'audit_cursor',
+                      directionKey: 'audit_direction',
+                      pageKey: 'audit_page',
+                      cursor: auditResult.pageInfo.olderCursor,
+                      direction: 'next',
+                      page: auditPage + 1
+                    })}
+                  >
+                    Older
+                  </Link>
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" disabled>
+                  Older
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
-            <CardTitle className="text-lg">Tool invocations</CardTitle>
+            <div className="space-y-1">
+              <CardTitle className="text-lg">Tool invocations</CardTitle>
+              <CardDescription>
+                Page {invocationPage} • {invocations.length} rows • deterministic newest-first ordering.
+              </CardDescription>
+            </div>
             <Badge tone="moss">{invocations.length}</Badge>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -417,6 +564,52 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
                 </div>
               ))
             )}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3">
+              {invocationResult.pageInfo.newerCursor ? (
+                <Button asChild size="sm" variant="outline">
+                  <Link
+                    href={buildFeedPaginationHref({
+                      workspaceId: workspace.id,
+                      currentFilters,
+                      cursorKey: 'invocation_cursor',
+                      directionKey: 'invocation_direction',
+                      pageKey: 'invocation_page',
+                      cursor: invocationResult.pageInfo.newerCursor,
+                      direction: 'prev',
+                      page: invocationPage - 1
+                    })}
+                  >
+                    Newer
+                  </Link>
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" disabled>
+                  Newer
+                </Button>
+              )}
+              {invocationResult.pageInfo.olderCursor ? (
+                <Button asChild size="sm" variant="outline">
+                  <Link
+                    href={buildFeedPaginationHref({
+                      workspaceId: workspace.id,
+                      currentFilters,
+                      cursorKey: 'invocation_cursor',
+                      directionKey: 'invocation_direction',
+                      pageKey: 'invocation_page',
+                      cursor: invocationResult.pageInfo.olderCursor,
+                      direction: 'next',
+                      page: invocationPage + 1
+                    })}
+                  >
+                    Older
+                  </Link>
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" disabled>
+                  Older
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
