@@ -1,6 +1,30 @@
-import type { ContextAssetType, McpResourceContent, McpResourceDefinition } from '@plusmy/contracts';
-import { createServiceRoleClient } from '@plusmy/supabase';
-import { chunkText, createEmbedding } from './embeddings';
+import type {
+  ContextAssetType,
+  ContextBindingRecord,
+  ContextBindingType,
+  Json,
+  McpResourceContent,
+  McpResourceDefinition
+} from '@plusmy/contracts'
+import { createServiceRoleClient } from '@plusmy/supabase'
+import { logAuditEvent } from './connections'
+import { chunkText, createEmbedding } from './embeddings'
+
+const allowedContextBindingTypes = new Set<ContextBindingType>(['workspace', 'provider', 'tool'])
+const contextBindingSelect = `
+  id,
+  workspace_id,
+  binding_type,
+  target_key,
+  prompt_template_id,
+  skill_definition_id,
+  priority,
+  metadata,
+  created_at,
+  updated_at,
+  prompt_template:prompt_templates(id,name,slug,description,owner_user_id),
+  skill_definition:skill_definitions(id,name,slug,description,owner_user_id)
+`
 
 function slugify(value: string) {
   return value
@@ -8,37 +32,168 @@ function slugify(value: string) {
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 64);
+    .slice(0, 64)
 }
 
 function parseResourceUri(uri: string) {
-  const match = uri.match(/^plusmy:\/\/(prompt|skill)\/([a-f0-9-]+)$/i);
-  if (!match) return null;
-  return { kind: match[1], id: match[2] };
+  const match = uri.match(/^plusmy:\/\/(prompt|skill)\/([a-f0-9-]+)$/i)
+  if (!match) return null
+  return { kind: match[1], id: match[2] }
+}
+
+function normalizeJoinedRecord<T>(value: T | T[] | null | undefined) {
+  return Array.isArray(value) ? (value[0] ?? null) : (value ?? null)
+}
+
+function normalizeContextBindingRow(row: {
+  id: string
+  workspace_id: string
+  binding_type: string
+  target_key: string
+  prompt_template_id: string | null
+  skill_definition_id: string | null
+  priority: number
+  metadata: Json
+  created_at: string
+  updated_at: string
+  prompt_template?: {
+    id: string
+    name: string
+    slug: string
+    description: string | null
+    owner_user_id: string | null
+  } | Array<{
+    id: string
+    name: string
+    slug: string
+    description: string | null
+    owner_user_id: string | null
+  }> | null
+  skill_definition?: {
+    id: string
+    name: string
+    slug: string
+    description: string | null
+    owner_user_id: string | null
+  } | Array<{
+    id: string
+    name: string
+    slug: string
+    description: string | null
+    owner_user_id: string | null
+  }> | null
+}): ContextBindingRecord {
+  const prompt = normalizeJoinedRecord(row.prompt_template)
+  const skill = normalizeJoinedRecord(row.skill_definition)
+
+  return {
+    id: row.id,
+    workspace_id: row.workspace_id,
+    binding_type: normalizeBindingType(row.binding_type),
+    target_key: row.target_key,
+    prompt_template_id: row.prompt_template_id,
+    skill_definition_id: row.skill_definition_id,
+    priority: row.priority,
+    metadata: row.metadata ?? {},
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    prompt_template: prompt
+      ? {
+          id: prompt.id,
+          name: prompt.name,
+          slug: prompt.slug,
+          description: prompt.description ?? null
+        }
+      : null,
+    skill_definition: skill
+      ? {
+          id: skill.id,
+          name: skill.name,
+          slug: skill.slug,
+          description: skill.description ?? null
+        }
+      : null
+  }
+}
+
+function normalizeBindingType(value: string): ContextBindingType {
+  if (!allowedContextBindingTypes.has(value as ContextBindingType)) {
+    throw new Error('Unsupported context binding type.')
+  }
+
+  return value as ContextBindingType
+}
+
+function normalizeBindingTarget(bindingType: ContextBindingType, targetKey: string | null | undefined) {
+  const normalized = String(targetKey ?? '')
+    .trim()
+    .toLowerCase()
+
+  if (bindingType === 'workspace') {
+    return normalized || 'default'
+  }
+
+  if (!normalized || !/^[a-z0-9._:-]+$/.test(normalized)) {
+    throw new Error('Binding target keys must use lowercase letters, numbers, dots, underscores, dashes, or colons.')
+  }
+
+  return normalized
+}
+
+async function getWorkspaceSharedPromptTemplate(workspaceId: string, promptTemplateId: string) {
+  const supabase = createServiceRoleClient()
+  const { data } = await supabase
+    .schema('app')
+    .from('prompt_templates')
+    .select('id,workspace_id,owner_user_id')
+    .eq('id', promptTemplateId)
+    .maybeSingle()
+
+  if (!data || data.workspace_id !== workspaceId || data.owner_user_id) {
+    throw new Error('Prompt bindings require a workspace-shared prompt template.')
+  }
+
+  return data
+}
+
+async function getWorkspaceSharedSkillDefinition(workspaceId: string, skillDefinitionId: string) {
+  const supabase = createServiceRoleClient()
+  const { data } = await supabase
+    .schema('app')
+    .from('skill_definitions')
+    .select('id,workspace_id,owner_user_id')
+    .eq('id', skillDefinitionId)
+    .maybeSingle()
+
+  if (!data || data.workspace_id !== workspaceId || data.owner_user_id) {
+    throw new Error('Skill bindings require a workspace-shared skill definition.')
+  }
+
+  return data
 }
 
 export async function listContextAssets(workspaceId: string, userId: string | null | undefined) {
-  const supabase = createServiceRoleClient();
+  const supabase = createServiceRoleClient()
   const { data } = await supabase
     .schema('app')
     .from('context_assets')
     .select('id,title,type,source_uri,owner_user_id,updated_at')
     .eq('workspace_id', workspaceId)
-    .order('updated_at', { ascending: false });
+    .order('updated_at', { ascending: false })
 
-  return (data ?? []).filter((item) => !item.owner_user_id || item.owner_user_id === userId);
+  return (data ?? []).filter((item) => !item.owner_user_id || item.owner_user_id === userId)
 }
 
 export async function createContextAsset(input: {
-  workspaceId: string;
-  ownerUserId: string | null;
-  type: ContextAssetType;
-  title: string;
-  content: string;
-  sourceUri?: string | null;
-  metadata?: Record<string, unknown>;
+  workspaceId: string
+  ownerUserId: string | null
+  type: ContextAssetType
+  title: string
+  content: string
+  sourceUri?: string | null
+  metadata?: Record<string, unknown>
 }) {
-  const supabase = createServiceRoleClient();
+  const supabase = createServiceRoleClient()
   const { data: asset, error } = await supabase
     .schema('app')
     .from('context_assets')
@@ -52,13 +207,13 @@ export async function createContextAsset(input: {
       metadata: input.metadata ?? {}
     })
     .select('*')
-    .single();
+    .single()
 
-  if (error || !asset) throw error ?? new Error('Failed to create context asset.');
+  if (error || !asset) throw error ?? new Error('Failed to create context asset.')
 
-  const chunks = chunkText(input.content);
+  const chunks = chunkText(input.content)
   for (const [index, chunk] of chunks.entries()) {
-    const embedding = await createEmbedding(chunk);
+    const embedding = await createEmbedding(chunk)
     await supabase.schema('app').from('context_asset_chunks').insert({
       workspace_id: input.workspaceId,
       asset_id: asset.id,
@@ -70,33 +225,33 @@ export async function createContextAsset(input: {
         embedded: Boolean(embedding),
         model: embedding ? 'text-embedding-3-small' : null
       }
-    });
+    })
   }
 
-  return asset;
+  return asset
 }
 
 export async function listPromptTemplates(workspaceId: string, userId: string | null | undefined) {
-  const supabase = createServiceRoleClient();
+  const supabase = createServiceRoleClient()
   const { data } = await supabase
     .schema('app')
     .from('prompt_templates')
     .select('id,name,slug,description,owner_user_id,updated_at')
     .eq('workspace_id', workspaceId)
-    .order('updated_at', { ascending: false });
+    .order('updated_at', { ascending: false })
 
-  return (data ?? []).filter((item) => !item.owner_user_id || item.owner_user_id === userId);
+  return (data ?? []).filter((item) => !item.owner_user_id || item.owner_user_id === userId)
 }
 
 export async function createPromptTemplate(input: {
-  workspaceId: string;
-  ownerUserId: string | null;
-  name: string;
-  description?: string | null;
-  content: string;
-  metadata?: Record<string, unknown>;
+  workspaceId: string
+  ownerUserId: string | null
+  name: string
+  description?: string | null
+  content: string
+  metadata?: Record<string, unknown>
 }) {
-  const supabase = createServiceRoleClient();
+  const supabase = createServiceRoleClient()
   const { data, error } = await supabase
     .schema('app')
     .from('prompt_templates')
@@ -110,33 +265,33 @@ export async function createPromptTemplate(input: {
       metadata: input.metadata ?? {}
     })
     .select('*')
-    .single();
+    .single()
 
-  if (error || !data) throw error ?? new Error('Failed to create prompt template.');
-  return data;
+  if (error || !data) throw error ?? new Error('Failed to create prompt template.')
+  return data
 }
 
 export async function listSkillDefinitions(workspaceId: string, userId: string | null | undefined) {
-  const supabase = createServiceRoleClient();
+  const supabase = createServiceRoleClient()
   const { data } = await supabase
     .schema('app')
     .from('skill_definitions')
     .select('id,name,slug,description,owner_user_id,updated_at')
     .eq('workspace_id', workspaceId)
-    .order('updated_at', { ascending: false });
+    .order('updated_at', { ascending: false })
 
-  return (data ?? []).filter((item) => !item.owner_user_id || item.owner_user_id === userId);
+  return (data ?? []).filter((item) => !item.owner_user_id || item.owner_user_id === userId)
 }
 
 export async function createSkillDefinition(input: {
-  workspaceId: string;
-  ownerUserId: string | null;
-  name: string;
-  description?: string | null;
-  instructions: string;
-  metadata?: Record<string, unknown>;
+  workspaceId: string
+  ownerUserId: string | null
+  name: string
+  description?: string | null
+  instructions: string
+  metadata?: Record<string, unknown>
 }) {
-  const supabase = createServiceRoleClient();
+  const supabase = createServiceRoleClient()
   const { data, error } = await supabase
     .schema('app')
     .from('skill_definitions')
@@ -150,17 +305,225 @@ export async function createSkillDefinition(input: {
       metadata: input.metadata ?? {}
     })
     .select('*')
-    .single();
+    .single()
 
-  if (error || !data) throw error ?? new Error('Failed to create skill definition.');
-  return data;
+  if (error || !data) throw error ?? new Error('Failed to create skill definition.')
+  return data
+}
+
+export async function listContextBindings(workspaceId: string, userId: string | null | undefined) {
+  const supabase = createServiceRoleClient()
+  const { data } = await supabase
+    .schema('app')
+    .from('context_bindings')
+    .select(contextBindingSelect)
+    .eq('workspace_id', workspaceId)
+    .order('binding_type', { ascending: true })
+    .order('target_key', { ascending: true })
+    .order('priority', { ascending: true })
+
+  return (data ?? [])
+    .filter((row) => {
+      const prompt = normalizeJoinedRecord(row.prompt_template)
+      const skill = normalizeJoinedRecord(row.skill_definition)
+      const promptVisible = !prompt?.owner_user_id || prompt.owner_user_id === userId
+      const skillVisible = !skill?.owner_user_id || skill.owner_user_id === userId
+      return promptVisible && skillVisible
+    })
+    .map((row) =>
+      normalizeContextBindingRow(
+        row as {
+          id: string
+          workspace_id: string
+          binding_type: string
+          target_key: string
+          prompt_template_id: string | null
+          skill_definition_id: string | null
+          priority: number
+          metadata: Json
+          created_at: string
+          updated_at: string
+          prompt_template?: {
+            id: string
+            name: string
+            slug: string
+            description: string | null
+            owner_user_id: string | null
+          } | Array<{
+            id: string
+            name: string
+            slug: string
+            description: string | null
+            owner_user_id: string | null
+          }> | null
+          skill_definition?: {
+            id: string
+            name: string
+            slug: string
+            description: string | null
+            owner_user_id: string | null
+          } | Array<{
+            id: string
+            name: string
+            slug: string
+            description: string | null
+            owner_user_id: string | null
+          }> | null
+        }
+      )
+    )
+}
+
+export async function createContextBinding(input: {
+  workspaceId: string
+  actorUserId: string
+  bindingType: ContextBindingType
+  targetKey: string
+  promptTemplateId?: string | null
+  skillDefinitionId?: string | null
+  priority?: number | null
+  metadata?: Record<string, unknown>
+}) {
+  const supabase = createServiceRoleClient()
+  const bindingType = normalizeBindingType(input.bindingType)
+  const targetKey = normalizeBindingTarget(bindingType, input.targetKey)
+  const promptTemplateId = input.promptTemplateId?.trim() || null
+  const skillDefinitionId = input.skillDefinitionId?.trim() || null
+  const priority =
+    typeof input.priority === 'number' && Number.isFinite(input.priority) ? Math.max(0, Math.trunc(input.priority)) : 100
+
+  if (!promptTemplateId && !skillDefinitionId) {
+    throw new Error('Select at least one workspace-shared prompt or skill to bind.')
+  }
+
+  if (promptTemplateId) {
+    await getWorkspaceSharedPromptTemplate(input.workspaceId, promptTemplateId)
+  }
+
+  if (skillDefinitionId) {
+    await getWorkspaceSharedSkillDefinition(input.workspaceId, skillDefinitionId)
+  }
+
+  const { data, error } = await supabase
+    .schema('app')
+    .from('context_bindings')
+    .insert({
+      workspace_id: input.workspaceId,
+      binding_type: bindingType,
+      target_key: targetKey,
+      prompt_template_id: promptTemplateId,
+      skill_definition_id: skillDefinitionId,
+      priority,
+      metadata: input.metadata ?? {}
+    })
+    .select(contextBindingSelect)
+    .single()
+
+  if (error || !data) throw error ?? new Error('Failed to create context binding.')
+
+  await logAuditEvent({
+    workspaceId: input.workspaceId,
+    actorType: 'user',
+    actorUserId: input.actorUserId,
+    action: 'context.binding_created',
+    resourceType: 'context_binding',
+    resourceId: data.id,
+    metadata: {
+      binding_type: bindingType,
+      target_key: targetKey
+    }
+  })
+
+  return normalizeContextBindingRow(
+    data as {
+      id: string
+      workspace_id: string
+      binding_type: string
+      target_key: string
+      prompt_template_id: string | null
+      skill_definition_id: string | null
+      priority: number
+      metadata: Json
+      created_at: string
+      updated_at: string
+      prompt_template?: {
+        id: string
+        name: string
+        slug: string
+        description: string | null
+        owner_user_id: string | null
+      } | Array<{
+        id: string
+        name: string
+        slug: string
+        description: string | null
+        owner_user_id: string | null
+      }> | null
+      skill_definition?: {
+        id: string
+        name: string
+        slug: string
+        description: string | null
+        owner_user_id: string | null
+      } | Array<{
+        id: string
+        name: string
+        slug: string
+        description: string | null
+        owner_user_id: string | null
+      }> | null
+    }
+  )
+}
+
+export async function deleteContextBinding(input: {
+  workspaceId: string
+  bindingId: string
+  actorUserId: string
+}) {
+  const supabase = createServiceRoleClient()
+  const { data: binding } = await supabase
+    .schema('app')
+    .from('context_bindings')
+    .select('id,binding_type,target_key')
+    .eq('workspace_id', input.workspaceId)
+    .eq('id', input.bindingId)
+    .maybeSingle()
+
+  if (!binding) {
+    throw new Error('Context binding not found.')
+  }
+
+  const { error } = await supabase
+    .schema('app')
+    .from('context_bindings')
+    .delete()
+    .eq('workspace_id', input.workspaceId)
+    .eq('id', input.bindingId)
+
+  if (error) throw error
+
+  await logAuditEvent({
+    workspaceId: input.workspaceId,
+    actorType: 'user',
+    actorUserId: input.actorUserId,
+    action: 'context.binding_deleted',
+    resourceType: 'context_binding',
+    resourceId: binding.id,
+    metadata: {
+      binding_type: binding.binding_type,
+      target_key: binding.target_key
+    }
+  })
+
+  return binding
 }
 
 export async function listWorkspaceResources(workspaceId: string, userId: string | null | undefined) {
   const [prompts, skills] = await Promise.all([
     listPromptTemplates(workspaceId, userId),
     listSkillDefinitions(workspaceId, userId)
-  ]);
+  ])
 
   const promptResources = prompts.map(
     (item): McpResourceDefinition => ({
@@ -169,7 +532,7 @@ export async function listWorkspaceResources(workspaceId: string, userId: string
       description: item.description ?? 'Prompt template',
       mimeType: 'text/markdown'
     })
-  );
+  )
 
   const skillResources = skills.map(
     (item): McpResourceDefinition => ({
@@ -178,16 +541,16 @@ export async function listWorkspaceResources(workspaceId: string, userId: string
       description: item.description ?? 'Skill definition',
       mimeType: 'text/markdown'
     })
-  );
+  )
 
-  return [...promptResources, ...skillResources];
+  return [...promptResources, ...skillResources]
 }
 
 export async function readWorkspaceResource(workspaceId: string, userId: string | null | undefined, uri: string): Promise<McpResourceContent[]> {
-  const parsed = parseResourceUri(uri);
-  if (!parsed) return [];
+  const parsed = parseResourceUri(uri)
+  if (!parsed) return []
 
-  const supabase = createServiceRoleClient();
+  const supabase = createServiceRoleClient()
   if (parsed.kind === 'prompt') {
     const { data } = await supabase
       .schema('app')
@@ -195,10 +558,10 @@ export async function readWorkspaceResource(workspaceId: string, userId: string 
       .select('id,content,owner_user_id')
       .eq('workspace_id', workspaceId)
       .eq('id', parsed.id)
-      .maybeSingle();
+      .maybeSingle()
 
-    if (!data || (data.owner_user_id && data.owner_user_id !== userId)) return [];
-    return [{ uri, mimeType: 'text/markdown', text: data.content }];
+    if (!data || (data.owner_user_id && data.owner_user_id !== userId)) return []
+    return [{ uri, mimeType: 'text/markdown', text: data.content }]
   }
 
   const { data } = await supabase
@@ -207,24 +570,24 @@ export async function readWorkspaceResource(workspaceId: string, userId: string 
     .select('id,instructions,owner_user_id')
     .eq('workspace_id', workspaceId)
     .eq('id', parsed.id)
-    .maybeSingle();
+    .maybeSingle()
 
-  if (!data || (data.owner_user_id && data.owner_user_id !== userId)) return [];
-  return [{ uri, mimeType: 'text/markdown', text: data.instructions }];
+  if (!data || (data.owner_user_id && data.owner_user_id !== userId)) return []
+  return [{ uri, mimeType: 'text/markdown', text: data.instructions }]
 }
 
 export async function matchContextChunks(workspaceId: string, query: string, limit = 8) {
-  const embedding = await createEmbedding(query);
-  if (!embedding) return [];
+  const embedding = await createEmbedding(query)
+  if (!embedding) return []
 
-  const supabase = createServiceRoleClient();
+  const supabase = createServiceRoleClient()
   const { data, error } = await supabase.schema('app').rpc('match_context_chunks', {
     p_workspace_id: workspaceId,
     p_query_embedding: embedding,
     p_limit: limit,
     p_filters: {}
-  });
+  })
 
-  if (error) throw error;
-  return data ?? [];
+  if (error) throw error
+  return data ?? []
 }

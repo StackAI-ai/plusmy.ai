@@ -1,0 +1,210 @@
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import type { ContextBindingType } from '@plusmy/contracts'
+import { Button, Card } from '@plusmy/ui'
+
+type SelectOption = {
+  id: string
+  name: string
+  description: string | null
+}
+
+const bindingTargetOptions: Record<ContextBindingType, Array<{ value: string; label: string }>> = {
+  workspace: [{ value: 'default', label: 'Default workspace context' }],
+  provider: [
+    { value: 'google', label: 'Google' },
+    { value: 'slack', label: 'Slack' },
+    { value: 'notion', label: 'Notion' }
+  ],
+  tool: [
+    { value: 'google.search_drive', label: 'Google Drive search' },
+    { value: 'google.get_document', label: 'Google Doc read' },
+    { value: 'slack.list_channels', label: 'Slack list channels' },
+    { value: 'slack.read_channel_history', label: 'Slack read history' },
+    { value: 'slack.post_message', label: 'Slack post message' },
+    { value: 'notion.search', label: 'Notion search' },
+    { value: 'notion.get_page', label: 'Notion read page' },
+    { value: 'notion.create_page', label: 'Notion create page' }
+  ]
+}
+
+export function ContextBindingForm({
+  workspaceId,
+  prompts,
+  skills
+}: {
+  workspaceId: string
+  prompts: SelectOption[]
+  skills: SelectOption[]
+}) {
+  const router = useRouter()
+  const [bindingType, setBindingType] = useState<ContextBindingType>('workspace')
+  const [targetKey, setTargetKey] = useState(bindingTargetOptions.workspace[0]?.value ?? 'default')
+  const [promptTemplateId, setPromptTemplateId] = useState('')
+  const [skillDefinitionId, setSkillDefinitionId] = useState('')
+  const [priority, setPriority] = useState('100')
+  const [status, setStatus] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  const targetOptions = bindingTargetOptions[bindingType]
+  const canSubmit = prompts.length > 0 || skills.length > 0
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!promptTemplateId && !skillDefinitionId) {
+      setStatus('Choose at least one prompt or skill.')
+      return
+    }
+
+    setSubmitting(true)
+    setStatus(null)
+
+    const response = await fetch('/api/context-bindings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        binding_type: bindingType,
+        target_key: targetKey,
+        prompt_template_id: promptTemplateId || null,
+        skill_definition_id: skillDefinitionId || null,
+        priority: Number(priority)
+      })
+    })
+
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setStatus(payload?.error ?? 'Binding save failed.')
+      setSubmitting(false)
+      return
+    }
+
+    setStatus('Binding saved.')
+    setSubmitting(false)
+    router.refresh()
+  }
+
+  function handleBindingTypeChange(value: ContextBindingType) {
+    setBindingType(value)
+    setTargetKey(bindingTargetOptions[value][0]?.value ?? 'default')
+  }
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold">Bind prompts and skills</h2>
+          <p className="mt-3 text-sm leading-7 text-slate-700">
+            Attach workspace-shared prompts and skills to the default workspace context, a provider, or a specific MCP tool.
+          </p>
+        </div>
+      </div>
+
+      <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+        <div>
+          <label className="text-sm font-semibold text-slate-700" htmlFor="binding-type">
+            Binding type
+          </label>
+          <select
+            id="binding-type"
+            value={bindingType}
+            onChange={(event) => handleBindingTypeChange(event.target.value as ContextBindingType)}
+            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
+          >
+            <option value="workspace">Workspace default</option>
+            <option value="provider">Provider</option>
+            <option value="tool">Tool</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="text-sm font-semibold text-slate-700" htmlFor="binding-target">
+            Target
+          </label>
+          <select
+            id="binding-target"
+            value={targetKey}
+            onChange={(event) => setTargetKey(event.target.value)}
+            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
+          >
+            {targetOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-sm font-semibold text-slate-700" htmlFor="binding-priority">
+            Priority
+          </label>
+          <input
+            id="binding-priority"
+            type="number"
+            min={0}
+            step={1}
+            value={priority}
+            onChange={(event) => setPriority(event.target.value)}
+            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
+          />
+          <p className="mt-2 text-xs text-slate-500">Lower numbers win when multiple bindings target the same surface.</p>
+        </div>
+
+        <div>
+          <label className="text-sm font-semibold text-slate-700" htmlFor="binding-prompt">
+            Prompt template
+          </label>
+          <select
+            id="binding-prompt"
+            value={promptTemplateId}
+            onChange={(event) => setPromptTemplateId(event.target.value)}
+            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
+          >
+            <option value="">No prompt</option>
+            {prompts.map((prompt) => (
+              <option key={prompt.id} value={prompt.id}>
+                {prompt.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-sm font-semibold text-slate-700" htmlFor="binding-skill">
+            Skill definition
+          </label>
+          <select
+            id="binding-skill"
+            value={skillDefinitionId}
+            onChange={(event) => setSkillDefinitionId(event.target.value)}
+            className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-0"
+          >
+            <option value="">No skill</option>
+            {skills.map((skill) => (
+              <option key={skill.id} value={skill.id}>
+                {skill.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <p className="text-xs leading-6 text-slate-500">
+          Only workspace-shared prompts and skills can be bound. Personal context stays user-scoped and does not appear here.
+        </p>
+
+        <Button disabled={!canSubmit || submitting} type="submit">
+          {submitting ? 'Saving…' : 'Create binding'}
+        </Button>
+
+        {!canSubmit ? (
+          <p className="text-sm text-slate-700">Create a workspace-shared prompt or skill before adding a binding.</p>
+        ) : null}
+        {status ? <p className="text-sm text-slate-700">{status}</p> : null}
+      </form>
+    </Card>
+  )
+}

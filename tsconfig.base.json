@@ -18,6 +18,9 @@
       "@plusmy/config": ["packages/config/src/index.ts"],
       "@plusmy/contracts": ["packages/contracts/src/index.ts"],
       "@plusmy/supabase": ["packages/supabase/src/index.ts"],
+      "@plusmy/supabase/browser": ["packages/supabase/src/browser.ts"],
+      "@plusmy/supabase/server": ["packages/supabase/src/server.ts"],
+      "@plusmy/supabase/admin": ["packages/supabase/src/admin.ts"],
       "@plusmy/core": ["packages/core/src/index.ts"],
       "@plusmy/integrations": ["packages/integrations/src/index.ts"],
       "@plusmy/mcp": ["packages/mcp/src/index.ts"]

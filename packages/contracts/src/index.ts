@@ -6,6 +6,8 @@ export type ConnectionStatus = 'pending' | 'active' | 'reauth_required' | 'revok
 export type ProviderId = 'google' | 'slack' | 'notion';
 export type ToolCapability = 'read' | 'write' | 'search' | 'execute';
 export type ContextAssetType = 'document' | 'prompt' | 'brand_guideline' | 'workflow' | 'knowledge_base';
+export const contextBindingTypes = ['workspace', 'provider', 'tool'] as const;
+export type ContextBindingType = (typeof contextBindingTypes)[number];
 export type AuditAction = string;
 
 export interface WorkspaceRecord {
@@ -65,6 +67,28 @@ export interface McpResourceContent {
   mimeType?: string;
   text?: string;
   blob?: string;
+}
+
+export interface ContextBindingReference {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+}
+
+export interface ContextBindingRecord {
+  id: string;
+  workspace_id: string;
+  binding_type: ContextBindingType;
+  target_key: string;
+  prompt_template_id: string | null;
+  skill_definition_id: string | null;
+  priority: number;
+  metadata: Json;
+  created_at: string;
+  updated_at: string;
+  prompt_template: ContextBindingReference | null;
+  skill_definition: ContextBindingReference | null;
 }
 
 export interface McpJsonRpcRequest {

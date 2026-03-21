@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { createBrowserSupabaseClient } from '@plusmy/supabase';
+import { createBrowserSupabaseClient } from '@plusmy/supabase/browser';
 import { Button, Card } from '@plusmy/ui';
 
 export function LoginForm() {

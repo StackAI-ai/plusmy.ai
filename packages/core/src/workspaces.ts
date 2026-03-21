@@ -79,19 +79,21 @@ export async function createWorkspaceBootstrap(input: { userId: string; name: st
 }
 
 export async function getWorkspaceOverview(workspaceId: string, userId: string | null | undefined) {
-  const supabase = createServiceRoleClient();
-  const [connections, prompts, skills, assets] = await Promise.all([
+  const supabase = createServiceRoleClient()
+  const [connections, prompts, skills, assets, bindings] = await Promise.all([
     supabase.schema('app').from('connections').select('id,scope,owner_user_id', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
     supabase.schema('app').from('prompt_templates').select('id,owner_user_id', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
     supabase.schema('app').from('skill_definitions').select('id,owner_user_id', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
-    supabase.schema('app').from('context_assets').select('id,owner_user_id', { count: 'exact', head: true }).eq('workspace_id', workspaceId)
-  ]);
+    supabase.schema('app').from('context_assets').select('id,owner_user_id', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
+    supabase.schema('app').from('context_bindings').select('id', { count: 'exact', head: true }).eq('workspace_id', workspaceId)
+  ])
 
   return {
     connections: connections.count ?? 0,
     prompts: prompts.count ?? 0,
     skills: skills.count ?? 0,
     assets: assets.count ?? 0,
+    bindings: bindings.count ?? 0,
     userId: userId ?? null
-  };
+  }
 }

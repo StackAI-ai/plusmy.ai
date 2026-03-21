@@ -1,13 +1,13 @@
-import { Card, Badge } from '@plusmy/ui';
-import { createServerSupabaseClient } from '@plusmy/supabase';
-import { getAuthorizedWorkspace, getWorkspaceOverview, listUserWorkspaces } from '@plusmy/core';
-import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
+import { Card, Badge } from '@plusmy/ui'
+import { createServerSupabaseClient } from '@plusmy/supabase'
+import { getAuthorizedWorkspace, getWorkspaceOverview, listUserWorkspaces } from '@plusmy/core'
+import { getSearchParam, type AppSearchParams } from '../_lib/search-params'
 
 export default async function DashboardPage({ searchParams }: { searchParams?: AppSearchParams }) {
-  const supabase = await createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient()
   const {
     data: { user }
-  } = await supabase.auth.getUser();
+  } = await supabase.auth.getUser()
 
   if (!user) {
     return (
@@ -17,13 +17,13 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
           The dashboard reads live workspace state from Supabase Auth and the `app` schema. Sign in before creating a workspace or attaching integrations.
         </p>
       </Card>
-    );
+    )
   }
 
-  const workspaces = await listUserWorkspaces(user.id);
-  const requestedWorkspaceId = await getSearchParam(searchParams, 'workspace');
-  const activeWorkspace = await getAuthorizedWorkspace(user.id, requestedWorkspaceId);
-  const overview = activeWorkspace ? await getWorkspaceOverview(activeWorkspace.id, user.id) : null;
+  const workspaces = await listUserWorkspaces(user.id)
+  const requestedWorkspaceId = await getSearchParam(searchParams, 'workspace')
+  const activeWorkspace = await getAuthorizedWorkspace(user.id, requestedWorkspaceId)
+  const overview = activeWorkspace ? await getWorkspaceOverview(activeWorkspace.id, user.id) : null
 
   return (
     <div className="space-y-6">
@@ -39,7 +39,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
         </div>
       </Card>
 
-      <section className="grid gap-4 md:grid-cols-5">
+      <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
         <Card>
           <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Workspaces</p>
           <p className="mt-3 text-4xl font-semibold text-ink">{workspaces.length}</p>
@@ -60,6 +60,10 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
           <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Context assets</p>
           <p className="mt-3 text-4xl font-semibold text-ink">{overview?.assets ?? 0}</p>
         </Card>
+        <Card>
+          <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Binding rules</p>
+          <p className="mt-3 text-4xl font-semibold text-ink">{overview?.bindings ?? 0}</p>
+        </Card>
       </section>
 
       <Card>
@@ -72,5 +76,5 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
         </ul>
       </Card>
     </div>
-  );
+  )
 }
