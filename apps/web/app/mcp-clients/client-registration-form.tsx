@@ -2,7 +2,21 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Card, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@plusmy/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@plusmy/ui';
 
 export function ClientRegistrationForm() {
   const router = useRouter();
@@ -44,7 +58,12 @@ export function ClientRegistrationForm() {
 
   return (
     <Card>
-      <form className="space-y-4" onSubmit={handleSubmit}>
+      <CardHeader>
+        <CardTitle>Register client</CardTitle>
+        <CardDescription>Create an OAuth client that can use the plusmy.ai authorization server with PKCE.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-2">
           <Label htmlFor="client-name">MCP client name</Label>
           <Input
@@ -80,7 +99,8 @@ export function ClientRegistrationForm() {
         </Button>
         {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
         {secret ? <p className="font-mono text-xs text-muted-foreground">Client secret: {secret}</p> : null}
-      </form>
+        </form>
+      </CardContent>
     </Card>
   );
 }

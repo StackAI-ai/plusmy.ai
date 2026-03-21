@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Badge, Card } from '@plusmy/ui';
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
 import type { AuditLogRecord, OAuthClientApprovalRecord, ToolInvocationRecord } from '@plusmy/contracts';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import { getAuthorizedWorkspace, listAuditLogs, listOAuthClientApprovals, listOAuthClients, listToolInvocations, listUserWorkspaces } from '@plusmy/core';
@@ -209,10 +209,12 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
   if (!user) {
     return (
       <Card>
-        <h1 className="text-2xl font-semibold">MCP clients</h1>
-        <p className="mt-3 text-sm leading-7 text-slate-700">
-          Sign in first. Dynamic client registration is tied to the current authenticated user.
-        </p>
+        <CardHeader>
+          <CardTitle className="text-2xl">MCP clients</CardTitle>
+          <CardDescription>
+            Sign in first. Dynamic client registration is tied to the current authenticated user.
+          </CardDescription>
+        </CardHeader>
       </Card>
     );
   }
@@ -254,55 +256,82 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
     <div className="space-y-5">
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         <Card className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Registered clients</p>
-          <p className="text-4xl font-semibold text-ink">{clients.length}</p>
-          <p className="text-sm text-slate-700">OAuth clients created by the current operator account.</p>
+          <CardHeader>
+            <CardTitle className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Registered clients</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{clients.length}</p>
+            <p className="text-sm text-muted-foreground">OAuth clients created by the current operator account.</p>
+          </CardContent>
         </Card>
         <Card className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Active approvals</p>
-          <p className="text-4xl font-semibold text-ink">{activeApprovals}</p>
-          <p className="text-sm text-slate-700">Delegated grants that can still mint or refresh tokens. {revokedApprovals} revoked.</p>
+          <CardHeader>
+            <CardTitle className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Active approvals</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{activeApprovals}</p>
+            <p className="text-sm text-muted-foreground">
+              Delegated grants that can still mint or refresh tokens. {revokedApprovals} revoked.
+            </p>
+          </CardContent>
         </Card>
         <Card className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Used in the last 7 days</p>
-          <p className="text-4xl font-semibold text-ink">{recentlyUsedApprovals}</p>
-          <p className="text-sm text-slate-700">Approvals with recent token usage recorded on the approval itself.</p>
+          <CardHeader>
+            <CardTitle className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Used in the last 7 days</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{recentlyUsedApprovals}</p>
+            <p className="text-sm text-muted-foreground">Approvals with recent token usage recorded on the approval itself.</p>
+          </CardContent>
         </Card>
         <Card className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Stale approvals</p>
-          <p className="text-4xl font-semibold text-ink">{staleApprovals}</p>
-          <p className="text-sm text-slate-700">
+          <CardHeader>
+            <CardTitle className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Stale approvals</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{staleApprovals}</p>
+            <p className="text-sm text-muted-foreground">
             Active approvals with no token usage in the last {staleApprovalWindowDays} days. {awaitingTokenExchangeApprovals} awaiting client exchange.
-          </p>
+            </p>
+          </CardContent>
         </Card>
         <Card className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Recent active clients</p>
-          <p className="text-4xl font-semibold text-ink">{canReviewWorkspaceApprovals ? activeClients : 0}</p>
-          <p className="text-sm text-slate-700">
-            {canReviewWorkspaceApprovals ? 'Clients with recent approval or tool activity in this workspace.' : 'Detailed activity requires owner or admin access.'}
-          </p>
+          <CardHeader>
+            <CardTitle className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Recent active clients</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{canReviewWorkspaceApprovals ? activeClients : 0}</p>
+            <p className="text-sm text-muted-foreground">
+              {canReviewWorkspaceApprovals ? 'Clients with recent approval or tool activity in this workspace.' : 'Detailed activity requires owner or admin access.'}
+            </p>
+          </CardContent>
         </Card>
         <Card className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">You can renew</p>
-          <p className="text-4xl font-semibold text-ink">{reauthorizableApprovals}</p>
-          <p className="text-sm text-slate-700">Only the original approving user can reauthorize an active approval.</p>
+          <CardHeader>
+            <CardTitle className="text-xs uppercase tracking-[0.18em] text-muted-foreground">You can renew</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{reauthorizableApprovals}</p>
+            <p className="text-sm text-muted-foreground">Only the original approving user can reauthorize an active approval.</p>
+          </CardContent>
         </Card>
       </div>
 
       <div className="grid gap-5 md:grid-cols-[1.2fr_1fr]">
         <Card>
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-semibold">Registered MCP clients</h1>
-              <p className="mt-3 text-sm leading-7 text-slate-700">
-                These clients can use the plusmy.ai authorization server and request delegated access to your workspace tools and resources.
-              </p>
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 space-y-0">
+            <div className="space-y-3">
+              <CardTitle className="text-2xl">Registered MCP clients</CardTitle>
+              <CardDescription>
+                These clients can use the plusmy.ai authorization server and request delegated access to your
+                workspace tools and resources.
+              </CardDescription>
             </div>
             <Badge tone="moss">{clients.length} clients</Badge>
-          </div>
-          <div className="mt-6 space-y-3">
+          </CardHeader>
+          <CardContent className="space-y-3">
             {clients.length === 0 ? (
-              <p className="text-sm text-slate-700">No registered clients yet.</p>
+              <p className="text-sm text-muted-foreground">No registered clients yet.</p>
             ) : (
               clients.map((client) => {
                 const primaryRedirectUri = client.redirect_uris[0] ?? 'http://localhost:3000/callback';
@@ -334,35 +363,35 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                 );
               })
             )}
-          </div>
+          </CardContent>
         </Card>
         <ClientRegistrationForm />
       </div>
 
       <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-semibold">Delegated approvals</h2>
-            <p className="mt-3 text-sm leading-7 text-slate-700">
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+          <div className="space-y-3">
+            <CardTitle>Delegated approvals</CardTitle>
+            <CardDescription>
               {workspace
                 ? canReviewWorkspaceApprovals
                   ? `Review and revoke MCP client approvals granted inside ${workspace.name}.`
                   : `Review the MCP client approvals you granted inside ${workspace.name}.`
                 : 'Select a workspace to inspect delegated approvals.'}
-            </p>
+            </CardDescription>
           </div>
           <Badge tone={approvals.length ? 'moss' : 'brass'}>{approvals.length} approvals</Badge>
-        </div>
+        </CardHeader>
         {workspace ? (
-          <div className="mt-6 space-y-3">
+          <CardContent className="space-y-3">
             {canReviewWorkspaceApprovals === false ? (
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Showing approvals you personally granted.</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Showing approvals you personally granted.</p>
             ) : null}
             {canReviewWorkspaceApprovals ? (
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Recent tool calls now record MCP client IDs for approval-to-runtime correlation.</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Recent tool calls now record MCP client IDs for approval-to-runtime correlation.</p>
             ) : null}
             {approvals.length === 0 ? (
-              <p className="text-sm text-slate-700">No approvals recorded for this workspace yet.</p>
+              <p className="text-sm text-muted-foreground">No approvals recorded for this workspace yet.</p>
             ) : (
               approvals.map((approval) => {
                 const canRevoke = approval.status === 'active' && (approval.user_id === user.id || canReviewWorkspaceApprovals);
@@ -414,33 +443,24 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                     </div>
                     {canReviewWorkspaceApprovals ? (
                       <div className="mt-4 flex flex-wrap items-center gap-3">
-                        <Link
-                          href={buildClientAuditHref(workspace.id, approval.client_id)}
-                          className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:-translate-y-0.5 hover:bg-white"
-                        >
-                          Inspect audit trail
-                        </Link>
+                        <Button asChild size="sm" variant="outline">
+                          <Link href={buildClientAuditHref(workspace.id, approval.client_id)}>Inspect audit trail</Link>
+                        </Button>
                         {reauthorizeHref ? (
-                          <Link
-                            href={reauthorizeHref}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:-translate-y-0.5 hover:bg-white"
-                          >
-                            {isStaleApproval(approval) ? 'Reauthorize now' : 'Open consent flow'}
-                          </Link>
+                          <Button asChild size="sm" variant="outline">
+                            <Link href={reauthorizeHref} target="_blank" rel="noreferrer">
+                              {isStaleApproval(approval) ? 'Reauthorize now' : 'Open consent flow'}
+                            </Link>
+                          </Button>
                         ) : null}
                       </div>
                     ) : reauthorizeHref ? (
                       <div className="mt-4">
-                        <Link
-                          href={reauthorizeHref}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:-translate-y-0.5 hover:bg-white"
-                        >
-                          {isStaleApproval(approval) ? 'Reauthorize now' : 'Open consent flow'}
-                        </Link>
+                        <Button asChild size="sm" variant="outline">
+                          <Link href={reauthorizeHref} target="_blank" rel="noreferrer">
+                            {isStaleApproval(approval) ? 'Reauthorize now' : 'Open consent flow'}
+                          </Link>
+                        </Button>
                       </div>
                     ) : null}
                     {canRevoke ? (
@@ -452,24 +472,25 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                 );
               })
             )}
-          </div>
+          </CardContent>
         ) : null}
       </Card>
 
       {workspace && canReviewWorkspaceApprovals ? (
         <Card>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold">Recent client activity</h2>
-              <p className="mt-3 text-sm leading-7 text-slate-700">
-                Review which registered clients are actively calling MCP tools and generating approval lifecycle events.
-              </p>
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+            <div className="space-y-3">
+              <CardTitle>Recent client activity</CardTitle>
+              <CardDescription>
+                Review which registered clients are actively calling MCP tools and generating approval lifecycle
+                events.
+              </CardDescription>
             </div>
             <Badge tone={clientActivity.length ? 'moss' : 'brass'}>{clientActivity.length} tracked clients</Badge>
-          </div>
-          <div className="mt-6 space-y-3">
+          </CardHeader>
+          <CardContent className="space-y-3">
             {clientActivity.length === 0 ? (
-              <p className="text-sm text-slate-700">No recent approval or invocation activity for this workspace yet.</p>
+              <p className="text-sm text-muted-foreground">No recent approval or invocation activity for this workspace yet.</p>
             ) : (
               clientActivity.map((entry) => (
                 <div key={entry.clientId} className="rounded-2xl border border-black/5 bg-white/70 p-4">
@@ -500,31 +521,30 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                     </div>
                   </div>
                   <div className="mt-4">
-                    <Link
-                      href={buildClientAuditHref(workspace.id, entry.clientId)}
-                      className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:-translate-y-0.5 hover:bg-white"
-                    >
-                      Open filtered audit view
-                    </Link>
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={buildClientAuditHref(workspace.id, entry.clientId)}>Open filtered audit view</Link>
+                    </Button>
                   </div>
                 </div>
               ))
             )}
-          </div>
+          </CardContent>
         </Card>
       ) : null}
 
       <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Quickstart</p>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+          <p className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Quickstart</p>
           <Badge tone={workspace ? 'moss' : 'brass'}>{workspace ? workspace.name : `${workspaces.length} workspaces available`}</Badge>
-        </div>
-        <ol className="mt-4 space-y-3 text-sm leading-7 text-slate-700">
-          <li>1. Register a client with a valid redirect URI.</li>
-          <li>2. Use `{baseUrl}/.well-known/oauth-authorization-server` for discovery.</li>
-          <li>3. Send users through `{baseUrl}/authorize` with PKCE and include `workspace_id` when you want a specific workspace context.</li>
-          <li>4. Exchange the code at `{baseUrl}/token` and call `{baseUrl}/mcp` with the bearer token.</li>
-        </ol>
+        </CardHeader>
+        <CardContent>
+          <ol className="space-y-3 text-sm leading-7 text-muted-foreground">
+            <li>1. Register a client with a valid redirect URI.</li>
+            <li>2. Use `{baseUrl}/.well-known/oauth-authorization-server` for discovery.</li>
+            <li>3. Send users through `{baseUrl}/authorize` with PKCE and include `workspace_id` when you want a specific workspace context.</li>
+            <li>4. Exchange the code at `{baseUrl}/token` and call `{baseUrl}/mcp` with the bearer token.</li>
+          </ol>
+        </CardContent>
       </Card>
     </div>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Card, Label, Textarea } from '@plusmy/ui';
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Label, Textarea } from '@plusmy/ui';
 
 type Match = {
   chunk_id: string;
@@ -41,7 +41,12 @@ export function ContextSearchForm({ workspaceId }: { workspaceId: string }) {
 
   return (
     <Card>
-      <form className="space-y-4" onSubmit={handleSubmit}>
+      <CardHeader>
+        <CardTitle>Semantic search</CardTitle>
+        <CardDescription>Query embedded workspace context and inspect the top-ranked chunks.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-2">
           <Label htmlFor="context-query">Semantic search</Label>
           <Textarea
@@ -56,9 +61,9 @@ export function ContextSearchForm({ workspaceId }: { workspaceId: string }) {
           {submitting ? 'Searching…' : 'Search context'}
         </Button>
         {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
-      </form>
-      {matches.length ? (
-        <div className="mt-5 space-y-3">
+        </form>
+        {matches.length ? (
+          <div className="space-y-3">
           {matches.map((match) => (
             <div key={match.chunk_id} className="rounded-2xl border border-border/70 bg-card/90 p-4">
               <div className="flex items-center justify-between gap-2">
@@ -68,8 +73,9 @@ export function ContextSearchForm({ workspaceId }: { workspaceId: string }) {
               <p className="mt-2 text-sm leading-6 text-muted-foreground">{match.content}</p>
             </div>
           ))}
-        </div>
-      ) : null}
+          </div>
+        ) : null}
+      </CardContent>
     </Card>
   );
 }

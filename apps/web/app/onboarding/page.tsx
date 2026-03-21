@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Card, Badge } from '@plusmy/ui';
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import {
   getAuthorizedWorkspace,
@@ -73,19 +73,24 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
   return (
     <div className="space-y-5">
       <Card>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">Launch sequence</h1>
-            <p className="mt-3 text-sm leading-7 text-slate-700">
-              The onboarding surface now reflects the actual state of your selected workspace instead of a static checklist.
-            </p>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 space-y-0">
+          <div className="space-y-3">
+            <CardTitle className="text-2xl">Launch sequence</CardTitle>
+            <CardDescription>
+              The onboarding surface now reflects the actual state of your selected workspace instead of a
+              static checklist.
+            </CardDescription>
           </div>
           <Badge tone={workspace ? 'moss' : 'brass'}>{workspaceLabel}</Badge>
-        </div>
+        </CardHeader>
       </Card>
 
       <Card>
-        <div className="space-y-4">
+        <CardHeader>
+          <CardTitle>Workspace checklist</CardTitle>
+          <CardDescription>Each step links directly to the operator surface that advances setup.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
           {checklist.map((step, index) => (
             <div key={step.label} className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-border/70 bg-card/90 p-4 shadow-sm">
               <div className="flex min-w-0 items-start gap-3">
@@ -99,33 +104,48 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
               </div>
               <div className="flex items-center gap-3">
                 <Badge tone={step.done ? 'moss' : 'brass'}>{step.done ? 'ready' : 'pending'}</Badge>
-                <Link href={step.href} className="text-sm font-medium text-foreground underline decoration-border underline-offset-4">
-                  Open
-                </Link>
+                <Button asChild size="sm" variant="outline">
+                  <Link href={step.href}>Open</Link>
+                </Button>
               </div>
             </div>
           ))}
-        </div>
+        </CardContent>
       </Card>
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
-          <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Workspace</p>
-          <p className="mt-4 text-sm leading-7 text-muted-foreground">
-            `workspaces`, member roles, invites, and join links are the tenancy boundary for every provider and MCP grant.
-          </p>
+          <CardHeader>
+            <CardTitle className="text-base uppercase tracking-[0.22em] text-muted-foreground">Workspace</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm leading-7 text-muted-foreground">
+              `workspaces`, member roles, invites, and join links are the tenancy boundary for every provider and
+              MCP grant.
+            </p>
+          </CardContent>
         </Card>
         <Card>
-          <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Connections</p>
-          <p className="mt-4 text-sm leading-7 text-muted-foreground">
-            Provider installs, refresh flows, revocation, and workspace-vs-personal scope all resolve through the connection vault.
-          </p>
+          <CardHeader>
+            <CardTitle className="text-base uppercase tracking-[0.22em] text-muted-foreground">Connections</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm leading-7 text-muted-foreground">
+              Provider installs, refresh flows, revocation, and workspace-vs-personal scope all resolve through
+              the connection vault.
+            </p>
+          </CardContent>
         </Card>
         <Card>
-          <p className="text-sm uppercase tracking-[0.22em] text-slate-500">MCP</p>
-          <p className="mt-4 text-sm leading-7 text-muted-foreground">
-            Client registration, consent, and the protected `/mcp` endpoint are ready to layer on top of the selected workspace.
-          </p>
+          <CardHeader>
+            <CardTitle className="text-base uppercase tracking-[0.22em] text-muted-foreground">MCP</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm leading-7 text-muted-foreground">
+              Client registration, consent, and the protected `/mcp` endpoint are ready to layer on top of the
+              selected workspace.
+            </p>
+          </CardContent>
         </Card>
       </div>
     </div>

@@ -2,7 +2,21 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Card, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@plusmy/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@plusmy/ui';
 
 export function InviteForm({ workspaceId }: { workspaceId: string }) {
   const router = useRouter();
@@ -41,7 +55,12 @@ export function InviteForm({ workspaceId }: { workspaceId: string }) {
 
   return (
     <Card>
-      <form className="space-y-4" onSubmit={handleSubmit}>
+      <CardHeader>
+        <CardTitle>Invite teammate</CardTitle>
+        <CardDescription>Generate a join link and assign the initial workspace role.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-2">
           <Label htmlFor="invite-email">Invite teammate</Label>
           <Input
@@ -70,7 +89,8 @@ export function InviteForm({ workspaceId }: { workspaceId: string }) {
         </Button>
         {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
         {inviteLink ? <p className="font-mono text-xs text-muted-foreground">Invite link: {inviteLink}</p> : null}
-      </form>
+        </form>
+      </CardContent>
     </Card>
   );
 }

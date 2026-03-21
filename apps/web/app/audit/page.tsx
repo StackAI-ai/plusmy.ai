@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Badge, Card } from '@plusmy/ui';
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
 import type { AuditLogRecord, ToolInvocationRecord } from '@plusmy/contracts';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import { getAuthorizedWorkspace, listAuditLogs, listToolInvocations, listUserWorkspaces } from '@plusmy/core';
@@ -65,13 +65,6 @@ function summarizeErrorsByAction(audit: AuditLogRecord[]) {
     .slice(0, 5);
 }
 
-function filterLinkClass(active: boolean) {
-  return [
-    'rounded-full border px-4 py-2 text-sm font-medium transition',
-    active ? 'border-[#13201d] bg-[#13201d] text-white' : 'border-black/10 bg-white/80 text-slate-700 hover:bg-white'
-  ].join(' ');
-}
-
 function describeAuditActor(entry: AuditLogRecord) {
   if (entry.actor_type === 'mcp_client') {
     return entry.actor_client_id ? `MCP client ${entry.actor_client_id}` : 'MCP client';
@@ -105,10 +98,12 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
   if (!user) {
     return (
       <Card>
-        <h1 className="text-2xl font-semibold">Audit and rate control</h1>
-        <p className="mt-3 text-sm leading-7 text-slate-700">
-          Sign in to inspect OAuth approvals, MCP tool calls, refresh failures, and workspace administration events.
-        </p>
+        <CardHeader>
+          <CardTitle className="text-2xl">Audit and rate control</CardTitle>
+          <CardDescription>
+            Sign in to inspect OAuth approvals, MCP tool calls, refresh failures, and workspace administration events.
+          </CardDescription>
+        </CardHeader>
       </Card>
     );
   }
@@ -121,8 +116,10 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
   if (!workspace) {
     return (
       <Card>
-        <h1 className="text-2xl font-semibold">Audit and rate control</h1>
-        <p className="mt-3 text-sm leading-7 text-slate-700">Select a workspace to inspect operator and MCP activity.</p>
+        <CardHeader>
+          <CardTitle className="text-2xl">Audit and rate control</CardTitle>
+          <CardDescription>Select a workspace to inspect operator and MCP activity.</CardDescription>
+        </CardHeader>
       </Card>
     );
   }
@@ -130,15 +127,15 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
   if (!canManageWorkspace(activeMembership?.role)) {
     return (
       <Card>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">Audit and rate control</h1>
-            <p className="mt-3 text-sm leading-7 text-slate-700">
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 space-y-0">
+          <div className="space-y-3">
+            <CardTitle className="text-2xl">Audit and rate control</CardTitle>
+            <CardDescription>
               Workspace owners and admins can review audit events, approval activity, and MCP tool execution history.
-            </p>
+            </CardDescription>
           </div>
           <Badge tone="brass">{workspace.name}</Badge>
-        </div>
+        </CardHeader>
       </Card>
     );
   }
@@ -193,64 +190,84 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
   return (
     <div className="space-y-5">
       <Card>
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">Audit and rate control</h1>
-            <p className="mt-3 text-sm leading-7 text-slate-700">
-              Filter recent operator events, OAuth approval changes, MCP client activity, and tool execution outcomes for{' '}
-              {workspace.name}.
-            </p>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 space-y-0">
+          <div className="space-y-3">
+            <CardTitle className="text-2xl">Audit and rate control</CardTitle>
+            <CardDescription>
+              Filter recent operator events, OAuth approval changes, MCP client activity, and tool execution
+              outcomes for {workspace.name}.
+            </CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {focusedView ? <Badge tone="brass">Focused</Badge> : null}
             <Badge tone="moss">{workspace.name}</Badge>
           </div>
-        </div>
+        </CardHeader>
       </Card>
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         <Card className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Audit events</p>
-          <p className="text-4xl font-semibold text-ink">{audit.length}</p>
-          <p className="text-sm text-slate-700">Recent events after current filters.</p>
+          <CardHeader>
+            <CardTitle className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Audit events</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{audit.length}</p>
+            <p className="text-sm text-muted-foreground">Recent events after current filters.</p>
+          </CardContent>
         </Card>
         <Card className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Audit errors</p>
-          <p className="text-4xl font-semibold text-ink">{auditErrorCount}</p>
-          <p className="text-sm text-slate-700">Includes refresh failures, rate limits, and tool failures.</p>
+          <CardHeader>
+            <CardTitle className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Audit errors</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{auditErrorCount}</p>
+            <p className="text-sm text-muted-foreground">Includes refresh failures, rate limits, and tool failures.</p>
+          </CardContent>
         </Card>
         <Card className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Tool calls</p>
-          <p className="text-4xl font-semibold text-ink">{invocations.length}</p>
-          <p className="text-sm text-slate-700">Per-client MCP execution history for the selected workspace.</p>
+          <CardHeader>
+            <CardTitle className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Tool calls</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{invocations.length}</p>
+            <p className="text-sm text-muted-foreground">Per-client MCP execution history for the selected workspace.</p>
+          </CardContent>
         </Card>
         <Card className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Tool errors</p>
-          <p className="text-4xl font-semibold text-ink">{invocationErrorCount}</p>
-          <p className="text-sm text-slate-700">Failed calls after provider, client, and status filters.</p>
+          <CardHeader>
+            <CardTitle className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Tool errors</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{invocationErrorCount}</p>
+            <p className="text-sm text-muted-foreground">Failed calls after provider, client, and status filters.</p>
+          </CardContent>
         </Card>
         <Card className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Combined error load</p>
-          <p className="text-4xl font-semibold text-ink">{auditErrorCount + invocationErrorCount}</p>
-          <p className="text-sm text-slate-700">Cross-table failures in the active filter window.</p>
+          <CardHeader>
+            <CardTitle className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Combined error load</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{auditErrorCount + invocationErrorCount}</p>
+            <p className="text-sm text-muted-foreground">Cross-table failures in the active filter window.</p>
+          </CardContent>
         </Card>
       </div>
 
       <Card className="space-y-3">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-semibold">Error focus</h2>
-            <p className="mt-2 text-sm text-slate-700">Top failure signals for immediate remediation.</p>
+        <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+          <div className="space-y-2">
+            <CardTitle>Error focus</CardTitle>
+            <CardDescription>Top failure signals for immediate remediation.</CardDescription>
           </div>
           <Badge tone={invocationErrorCount || auditErrorCount ? 'brass' : 'moss'}>
             {invocationErrorCount || auditErrorCount ? 'Attention needed' : 'Healthy'}
           </Badge>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2">
           <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Errors by provider</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Errors by provider</p>
             {invocationErrorsByProvider.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-700">No failing tool calls.</p>
+              <p className="mt-2 text-sm text-muted-foreground">No failing tool calls.</p>
             ) : (
               <ul className="mt-2 space-y-2">
                 {invocationErrorsByProvider.map(([entryProvider, count]) => (
@@ -263,9 +280,9 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
             )}
           </div>
           <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Top audit actions</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Top audit actions</p>
             {auditErrorsByAction.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-700">No failing audit events.</p>
+              <p className="mt-2 text-sm text-muted-foreground">No failing audit events.</p>
             ) : (
               <ul className="mt-2 space-y-2">
                 {auditErrorsByAction.map(([action, count]) => (
@@ -277,101 +294,102 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
               </ul>
             )}
           </div>
-        </div>
+        </CardContent>
       </Card>
 
       <Card className="space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-semibold">Filters</h2>
-            <p className="mt-2 text-sm text-slate-700">Focus the feed by approval lifecycle, actor type, client, or provider.</p>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+          <div className="space-y-2">
+            <CardTitle>Filters</CardTitle>
+            <CardDescription>Focus the feed by approval lifecycle, actor type, client, or provider.</CardDescription>
           </div>
-          <Link
-            href={buildAuditHref(workspace.id, currentFilters, {
-              status: null,
-              actor: null,
-              resource: null,
-              resource_id: null,
-              action: null,
-              client: null,
-              provider: null,
-              tool: null
-            })}
-            className={filterLinkClass(false)}
-          >
-            Reset filters
-          </Link>
-        </div>
+          <Button asChild size="sm" variant="outline">
+            <Link
+              href={buildAuditHref(workspace.id, currentFilters, {
+                status: null,
+                actor: null,
+                resource: null,
+                resource_id: null,
+                action: null,
+                client: null,
+                provider: null,
+                tool: null
+              })}
+            >
+              Reset filters
+            </Link>
+          </Button>
+        </CardHeader>
 
-        <div className="space-y-3">
+        <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
-            <Link href={buildAuditHref(workspace.id, currentFilters, { resource: null, action: null })} className={filterLinkClass(!resourceType && !actionPrefix)}>
-              All activity
-            </Link>
-            <Link href={buildAuditHref(workspace.id, currentFilters, { resource: 'oauth_client_approval', action: 'oauth_client.' })} className={filterLinkClass(resourceType === 'oauth_client_approval')}>
-              Approvals
-            </Link>
-            <Link href={buildAuditHref(workspace.id, currentFilters, { resource: 'connection', action: 'connection.' })} className={filterLinkClass(resourceType === 'connection')}>
-              Connections
-            </Link>
-            <Link href={buildAuditHref(workspace.id, currentFilters, { resource: 'context_binding', action: 'context.' })} className={filterLinkClass(resourceType === 'context_binding')}>
-              Context bindings
-            </Link>
-            <Link href={buildAuditHref(workspace.id, currentFilters, { resource: 'connection_job', action: 'connection_job.' })} className={filterLinkClass(resourceType === 'connection_job')}>
-              Background jobs
-            </Link>
-            <Link href={buildAuditHref(workspace.id, currentFilters, { actor: 'mcp_client', action: 'mcp.' })} className={filterLinkClass(actorType === 'mcp_client')}>
-              MCP clients
-            </Link>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Link href={buildAuditHref(workspace.id, currentFilters, { status: null })} className={filterLinkClass(!status)}>
-              Any status
-            </Link>
-            <Link href={buildAuditHref(workspace.id, currentFilters, { status: 'success' })} className={filterLinkClass(status === 'success')}>
-              Success
-            </Link>
-            <Link href={buildAuditHref(workspace.id, currentFilters, { status: 'error' })} className={filterLinkClass(status === 'error')}>
-              Error
-            </Link>
-            <Link href={buildAuditHref(workspace.id, currentFilters, { actor: null })} className={filterLinkClass(!actorType)}>
-              Any actor
-            </Link>
-            <Link href={buildAuditHref(workspace.id, currentFilters, { actor: 'user' })} className={filterLinkClass(actorType === 'user')}>
-              Users
-            </Link>
-            <Link href={buildAuditHref(workspace.id, currentFilters, { actor: 'system' })} className={filterLinkClass(actorType === 'system')}>
-              System
-            </Link>
+            <Button asChild size="sm" variant={!resourceType && !actionPrefix ? 'default' : 'outline'}>
+              <Link href={buildAuditHref(workspace.id, currentFilters, { resource: null, action: null })}>All activity</Link>
+            </Button>
+            <Button asChild size="sm" variant={resourceType === 'oauth_client_approval' ? 'default' : 'outline'}>
+              <Link href={buildAuditHref(workspace.id, currentFilters, { resource: 'oauth_client_approval', action: 'oauth_client.' })}>Approvals</Link>
+            </Button>
+            <Button asChild size="sm" variant={resourceType === 'connection' ? 'default' : 'outline'}>
+              <Link href={buildAuditHref(workspace.id, currentFilters, { resource: 'connection', action: 'connection.' })}>Connections</Link>
+            </Button>
+            <Button asChild size="sm" variant={resourceType === 'context_binding' ? 'default' : 'outline'}>
+              <Link href={buildAuditHref(workspace.id, currentFilters, { resource: 'context_binding', action: 'context.' })}>Context bindings</Link>
+            </Button>
+            <Button asChild size="sm" variant={resourceType === 'connection_job' ? 'default' : 'outline'}>
+              <Link href={buildAuditHref(workspace.id, currentFilters, { resource: 'connection_job', action: 'connection_job.' })}>Background jobs</Link>
+            </Button>
+            <Button asChild size="sm" variant={actorType === 'mcp_client' ? 'default' : 'outline'}>
+              <Link href={buildAuditHref(workspace.id, currentFilters, { actor: 'mcp_client', action: 'mcp.' })}>MCP clients</Link>
+            </Button>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Link href={buildAuditHref(workspace.id, currentFilters, { provider: null, tool: null })} className={filterLinkClass(!provider && !toolName)}>
-              All providers
-            </Link>
-            <Link href={buildAuditHref(workspace.id, currentFilters, { provider: 'google', tool: null })} className={filterLinkClass(provider === 'google')}>
-              Google
-            </Link>
-            <Link href={buildAuditHref(workspace.id, currentFilters, { provider: 'slack', tool: null })} className={filterLinkClass(provider === 'slack')}>
-              Slack
-            </Link>
-            <Link href={buildAuditHref(workspace.id, currentFilters, { provider: 'notion', tool: null })} className={filterLinkClass(provider === 'notion')}>
-              Notion
-            </Link>
+            <Button asChild size="sm" variant={!status ? 'default' : 'outline'}>
+              <Link href={buildAuditHref(workspace.id, currentFilters, { status: null })}>Any status</Link>
+            </Button>
+            <Button asChild size="sm" variant={status === 'success' ? 'default' : 'outline'}>
+              <Link href={buildAuditHref(workspace.id, currentFilters, { status: 'success' })}>Success</Link>
+            </Button>
+            <Button asChild size="sm" variant={status === 'error' ? 'default' : 'outline'}>
+              <Link href={buildAuditHref(workspace.id, currentFilters, { status: 'error' })}>Error</Link>
+            </Button>
+            <Button asChild size="sm" variant={!actorType ? 'default' : 'outline'}>
+              <Link href={buildAuditHref(workspace.id, currentFilters, { actor: null })}>Any actor</Link>
+            </Button>
+            <Button asChild size="sm" variant={actorType === 'user' ? 'default' : 'outline'}>
+              <Link href={buildAuditHref(workspace.id, currentFilters, { actor: 'user' })}>Users</Link>
+            </Button>
+            <Button asChild size="sm" variant={actorType === 'system' ? 'default' : 'outline'}>
+              <Link href={buildAuditHref(workspace.id, currentFilters, { actor: 'system' })}>System</Link>
+            </Button>
           </div>
-        </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button asChild size="sm" variant={!provider && !toolName ? 'default' : 'outline'}>
+              <Link href={buildAuditHref(workspace.id, currentFilters, { provider: null, tool: null })}>All providers</Link>
+            </Button>
+            <Button asChild size="sm" variant={provider === 'google' ? 'default' : 'outline'}>
+              <Link href={buildAuditHref(workspace.id, currentFilters, { provider: 'google', tool: null })}>Google</Link>
+            </Button>
+            <Button asChild size="sm" variant={provider === 'slack' ? 'default' : 'outline'}>
+              <Link href={buildAuditHref(workspace.id, currentFilters, { provider: 'slack', tool: null })}>Slack</Link>
+            </Button>
+            <Button asChild size="sm" variant={provider === 'notion' ? 'default' : 'outline'}>
+              <Link href={buildAuditHref(workspace.id, currentFilters, { provider: 'notion', tool: null })}>Notion</Link>
+            </Button>
+          </div>
+        </CardContent>
       </Card>
 
       <div className="grid gap-5 xl:grid-cols-2">
         <Card>
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Audit events</h2>
+          <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+            <CardTitle className="text-lg">Audit events</CardTitle>
             <Badge tone="moss">{audit.length}</Badge>
-          </div>
-          <div className="mt-4 space-y-3">
+          </CardHeader>
+          <CardContent className="space-y-3">
             {audit.length === 0 ? (
-              <p className="text-sm text-slate-700">No audit events yet.</p>
+              <p className="text-sm text-muted-foreground">No audit events yet.</p>
             ) : (
               audit.map((entry) => (
                 <div key={entry.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
@@ -393,17 +411,17 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
                 </div>
               ))
             )}
-          </div>
+          </CardContent>
         </Card>
 
         <Card>
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Tool invocations</h2>
+          <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+            <CardTitle className="text-lg">Tool invocations</CardTitle>
             <Badge tone="moss">{invocations.length}</Badge>
-          </div>
-          <div className="mt-4 space-y-3">
+          </CardHeader>
+          <CardContent className="space-y-3">
             {invocations.length === 0 ? (
-              <p className="text-sm text-slate-700">No tool invocations yet.</p>
+              <p className="text-sm text-muted-foreground">No tool invocations yet.</p>
             ) : (
               invocations.map((entry) => (
                 <div key={entry.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
@@ -424,7 +442,7 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
                 </div>
               ))
             )}
-          </div>
+          </CardContent>
         </Card>
       </div>
     </div>

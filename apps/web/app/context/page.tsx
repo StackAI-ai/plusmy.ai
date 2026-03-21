@@ -1,5 +1,5 @@
 import type { ContextBindingType } from '@plusmy/contracts'
-import { Badge, Card } from '@plusmy/ui'
+import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui'
 import { createServerSupabaseClient } from '@plusmy/supabase'
 import {
   getAuthorizedWorkspace,
@@ -50,10 +50,12 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
   if (!user) {
     return (
       <Card>
-        <h1 className="text-2xl font-semibold">Context engine</h1>
-        <p className="mt-3 text-sm leading-7 text-slate-700">
-          Sign in to load prompts, skill definitions, and semantic context assets into your workspace.
-        </p>
+        <CardHeader>
+          <CardTitle className="text-2xl">Context engine</CardTitle>
+          <CardDescription>
+            Sign in to load prompts, skill definitions, and semantic context assets into your workspace.
+          </CardDescription>
+        </CardHeader>
       </Card>
     )
   }
@@ -93,65 +95,82 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
       <div className="grid gap-5 md:grid-cols-[1.2fr_1fr]">
         <div className="space-y-5">
           <Card>
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-semibold">Vectorized context and skill engine</h1>
-                <p className="mt-3 text-sm leading-7 text-slate-700">
-                  Context assets are chunked and optionally embedded on ingest, then exposed as MCP resources and similarity matches through the API layer.
-                </p>
+            <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 space-y-0">
+              <div className="space-y-3">
+                <CardTitle className="text-2xl">Vectorized context and skill engine</CardTitle>
+                <CardDescription>
+                  Context assets are chunked and optionally embedded on ingest, then exposed as MCP resources and
+                  similarity matches through the API layer.
+                </CardDescription>
               </div>
               <Badge>{workspace?.name ?? 'No workspace'}</Badge>
-            </div>
+            </CardHeader>
           </Card>
 
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <Card>
-              <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Assets</p>
-              <p className="mt-3 text-4xl font-semibold text-ink">{assets.length}</p>
-              <div className="mt-4 space-y-2 text-sm text-slate-700">
+              <CardHeader>
+                <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Assets</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-4xl font-semibold text-foreground">{assets.length}</p>
+                <div className="mt-4 space-y-2 text-sm text-muted-foreground">
                 {assets.slice(0, 4).map((asset) => (
                   <p key={asset.id}>{asset.title}</p>
                 ))}
-              </div>
+                </div>
+              </CardContent>
             </Card>
             <Card>
-              <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Prompt templates</p>
-              <p className="mt-3 text-4xl font-semibold text-ink">{prompts.length}</p>
-              <div className="mt-4 space-y-2 text-sm text-slate-700">
+              <CardHeader>
+                <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Prompt templates</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-4xl font-semibold text-foreground">{prompts.length}</p>
+                <div className="mt-4 space-y-2 text-sm text-muted-foreground">
                 {prompts.slice(0, 4).map((prompt) => (
                   <p key={prompt.id}>{prompt.name}</p>
                 ))}
-              </div>
+                </div>
+              </CardContent>
             </Card>
             <Card>
-              <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Skill definitions</p>
-              <p className="mt-3 text-4xl font-semibold text-ink">{skills.length}</p>
-              <div className="mt-4 space-y-2 text-sm text-slate-700">
+              <CardHeader>
+                <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Skill definitions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-4xl font-semibold text-foreground">{skills.length}</p>
+                <div className="mt-4 space-y-2 text-sm text-muted-foreground">
                 {skills.slice(0, 4).map((skill) => (
                   <p key={skill.id}>{skill.name}</p>
                 ))}
-              </div>
+                </div>
+              </CardContent>
             </Card>
             <Card>
-              <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Binding rules</p>
-              <p className="mt-3 text-4xl font-semibold text-ink">{bindings.length}</p>
-              <div className="mt-4 space-y-2 text-sm text-slate-700">
+              <CardHeader>
+                <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Binding rules</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-4xl font-semibold text-foreground">{bindings.length}</p>
+                <div className="mt-4 space-y-2 text-sm text-muted-foreground">
                 {bindings.slice(0, 4).map((binding) => (
                   <p key={binding.id}>{bindingTargetLabel(binding.binding_type, binding.target_key)}</p>
                 ))}
-              </div>
+                </div>
+              </CardContent>
             </Card>
           </section>
 
           <div className="grid gap-4 xl:grid-cols-3">
             <Card>
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold">Context assets</h2>
+              <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+                <CardTitle className="text-lg">Context assets</CardTitle>
                 <Badge tone="moss">{assets.length}</Badge>
-              </div>
-              <div className="mt-4 space-y-3">
+              </CardHeader>
+              <CardContent className="space-y-3">
                 {assets.length === 0 ? (
-                  <p className="text-sm text-slate-700">No context assets yet.</p>
+                  <p className="text-sm text-muted-foreground">No context assets yet.</p>
                 ) : (
                   assets.map((asset) => (
                     <div key={asset.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
@@ -165,17 +184,17 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
                     </div>
                   ))
                 )}
-              </div>
+              </CardContent>
             </Card>
 
             <Card>
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold">Prompt templates</h2>
+              <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+                <CardTitle className="text-lg">Prompt templates</CardTitle>
                 <Badge tone="moss">{prompts.length}</Badge>
-              </div>
-              <div className="mt-4 space-y-3">
+              </CardHeader>
+              <CardContent className="space-y-3">
                 {prompts.length === 0 ? (
-                  <p className="text-sm text-slate-700">No prompt templates yet.</p>
+                  <p className="text-sm text-muted-foreground">No prompt templates yet.</p>
                 ) : (
                   prompts.map((prompt) => (
                     <div key={prompt.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
@@ -189,17 +208,17 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
                     </div>
                   ))
                 )}
-              </div>
+              </CardContent>
             </Card>
 
             <Card>
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold">Skill definitions</h2>
+              <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+                <CardTitle className="text-lg">Skill definitions</CardTitle>
                 <Badge tone="moss">{skills.length}</Badge>
-              </div>
-              <div className="mt-4 space-y-3">
+              </CardHeader>
+              <CardContent className="space-y-3">
                 {skills.length === 0 ? (
-                  <p className="text-sm text-slate-700">No skill definitions yet.</p>
+                  <p className="text-sm text-muted-foreground">No skill definitions yet.</p>
                 ) : (
                   skills.map((skill) => (
                     <div key={skill.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
@@ -213,36 +232,44 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
                     </div>
                   ))
                 )}
-              </div>
+              </CardContent>
             </Card>
           </div>
         </div>
-        {workspace ? <ContextIngestForm workspaceId={workspace.id} /> : <Card>Create a workspace first.</Card>}
+        {workspace ? (
+          <ContextIngestForm workspaceId={workspace.id} />
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle>Create a workspace first</CardTitle>
+            </CardHeader>
+          </Card>
+        )}
       </div>
       {workspace ? <ContextSearchForm workspaceId={workspace.id} /> : null}
 
       {workspace ? (
         <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
           <Card>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-semibold">Context bindings</h2>
-                <p className="mt-3 text-sm leading-7 text-slate-700">
-                  Bind workspace-shared prompts and skills to the default workspace context, a provider surface, or an individual tool target.
-                </p>
+            <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+              <div className="space-y-3">
+                <CardTitle>Context bindings</CardTitle>
+                <CardDescription>
+                  Bind workspace-shared prompts and skills to the default workspace context, a provider surface, or
+                  an individual tool target.
+                </CardDescription>
               </div>
               <Badge tone={bindings.length ? 'moss' : 'brass'}>{bindings.length}</Badge>
-            </div>
+            </CardHeader>
 
-            {!canManageBindings ? (
-              <p className="mt-4 text-xs uppercase tracking-[0.18em] text-slate-500">
-                Workspace owners and admins manage binding rules.
-              </p>
-            ) : null}
-
-            <div className="mt-6 space-y-3">
+            <CardContent className="space-y-6">
+              {!canManageBindings ? (
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  Workspace owners and admins manage binding rules.
+                </p>
+              ) : null}
               {bindings.length === 0 ? (
-                <p className="text-sm text-slate-700">No context bindings configured yet.</p>
+                <p className="text-sm text-muted-foreground">No context bindings configured yet.</p>
               ) : (
                 bindings.map((binding) => (
                   <div key={binding.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
@@ -279,17 +306,20 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
                   </div>
                 ))
               )}
-            </div>
+            </CardContent>
           </Card>
 
           {canManageBindings ? (
             <ContextBindingForm workspaceId={workspace.id} prompts={sharedPrompts} skills={sharedSkills} />
           ) : (
             <Card>
-              <h2 className="text-xl font-semibold">Binding controls</h2>
-              <p className="mt-3 text-sm leading-7 text-slate-700">
-                Ask a workspace owner or admin to attach shared prompts and skills to tool targets. Members can still review the resulting rules here.
-              </p>
+              <CardHeader>
+                <CardTitle>Binding controls</CardTitle>
+                <CardDescription>
+                  Ask a workspace owner or admin to attach shared prompts and skills to tool targets. Members can
+                  still review the resulting rules here.
+                </CardDescription>
+              </CardHeader>
             </Card>
           )}
         </div>

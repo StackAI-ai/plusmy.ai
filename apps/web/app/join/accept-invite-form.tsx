@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Card } from '@plusmy/ui';
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
 
 export function AcceptInviteForm({ token }: { token: string }) {
   const router = useRouter();
@@ -33,15 +33,19 @@ export function AcceptInviteForm({ token }: { token: string }) {
 
   return (
     <Card>
-      <div className="space-y-4">
-        <p className="text-sm leading-7 text-slate-700">
-          Accept this invite to join the workspace tied to the token in the URL. You need to be signed in with the invited email address.
-        </p>
+      <CardHeader>
+        <CardTitle>Accept invitation</CardTitle>
+        <CardDescription>
+          Accept this invite to join the workspace tied to the token in the URL. You need to be signed in with
+          the invited email address.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
         <Button type="button" disabled={submitting} onClick={handleAccept}>
           {submitting ? 'Accepting…' : 'Accept invite'}
         </Button>
-        {status ? <p className="text-sm text-slate-700">{status}</p> : null}
-      </div>
+        {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
+      </CardContent>
     </Card>
   );
 }

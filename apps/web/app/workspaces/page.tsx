@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Badge, Card } from '@plusmy/ui';
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import { getAuthorizedWorkspace, listUserWorkspaces, listWorkspaceInvites, listWorkspaceMembers } from '@plusmy/core';
 import { CreateWorkspaceForm } from './create-workspace-form';
@@ -18,10 +18,13 @@ export default async function WorkspacesPage({ searchParams }: { searchParams?: 
   if (!user) {
     return (
       <Card>
-        <h1 className="text-2xl font-semibold">Workspaces</h1>
-        <p className="mt-3 text-sm leading-7 text-slate-700">
-          Sign in first. Workspace creation is tied directly to your Supabase identity and seeds default prompt and skill records.
-        </p>
+        <CardHeader>
+          <CardTitle className="text-2xl">Workspaces</CardTitle>
+          <CardDescription>
+            Sign in first. Workspace creation is tied directly to your Supabase identity and seeds default prompt
+            and skill records.
+          </CardDescription>
+        </CardHeader>
       </Card>
     );
   }
@@ -39,18 +42,19 @@ export default async function WorkspacesPage({ searchParams }: { searchParams?: 
     <div className="space-y-5">
       <div className="grid gap-5 md:grid-cols-[1.2fr_1fr]">
         <Card>
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-semibold">Your workspaces</h1>
-              <p className="mt-3 text-sm leading-7 text-slate-700">
-                Each workspace is the security and context boundary for integrations, prompts, skills, audit logs, and MCP authorization decisions.
-              </p>
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 space-y-0">
+            <div className="space-y-3">
+              <CardTitle className="text-2xl">Your workspaces</CardTitle>
+              <CardDescription>
+                Each workspace is the security and context boundary for integrations, prompts, skills, audit logs,
+                and MCP authorization decisions.
+              </CardDescription>
             </div>
             <Badge tone="moss">{workspaces.length} total</Badge>
-          </div>
-          <div className="mt-6 space-y-3">
+          </CardHeader>
+          <CardContent className="space-y-3">
             {workspaces.length === 0 ? (
-              <p className="text-sm text-slate-700">No workspaces yet. Create the first one on the right.</p>
+              <p className="text-sm text-muted-foreground">No workspaces yet. Create the first one on the right.</p>
             ) : (
               workspaces.map((workspace) => (
                 <div
@@ -69,39 +73,36 @@ export default async function WorkspacesPage({ searchParams }: { searchParams?: 
                     </div>
                   </div>
                   <div className="mt-4">
-                    <Link
-                      href={`/workspaces?workspace=${workspace.id}`}
-                      className="text-sm font-medium text-ink underline decoration-black/20 underline-offset-4"
-                    >
-                      Open workspace
-                    </Link>
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/workspaces?workspace=${workspace.id}`}>Open workspace</Link>
+                    </Button>
                   </div>
                 </div>
               ))
             )}
-          </div>
+          </CardContent>
         </Card>
         <CreateWorkspaceForm />
       </div>
 
       <div className="grid gap-5 md:grid-cols-[1.2fr_1fr]">
         <Card>
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold">Members and invites</h2>
-              <p className="mt-3 text-sm leading-7 text-slate-700">
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 space-y-0">
+            <div className="space-y-3">
+              <CardTitle>Members and invites</CardTitle>
+              <CardDescription>
                 {activeWorkspace
                   ? `Active workspace: ${activeWorkspace.name}. Owners and admins can manage membership and issue invites.`
                   : 'Create a workspace before managing team access.'}
-              </p>
+              </CardDescription>
             </div>
             <Badge tone="moss">{members.length} members</Badge>
-          </div>
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
             <div className="space-y-3">
-              <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Members</p>
+              <p className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Members</p>
               {members.length === 0 ? (
-                <p className="text-sm text-slate-700">No members yet.</p>
+                <p className="text-sm text-muted-foreground">No members yet.</p>
               ) : (
                 members.map((member) => (
                   <div key={member.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
@@ -131,9 +132,9 @@ export default async function WorkspacesPage({ searchParams }: { searchParams?: 
               )}
             </div>
             <div className="space-y-3">
-              <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Open invites</p>
+              <p className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Open invites</p>
               {invites.length === 0 ? (
-                <p className="text-sm text-slate-700">No outstanding invites.</p>
+                <p className="text-sm text-muted-foreground">No outstanding invites.</p>
               ) : (
                 invites.map((invite) => (
                   <div key={invite.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
@@ -151,21 +152,27 @@ export default async function WorkspacesPage({ searchParams }: { searchParams?: 
                 ))
               )}
             </div>
-          </div>
+          </CardContent>
         </Card>
         {activeWorkspace ? (
           canManageMembers ? (
             <InviteForm workspaceId={activeWorkspace.id} />
           ) : (
             <Card>
-              <h3 className="text-lg font-semibold">Member management is restricted</h3>
-              <p className="mt-3 text-sm leading-7 text-slate-700">
-                Only owners and admins can issue invites or change member roles in this workspace.
-              </p>
+              <CardHeader>
+                <CardTitle className="text-lg">Member management is restricted</CardTitle>
+                <CardDescription>
+                  Only owners and admins can issue invites or change member roles in this workspace.
+                </CardDescription>
+              </CardHeader>
             </Card>
           )
         ) : (
-          <Card>Create a workspace first.</Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Create a workspace first</CardTitle>
+            </CardHeader>
+          </Card>
         )}
       </div>
     </div>

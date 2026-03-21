@@ -6,6 +6,10 @@ import type { ContextBindingType } from '@plusmy/contracts'
 import {
   Button,
   Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
   Input,
   Label,
   Select,
@@ -106,16 +110,15 @@ export function ContextBindingForm({
 
   return (
     <Card>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-semibold">Bind prompts and skills</h2>
-          <p className="mt-3 text-sm leading-7 text-slate-700">
-            Attach workspace-shared prompts and skills to the default workspace context, a provider, or a specific MCP tool.
-          </p>
-        </div>
-      </div>
-
-      <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+      <CardHeader>
+        <CardTitle>Bind prompts and skills</CardTitle>
+        <CardDescription>
+          Attach workspace-shared prompts and skills to the default workspace context, a provider, or a specific
+          MCP tool.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-2">
           <Label htmlFor="binding-type">Binding type</Label>
           <Select value={bindingType} onValueChange={(value) => handleBindingTypeChange(value as ContextBindingType)}>
@@ -205,7 +208,8 @@ export function ContextBindingForm({
           <p className="text-sm text-muted-foreground">Create a workspace-shared prompt or skill before adding a binding.</p>
         ) : null}
         {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
-      </form>
+        </form>
+      </CardContent>
     </Card>
   )
 }

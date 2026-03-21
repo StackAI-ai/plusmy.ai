@@ -1,4 +1,4 @@
-import { Card, Badge } from '@plusmy/ui'
+import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui'
 import { createServerSupabaseClient } from '@plusmy/supabase'
 import {
   getAuthorizedWorkspace,
@@ -23,10 +23,13 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
   if (!user) {
     return (
       <Card>
-        <h1 className="text-2xl font-semibold">Sign in required</h1>
-        <p className="mt-3 text-sm leading-7 text-slate-700">
-          The dashboard reads live workspace state from Supabase Auth and the `app` schema. Sign in before creating a workspace or attaching integrations.
-        </p>
+        <CardHeader>
+          <CardTitle className="text-2xl">Sign in required</CardTitle>
+          <CardDescription>
+            The dashboard reads live workspace state from Supabase Auth and the `app` schema. Sign in before
+            creating a workspace or attaching integrations.
+          </CardDescription>
+        </CardHeader>
       </Card>
     )
   }
@@ -62,64 +65,103 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
   return (
     <div className="space-y-6">
       <Card>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">Workspace control plane</h1>
-            <p className="mt-3 text-sm leading-7 text-slate-700">
-              Live view of the selected workspace, its integration footprint, and the shared prompt and skill surface behind the MCP server.
-            </p>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 space-y-0">
+          <div className="space-y-3">
+            <CardTitle className="text-2xl">Workspace control plane</CardTitle>
+            <CardDescription>
+              Live view of the selected workspace, its integration footprint, and the shared prompt and skill
+              surface behind the MCP server.
+            </CardDescription>
           </div>
           <Badge tone="moss">{activeWorkspace ? activeWorkspace.name : 'No workspace yet'}</Badge>
-        </div>
+        </CardHeader>
       </Card>
 
       <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
         <Card>
-          <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Workspaces</p>
-          <p className="mt-3 text-4xl font-semibold text-ink">{workspaces.length}</p>
+          <CardHeader>
+            <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Workspaces</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{workspaces.length}</p>
+          </CardContent>
         </Card>
         <Card>
-          <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Connections</p>
-          <p className="mt-3 text-4xl font-semibold text-ink">
-            {activeConnections}/{overview?.connections ?? 0}
-          </p>
-          <p className="mt-2 text-sm text-slate-700">{pendingConnections} pending · {reauthRequiredConnections} reauth required</p>
+          <CardHeader>
+            <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Connections</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">
+              {activeConnections}/{overview?.connections ?? 0}
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {pendingConnections} pending · {reauthRequiredConnections} reauth required
+            </p>
+          </CardContent>
         </Card>
         <Card>
-          <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Prompt templates</p>
-          <p className="mt-3 text-4xl font-semibold text-ink">{overview?.prompts ?? 0}</p>
+          <CardHeader>
+            <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Prompt templates</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{overview?.prompts ?? 0}</p>
+          </CardContent>
         </Card>
         <Card>
-          <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Skill definitions</p>
-          <p className="mt-3 text-4xl font-semibold text-ink">{overview?.skills ?? 0}</p>
+          <CardHeader>
+            <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Skill definitions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{overview?.skills ?? 0}</p>
+          </CardContent>
         </Card>
         <Card>
-          <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Context assets</p>
-          <p className="mt-3 text-4xl font-semibold text-ink">{overview?.assets ?? 0}</p>
+          <CardHeader>
+            <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Context assets</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{overview?.assets ?? 0}</p>
+          </CardContent>
         </Card>
         <Card>
-          <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Binding rules</p>
-          <p className="mt-3 text-4xl font-semibold text-ink">{overview?.bindings ?? 0}</p>
+          <CardHeader>
+            <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Binding rules</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{overview?.bindings ?? 0}</p>
+          </CardContent>
         </Card>
         <Card>
-          <p className="text-sm uppercase tracking-[0.22em] text-slate-500">MCP approvals</p>
-          <p className="mt-3 text-4xl font-semibold text-ink">{approvalSignal}</p>
-          <p className="mt-2 text-sm text-slate-700">
-            {revokedApprovals ? `${revokedApprovals} revoked` : 'No revoked approvals'}
-          </p>
+          <CardHeader>
+            <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">MCP approvals</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{approvalSignal}</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {revokedApprovals ? `${revokedApprovals} revoked` : 'No revoked approvals'}
+            </p>
+          </CardContent>
         </Card>
         <Card>
-          <p className="text-sm uppercase tracking-[0.22em] text-slate-500">Sync jobs</p>
-          <p className="mt-3 text-4xl font-semibold text-ink">{processingConnectionJobs + queuedConnectionJobs}</p>
-          <p className="mt-2 text-sm text-slate-700">
-            {processingConnectionJobs} processing · {queuedConnectionJobs} queued · {failedConnectionJobs} failed
-          </p>
+          <CardHeader>
+            <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Sync jobs</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{processingConnectionJobs + queuedConnectionJobs}</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {processingConnectionJobs} processing · {queuedConnectionJobs} queued · {failedConnectionJobs} failed
+            </p>
+          </CardContent>
         </Card>
       </section>
 
       <Card>
-        <h2 className="text-xl font-semibold">Workspace health signals</h2>
-        <ul className="mt-4 space-y-3 text-sm leading-7 text-slate-700">
+        <CardHeader>
+          <CardTitle>Workspace health signals</CardTitle>
+          <CardDescription>Operational summary for providers, jobs, and delegated approvals.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ul className="space-y-3 text-sm leading-7 text-muted-foreground">
           <li className="flex flex-wrap items-center gap-2">
             <Badge tone={healthTone(reauthRequiredConnections > 0)}>{reauthRequiredConnections} connections need reauth</Badge>
             {connections.length ? `${connections.length} total provider installs` : 'No provider installs yet'}
@@ -132,7 +174,8 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
             <Badge tone={healthTone(approvals.length === 0)}>{approvals.length} approvals</Badge>
             {canReviewWorkspaceApprovals ? 'Workspace-level MCP approvals included' : 'Showing only user-scoped approvals'}
           </li>
-        </ul>
+          </ul>
+        </CardContent>
       </Card>
     </div>
   )

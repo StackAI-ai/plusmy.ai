@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation';
 import {
   Button,
   Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
   Input,
   Label,
   Select,
@@ -90,20 +94,25 @@ export function ContextIngestForm({ workspaceId }: { workspaceId: string }) {
 
   return (
     <Card>
-      <div className="mb-4 flex flex-wrap gap-2">
-        {(['asset', 'prompt', 'skill'] as Mode[]).map((value) => (
-          <Button
-            key={value}
-            type="button"
-            onClick={() => setMode(value)}
-            variant={mode === value ? 'default' : 'secondary'}
-            size="sm"
-          >
-            {value}
-          </Button>
-        ))}
-      </div>
-      <form className="space-y-4" onSubmit={handleSubmit}>
+      <CardHeader>
+        <CardTitle>Ingest content</CardTitle>
+        <CardDescription>Load workspace or personal assets, prompt templates, and skill definitions.</CardDescription>
+        <div className="flex flex-wrap gap-2 pt-2">
+          {(['asset', 'prompt', 'skill'] as Mode[]).map((value) => (
+            <Button
+              key={value}
+              type="button"
+              onClick={() => setMode(value)}
+              variant={mode === value ? 'default' : 'outline'}
+              size="sm"
+            >
+              {value}
+            </Button>
+          ))}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-2">
           <Label htmlFor="context-scope">Visibility</Label>
           <Select value={scope} onValueChange={(value) => setScope(value === 'personal' ? 'personal' : 'workspace')}>
@@ -163,7 +172,8 @@ export function ContextIngestForm({ workspaceId }: { workspaceId: string }) {
           {submitting ? 'Saving…' : `Create ${mode}`}
         </Button>
         {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
-      </form>
+        </form>
+      </CardContent>
     </Card>
   );
 }

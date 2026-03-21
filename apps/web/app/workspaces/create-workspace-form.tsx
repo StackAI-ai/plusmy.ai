@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Card, Input, Label } from '@plusmy/ui';
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from '@plusmy/ui';
 
 export function CreateWorkspaceForm() {
   const router = useRouter();
@@ -45,7 +45,12 @@ export function CreateWorkspaceForm() {
 
   return (
     <Card>
-      <form className="space-y-4" onSubmit={handleSubmit}>
+      <CardHeader>
+        <CardTitle>Create workspace</CardTitle>
+        <CardDescription>Seed a new tenancy boundary for integrations, prompts, skills, and MCP approvals.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-2">
           <Label htmlFor="workspace-name">Workspace name</Label>
           <Input
@@ -61,7 +66,8 @@ export function CreateWorkspaceForm() {
           {submitting ? 'Creating…' : 'Create workspace'}
         </Button>
         {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
-      </form>
+        </form>
+      </CardContent>
     </Card>
   );
 }

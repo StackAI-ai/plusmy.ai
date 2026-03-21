@@ -1,4 +1,4 @@
-import { Badge, Button, Card } from '@plusmy/ui';
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import { getAuthorizedWorkspace, listConnectionJobs, listConnectionsForWorkspace, listUserWorkspaces } from '@plusmy/core';
 import { RefreshConnectionButton } from './refresh-button';
@@ -39,10 +39,13 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
   if (!user) {
     return (
       <Card>
-        <h1 className="text-2xl font-semibold">Connections</h1>
-        <p className="mt-3 text-sm leading-7 text-slate-700">
-          Sign in to attach Google, Slack, or Notion accounts. Connection state is stored in workspace-scoped tables and secrets are kept in Vault.
-        </p>
+        <CardHeader>
+          <CardTitle className="text-2xl">Connections</CardTitle>
+          <CardDescription>
+            Sign in to attach Google, Slack, or Notion accounts. Connection state is stored in workspace-scoped
+            tables and secrets are kept in Vault.
+          </CardDescription>
+        </CardHeader>
       </Card>
     );
   }
@@ -78,28 +81,30 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
     <div className="space-y-5">
       {status ? (
         <Card>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold">Connection callback</h2>
-              <p className="mt-2 text-sm text-slate-700">
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+            <div className="space-y-2">
+              <CardTitle className="text-lg">Connection callback</CardTitle>
+              <CardDescription>
                 {provider ? `${provider} reported ${status}.` : `Provider callback reported ${status}.`}
-              </p>
-              {message ? <p className="mt-2 text-sm text-slate-600">{message}</p> : null}
+              </CardDescription>
+              {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
             </div>
             <Badge tone={statusTone}>{status}</Badge>
-          </div>
+          </CardHeader>
         </Card>
       ) : null}
 
       <Card>
-        <h1 className="text-2xl font-semibold">Connection vault</h1>
-        <p className="mt-3 text-sm leading-7 text-slate-700">
-          {workspace
-            ? `Active workspace: ${workspace.name}. Install providers at the workspace level for shared tools or at the personal level for delegated access.`
-            : 'Create a workspace first, then connect providers via the OAuth callback routes.'}
-        </p>
+        <CardHeader>
+          <CardTitle className="text-2xl">Connection vault</CardTitle>
+          <CardDescription>
+            {workspace
+              ? `Active workspace: ${workspace.name}. Install providers at the workspace level for shared tools or at the personal level for delegated access.`
+              : 'Create a workspace first, then connect providers via the OAuth callback routes.'}
+          </CardDescription>
+        </CardHeader>
         {workspace ? (
-          <div className="mt-4 space-y-3">
+          <CardContent className="space-y-3">
             <div className="flex flex-wrap gap-2">
               <Badge tone={processingJobs ? 'brass' : 'moss'}>{processingJobs} processing</Badge>
               <Badge tone={queuedJobs ? 'default' : 'moss'}>{queuedJobs} queued</Badge>
@@ -110,7 +115,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
             {reauthRequiredConnections ? (
               <p className="text-sm text-red-700">{reauthRequiredConnections} connection(s) need re-auth.</p>
             ) : null}
-          </div>
+          </CardContent>
         ) : null}
       </Card>
 
@@ -128,19 +133,22 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
 
           return (
             <Card key={providerKey}>
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-xl font-semibold capitalize">{providerKey}</h2>
+              <CardHeader className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle className="text-xl capitalize">{providerKey}</CardTitle>
                 <Badge tone={activeCount ? 'moss' : 'brass'}>{activeCount ? `${activeCount} active` : 'not connected'}</Badge>
-              </div>
-              {providerConnections.length === 0 ? (
-                <p className="mt-2 text-xs text-slate-500">No provider installs yet.</p>
-              ) : null}
-              <ul className="mt-4 space-y-2 text-sm text-slate-700">
+                </div>
+                {providerConnections.length === 0 ? (
+                  <CardDescription>No provider installs yet.</CardDescription>
+                ) : null}
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <ul className="space-y-2 text-sm text-muted-foreground">
                 {tools.map((tool) => (
                   <li key={tool}>{tool}</li>
                 ))}
               </ul>
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2">
                 {(() => {
                   const providerConnectionIds = providerConnections.map((connection) => connection.id);
                   const providerJobs = providerConnectionIds.flatMap((connectionId) => jobsByConnection.get(connectionId) ?? []);
@@ -157,7 +165,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
                   );
                 })()}
               </div>
-              <div className="mt-5 flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-3">
                 {canManageWorkspaceConnections ? (
                   <Button asChild>
                     <a href={workspaceConnectHref}>Connect workspace</a>
@@ -168,11 +176,11 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
                 </Button>
               </div>
               {canManageWorkspaceConnections === false && workspace ? (
-                <p className="mt-3 text-xs text-slate-500">Workspace installs require an owner or admin role.</p>
+                <p className="text-xs text-muted-foreground">Workspace installs require an owner or admin role.</p>
               ) : null}
-              <div className="mt-5 space-y-3">
+              <div className="space-y-3">
                 {providerConnections.length === 0 ? (
-                  <p className="text-sm text-slate-700">No connection records for this provider yet.</p>
+                  <p className="text-sm text-muted-foreground">No connection records for this provider yet.</p>
                 ) : (
                   providerConnections.map((connection) => {
                     const recentJobs = (jobsByConnection.get(connection.id) ?? []).slice(0, 3);
@@ -250,6 +258,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
                   })
                 )}
               </div>
+              </CardContent>
             </Card>
           );
         })}
