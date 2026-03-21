@@ -7,6 +7,8 @@ export type ProviderId = 'google' | 'slack' | 'notion';
 export type ToolCapability = 'read' | 'write' | 'search' | 'execute';
 export type ContextAssetType = 'document' | 'prompt' | 'brand_guideline' | 'workflow' | 'knowledge_base';
 export type AuditActorType = 'user' | 'mcp_client' | 'system';
+export const connectionJobStatuses = ['queued', 'processing', 'succeeded', 'failed', 'canceled'] as const;
+export type ConnectionJobStatus = (typeof connectionJobStatuses)[number];
 export const contextBindingTypes = ['workspace', 'provider', 'tool'] as const;
 export type ContextBindingType = (typeof contextBindingTypes)[number];
 export type AuditAction = string;
@@ -31,8 +33,27 @@ export interface ConnectionRecord {
   external_account_email: string | null;
   granted_scopes: string[];
   expires_at: string | null;
+  last_refreshed_at: string | null;
+  last_validated_at: string | null;
   reauth_required_reason: string | null;
   metadata: Json;
+}
+
+export interface ConnectionJobRecord {
+  id: string;
+  connection_id: string;
+  job_type: string;
+  payload: Json;
+  status: ConnectionJobStatus;
+  attempts: number;
+  max_attempts: number;
+  run_after: string;
+  last_error: string | null;
+  worker_id: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CredentialSecretRefs {

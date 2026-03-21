@@ -1,6 +1,6 @@
 import { getServerEnv } from '@plusmy/config';
 import type { ConnectionRecord, Json, McpResourceDefinition, McpToolDefinition, ProviderTokenSet } from '@plusmy/contracts';
-import type { AuthorizationCodeInput, AuthorizationUrlInput, IntegrationDefinition, ProviderCallContext } from '../types';
+import type { AuthorizationCodeInput, AuthorizationUrlInput, IntegrationDefinition, ProviderCallContext, SyncJobHandlerInput } from '../types';
 
 const oauth = {
   authorizationUrl: 'https://api.notion.com/v1/oauth/authorize',
@@ -27,6 +27,26 @@ async function notionRequest(path: string, accessToken: string, init?: RequestIn
     }
   });
   return await response.json();
+}
+
+async function syncConnection({ connection, credentials }: SyncJobHandlerInput) {
+  const accessToken = credentials.accessToken;
+  if (!accessToken) throw new Error('Missing Notion access token.');
+
+  const data = (await notionRequest('users/me', accessToken, { method: 'GET' })) as Record<string, unknown>;
+  const bot = (data.bot ?? {}) as Record<string, unknown>;
+  const owner = (data.owner ?? {}) as Record<string, unknown>;
+  const workspaceName =
+    (typeof bot.workspace_name === 'string' && bot.workspace_name) ||
+    (typeof owner.workspace_name === 'string' && owner.workspace_name) ||
+    connection.display_name;
+
+  return {
+    displayName: workspaceName,
+    externalAccountId: String(bot.workspace_id ?? owner.workspace_id ?? connection.external_account_id ?? 'notion-workspace'),
+    externalAccountEmail: null,
+    metadata: data as Record<string, Json>
+  };
 }
 
 const tools: McpToolDefinition[] = [
@@ -145,6 +165,12 @@ export const notionIntegration: IntegrationDefinition = {
   listResources(_connection: ConnectionRecord): McpResourceDefinition[] {
     return [];
   },
+  syncJobs: [
+    {
+      jobType: 'sync_connection',
+      run: syncConnection
+    }
+  ],
   async callTool(toolName: string, input: Record<string, unknown>, context: ProviderCallContext) {
     const accessToken = context.credentials.accessToken;
     if (!accessToken) throw new Error('Missing Notion access token.');

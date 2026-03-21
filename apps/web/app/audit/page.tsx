@@ -246,6 +246,9 @@ export default async function AuditPage({ searchParams }: { searchParams?: AppSe
             <Link href={buildAuditHref(workspace.id, currentFilters, { resource: 'context_binding', action: 'context.' })} className={filterLinkClass(resourceType === 'context_binding')}>
               Context bindings
             </Link>
+            <Link href={buildAuditHref(workspace.id, currentFilters, { resource: 'connection_job', action: 'connection_job.' })} className={filterLinkClass(resourceType === 'connection_job')}>
+              Background jobs
+            </Link>
             <Link href={buildAuditHref(workspace.id, currentFilters, { actor: 'mcp_client', action: 'mcp.' })} className={filterLinkClass(actorType === 'mcp_client')}>
               MCP clients
             </Link>

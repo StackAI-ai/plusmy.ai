@@ -1,9 +1,10 @@
 import type {
-  ProviderRuntimeContext,
+  Json,
   ConnectionRecord,
   McpResourceDefinition,
   McpToolDefinition,
   ProviderId,
+  ProviderRuntimeContext,
   ProviderTokenSet,
   ResolvedConnectionCredentials
 } from '@plusmy/contracts';
@@ -52,9 +53,22 @@ export interface ConnectionValidator {
   (tokenSet: ProviderTokenSet): Promise<ResolvedProviderAccount>;
 }
 
+export interface SyncJobHandlerInput {
+  connection: ConnectionRecord;
+  credentials: ResolvedConnectionCredentials;
+  payload: Record<string, Json>;
+}
+
+export interface SyncJobResult {
+  displayName?: string;
+  externalAccountId?: string;
+  externalAccountEmail?: string | null;
+  metadata?: Record<string, Json>;
+}
+
 export interface SyncJobHandler {
   jobType: string;
-  run(connection: ConnectionRecord): Promise<void>;
+  run(input: SyncJobHandlerInput): Promise<SyncJobResult | void>;
 }
 
 export interface WebhookHandler {

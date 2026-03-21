@@ -1,8 +1,9 @@
 import { Badge, Button, Card } from '@plusmy/ui';
 import { createServerSupabaseClient } from '@plusmy/supabase';
-import { getAuthorizedWorkspace, listConnectionsForWorkspace, listUserWorkspaces } from '@plusmy/core';
+import { getAuthorizedWorkspace, listConnectionJobs, listConnectionsForWorkspace, listUserWorkspaces } from '@plusmy/core';
 import { RefreshConnectionButton } from './refresh-button';
 import { DisconnectConnectionButton } from './disconnect-button';
+import { SyncConnectionButton } from './sync-button';
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
 
 const providerCapabilities = {
@@ -10,6 +11,17 @@ const providerCapabilities = {
   slack: ['slack.list_channels', 'slack.read_channel_history', 'slack.post_message'],
   notion: ['notion.search', 'notion.get_page', 'notion.create_page']
 } as const;
+
+function jobTone(status: string) {
+  if (status === 'succeeded') return 'moss' as const;
+  if (status === 'failed' || status === 'canceled') return 'brass' as const;
+  return 'default' as const;
+}
+
+function formatTimestamp(value: string | null) {
+  if (!value) return null;
+  return new Date(value).toLocaleString();
+}
 
 export default async function ConnectionsPage({ searchParams }: { searchParams?: AppSearchParams }) {
   const supabase = await createServerSupabaseClient();
@@ -37,6 +49,15 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
   const activeMembership = workspace ? workspaces.find((entry) => entry.id === workspace.id) : null;
   const canManageWorkspaceConnections = activeMembership?.role === 'owner' || activeMembership?.role === 'admin';
   const connections = workspace ? await listConnectionsForWorkspace(workspace.id, user.id) : [];
+  const connectionJobs = workspace ? await listConnectionJobs(workspace.id, 40) : [];
+  const jobsByConnection = new Map<string, typeof connectionJobs>();
+  for (const job of connectionJobs) {
+    const existing = jobsByConnection.get(job.connection_id) ?? [];
+    existing.push(job);
+    jobsByConnection.set(job.connection_id, existing);
+  }
+  const queuedJobs = connectionJobs.filter((job) => job.status === 'queued').length;
+  const processingJobs = connectionJobs.filter((job) => job.status === 'processing').length;
   const statusTone = status === 'connected' ? 'moss' : 'brass';
 
   return (
@@ -63,6 +84,12 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
             ? `Active workspace: ${workspace.name}. Install providers at the workspace level for shared tools or at the personal level for delegated access.`
             : 'Create a workspace first, then connect providers via the OAuth callback routes.'}
         </p>
+        {workspace ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Badge tone={processingJobs ? 'brass' : 'moss'}>{processingJobs} processing</Badge>
+            <Badge tone={queuedJobs ? 'default' : 'moss'}>{queuedJobs} queued</Badge>
+          </div>
+        ) : null}
       </Card>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -105,8 +132,10 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
                 {providerConnections.length === 0 ? (
                   <p className="text-sm text-slate-700">No connection records for this provider yet.</p>
                 ) : (
-                  providerConnections.map((connection) => (
-                    <div key={connection.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
+                  providerConnections.map((connection) => {
+                    const recentJobs = (jobsByConnection.get(connection.id) ?? []).slice(0, 3);
+                    return (
+                      <div key={connection.id} className="rounded-2xl border border-black/5 bg-white/70 p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <p className="font-semibold text-ink">{connection.display_name}</p>
@@ -126,11 +155,42 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
                               </Badge>
                             ))}
                           </div>
+                          <div className="mt-3 space-y-1 text-xs text-slate-500">
+                            {connection.last_refreshed_at ? <p>Last refreshed: {formatTimestamp(connection.last_refreshed_at)}</p> : null}
+                            {connection.last_validated_at ? <p>Last validated: {formatTimestamp(connection.last_validated_at)}</p> : null}
+                          </div>
+                          <div className="mt-4 space-y-2">
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Background jobs</p>
+                            {recentJobs.length === 0 ? (
+                              <p className="text-xs text-slate-500">No background jobs recorded for this connection yet.</p>
+                            ) : (
+                              recentJobs.map((job) => (
+                                <div key={job.id} className="rounded-2xl border border-black/5 bg-black/5 p-3">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <p className="text-sm font-medium text-ink">{job.job_type.replaceAll('_', ' ')}</p>
+                                    <Badge tone={jobTone(job.status)}>{job.status}</Badge>
+                                  </div>
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    Attempt {job.attempts} of {job.max_attempts}
+                                  </p>
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    {job.status === 'queued'
+                                      ? `Run after ${formatTimestamp(job.run_after)}`
+                                      : job.completed_at
+                                        ? `Completed ${formatTimestamp(job.completed_at)}`
+                                        : `Started ${formatTimestamp(job.started_at)}`}
+                                  </p>
+                                  {job.last_error ? <p className="mt-2 text-xs text-red-700">{job.last_error}</p> : null}
+                                </div>
+                              ))
+                            )}
+                          </div>
                         </div>
                         {workspace ? (
                           <div className="flex flex-col items-end gap-2">
                             {connection.status !== 'revoked' ? (
                               <>
+                                <SyncConnectionButton workspaceId={workspace.id} connectionId={connection.id} />
                                 <RefreshConnectionButton workspaceId={workspace.id} connectionId={connection.id} />
                                 <DisconnectConnectionButton workspaceId={workspace.id} connectionId={connection.id} />
                               </>
@@ -140,8 +200,9 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
                           </div>
                         ) : null}
                       </div>
-                    </div>
-                  ))
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </Card>

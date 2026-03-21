@@ -1,6 +1,13 @@
 import { getServerEnv } from '@plusmy/config';
 import type { ConnectionRecord, Json, McpResourceDefinition, McpToolDefinition, ProviderTokenSet } from '@plusmy/contracts';
-import type { AuthorizationCodeInput, AuthorizationUrlInput, IntegrationDefinition, ProviderCallContext, ResolvedProviderAccount } from '../types';
+import type {
+  AuthorizationCodeInput,
+  AuthorizationUrlInput,
+  IntegrationDefinition,
+  ProviderCallContext,
+  ResolvedProviderAccount,
+  SyncJobHandlerInput
+} from '../types';
 
 const oauth = {
   authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
@@ -64,6 +71,19 @@ async function fetchProfile(accessToken: string): Promise<ResolvedProviderAccoun
     displayName: String(data.name ?? data.email ?? 'Google Workspace'),
     externalAccountEmail: data.email ? String(data.email) : null,
     metadata: data as Record<string, unknown>
+  };
+}
+
+async function syncConnection({ credentials }: SyncJobHandlerInput) {
+  const accessToken = credentials.accessToken;
+  if (!accessToken) throw new Error('Missing Google access token.');
+
+  const account = await fetchProfile(accessToken);
+  return {
+    displayName: account.displayName,
+    externalAccountId: account.externalAccountId,
+    externalAccountEmail: account.externalAccountEmail ?? null,
+    metadata: account.metadata as Record<string, Json>
   };
 }
 
@@ -149,6 +169,12 @@ export const googleIntegration: IntegrationDefinition = {
   listResources(_connection: ConnectionRecord): McpResourceDefinition[] {
     return [];
   },
+  syncJobs: [
+    {
+      jobType: 'sync_connection',
+      run: syncConnection
+    }
+  ],
   async callTool(toolName: string, input: Record<string, unknown>, context: ProviderCallContext) {
     const accessToken = context.credentials.accessToken;
     if (!accessToken) throw new Error('Missing Google access token.');

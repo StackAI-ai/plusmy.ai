@@ -1,6 +1,13 @@
 import { getServerEnv } from '@plusmy/config';
 import type { ConnectionRecord, Json, McpResourceDefinition, McpToolDefinition, ProviderTokenSet } from '@plusmy/contracts';
-import type { AuthorizationCodeInput, AuthorizationUrlInput, IntegrationDefinition, ProviderCallContext, ResolvedProviderAccount } from '../types';
+import type {
+  AuthorizationCodeInput,
+  AuthorizationUrlInput,
+  IntegrationDefinition,
+  ProviderCallContext,
+  ResolvedProviderAccount,
+  SyncJobHandlerInput
+} from '../types';
 
 const oauth = {
   authorizationUrl: 'https://slack.com/oauth/v2/authorize',
@@ -51,6 +58,26 @@ function resolveWorkspace(data: Record<string, unknown>): ResolvedProviderAccoun
     displayName: String(team.name ?? 'Slack workspace'),
     externalAccountEmail: null,
     metadata: data
+  };
+}
+
+async function syncConnection({ connection, credentials }: SyncJobHandlerInput) {
+  const accessToken = credentials.accessToken;
+  if (!accessToken) throw new Error('Missing Slack access token.');
+
+  const response = await fetch('https://slack.com/api/auth.test', {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const data = (await response.json()) as Record<string, unknown>;
+  if (!response.ok || data.ok === false) {
+    throw new Error(String(data.error ?? 'Slack connection sync failed.'));
+  }
+
+  return {
+    displayName: typeof data.team === 'string' ? data.team : connection.display_name,
+    externalAccountId: String(data.team_id ?? connection.external_account_id ?? 'slack-workspace'),
+    externalAccountEmail: null,
+    metadata: data as Record<string, Json>
   };
 }
 
@@ -134,6 +161,12 @@ export const slackIntegration: IntegrationDefinition = {
   listResources(_connection: ConnectionRecord): McpResourceDefinition[] {
     return [];
   },
+  syncJobs: [
+    {
+      jobType: 'sync_connection',
+      run: syncConnection
+    }
+  ],
   async callTool(toolName: string, input: Record<string, unknown>, context: ProviderCallContext) {
     const accessToken = context.credentials.accessToken;
     if (!accessToken) throw new Error('Missing Slack access token.');
