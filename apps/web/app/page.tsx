@@ -1,27 +1,37 @@
 import Link from 'next/link';
-import { ArrowRight, BrainCircuit, Cable, ShieldCheck, Waypoints } from 'lucide-react';
+import { ArrowRight, BrainCircuit, Cable, ShieldCheck, UsersRound } from 'lucide-react';
+import { redirect } from 'next/navigation';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
+import { createServerSupabaseClient } from '@plusmy/supabase';
 import { getPlatformCounts, plannedProviderPlatforms, supportedProviders } from '@plusmy/contracts';
 
 const pillars = [
   {
     icon: Cable,
     title: 'Connect once',
-    body: 'Install Google, Slack, and Notion once per workspace or per user. Store every token in Vault, not in app tables.'
+    body: 'Connect providers once per workspace or per user. Secrets are stored securely and never written to app tables.'
   },
   {
     icon: BrainCircuit,
-    title: 'Inject the right context',
-    body: 'Prompts, brand rules, and workflows live in pgvector-backed resources so MCP clients only see the most relevant context.'
+    title: 'Keep context on-brand',
+    body: 'Prompts, policies, and workflows live as reusable resources so assistants see the right context for the job.'
   },
   {
     icon: ShieldCheck,
-    title: 'Standard OAuth for MCP',
-    body: 'Modern MCP clients authorize against plusmy.ai directly with OAuth 2.1, PKCE, and dynamic client registration.'
+    title: 'Controlled access',
+    body: 'Workspace approvals and an audit trail keep every tool action reviewable.'
   }
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect('/login');
+  }
+
   const counts = getPlatformCounts();
 
   return (
@@ -32,17 +42,18 @@ export default function HomePage() {
           <div>
             <div className="mb-5 flex flex-wrap gap-2">
               <Badge>
-                <Waypoints className="h-3.5 w-3.5" />
-                AI integration control plane
+                <UsersRound className="h-3.5 w-3.5" />
+                Business tool hub
               </Badge>
-              <Badge tone="moss">Vault-backed</Badge>
-              <Badge tone="brass">Workspace-scoped</Badge>
+              <Badge tone="moss">Secure by default</Badge>
+              <Badge tone="brass">Workspace permissions</Badge>
             </div>
             <h1 className="max-w-3xl text-4xl font-semibold leading-tight text-foreground md:text-6xl">
-              A real operator layer for AI clients, not another prompt scrapbook.
+              Connect your business tools, not your stack.
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-8 text-muted-foreground md:text-lg">
-              plusmy.ai centralizes business integrations, encrypts every credential in Supabase Vault, and exposes a single OAuth-native MCP endpoint for OpenAI, Anthropic, Gemini, Cursor, and every modern client that needs governed access.
+              plusmy.ai runs operator workflows across CRM, support, finance, docs, and collaboration with clear workspace permissions and
+              audit-ready approvals.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button asChild size="lg">
@@ -55,27 +66,27 @@ export default function HomePage() {
                 <Link href="/onboarding">Review onboarding</Link>
               </Button>
               <Button asChild variant="outline" size="lg">
-                <Link href="/mcp-setup/quickstart">Open MCP quickstart</Link>
+                <Link href="/mcp-setup/quickstart">Open AI client quickstart</Link>
               </Button>
             </div>
           </div>
           <Card className="border-border/70 bg-background/80">
             <CardHeader>
-              <CardTitle>Launch architecture</CardTitle>
-              <CardDescription>Designed like a modern shadcn-based operator app, but wired to the actual product model underneath.</CardDescription>
+              <CardTitle>Built for operators</CardTitle>
+              <CardDescription>Connect tools once, then run repeatable workflows with clear permissions and an audit trail.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 text-sm text-muted-foreground">
               <div className="rounded-2xl border border-border/70 bg-card/90 p-4">
-                <p className="font-medium text-foreground">Vercel + Next.js App Router</p>
-                <p className="mt-2 leading-6">User-facing product surfaces and MCP endpoints stay on the web app, not in disconnected admin tooling.</p>
+                <p className="font-medium text-foreground">CRM, support, finance, collaboration</p>
+                <p className="mt-2 leading-6">Run customer and ops workflows across tools without juggling separate permissions models.</p>
               </div>
               <div className="rounded-2xl border border-border/70 bg-card/90 p-4">
-                <p className="font-medium text-foreground">Supabase core runtime</p>
-                <p className="mt-2 leading-6">Auth, Postgres, Vault, pgvector, RLS, queues, and internal worker routes stay aligned with the build plan.</p>
+                <p className="font-medium text-foreground">Context first</p>
+                <p className="mt-2 leading-6">Saved prompts and assets stay attached to the workspace so operators get relevant context immediately.</p>
               </div>
               <div className="rounded-2xl border border-border/70 bg-card/90 p-4">
-                <p className="font-medium text-foreground">Shared contracts and UI primitives</p>
-                <p className="mt-2 leading-6">The monorepo uses shared packages so web, mobile, integrations, and MCP runtime stay on the same interface layer.</p>
+                <p className="font-medium text-foreground">Scales with your catalog</p>
+                <p className="mt-2 leading-6">Adding a provider means it lands in the same model with consistent approvals and auditability.</p>
               </div>
             </CardContent>
           </Card>
@@ -105,14 +116,12 @@ export default function HomePage() {
           <CardHeader>
             <div className="flex flex-wrap gap-2">
               <Badge tone="moss">{counts.liveProviders} providers live</Badge>
-              <Badge>{counts.supportedClients} client targets</Badge>
+              <Badge>{counts.supportedClients} AI clients</Badge>
               <Badge tone="brass">{counts.plannedPlatforms} next-wave integrations</Badge>
             </div>
             <CardTitle>Supported now</CardTitle>
             <CardDescription>
-              The product is currently implemented for three provider surfaces: Google Workspace, Slack, and
-              Notion. Each one already flows through workspace-aware OAuth, Vault-backed credential storage, and
-              MCP tool exposure.
+              Live providers cover CRM, support, delivery, identity, and documentation workflows.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -132,8 +141,7 @@ export default function HomePage() {
           <CardHeader>
             <CardTitle>Coming next</CardTitle>
             <CardDescription>
-              The most obvious gaps are enterprise document suites, engineering systems, CRM, and support
-              tooling. Those can fit the existing workspace + approval model without changing the architecture.
+              QuickBooks, Xero, Airtable, and Zoom are next, keeping the same workspace permissions and approval flow.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

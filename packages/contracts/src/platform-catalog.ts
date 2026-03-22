@@ -42,7 +42,9 @@ export interface PlatformCatalogEntry {
     | 'microsoft365'
     | 'github'
     | 'linear'
-    | 'jira';
+    | 'jira'
+    | 'quickbooks'
+    | 'xero';
   capabilities: PlatformCapability[];
 }
 
@@ -76,11 +78,11 @@ export const supportedProviders = [
     status: 'live',
     surface: 'provider',
     category: 'documents',
-    summary: 'Drive and Docs search/read access for workspace or personal installs.',
+    summary: 'Search and read Drive/Docs content for your team.',
     connectLabel: 'Google',
     capabilities: [
-      { label: 'Drive search', detail: 'Search shared and personal Drive files through MCP.' },
-      { label: 'Docs read', detail: 'Open Google Docs content with workspace-scoped auth.' }
+      { label: 'Drive search', detail: 'Search shared and personal Drive files.' },
+      { label: 'Docs read', detail: 'Open Google Docs content with workspace permissions.' }
     ]
   },
   {
@@ -90,12 +92,12 @@ export const supportedProviders = [
     status: 'live',
     surface: 'provider',
     category: 'chat',
-    summary: 'Channel discovery, history access, and post-message support for operator workflows.',
+    summary: 'Channel discovery, history access, and posting for team collaboration workflows.',
     connectLabel: 'Slack',
     capabilities: [
       { label: 'Channel list', detail: 'Enumerate public workspace channels.' },
-      { label: 'History read', detail: 'Review channel context before an agent acts.' },
-      { label: 'Post message', detail: 'Send messages back into Slack from approved MCP clients.' }
+      { label: 'History read', detail: 'Review channel context before taking action.' },
+      { label: 'Post message', detail: 'Send messages back into Slack from approved workflows.' }
     ]
   },
   {
@@ -108,8 +110,8 @@ export const supportedProviders = [
     summary: 'Search, read, and create-page workflows for team knowledge bases.',
     connectLabel: 'Notion',
     capabilities: [
-      { label: 'Workspace search', detail: 'Search pages and databases from MCP tools.' },
-      { label: 'Page read', detail: 'Fetch structured page content through the provider adapter.' },
+      { label: 'Workspace search', detail: 'Search pages and databases.' },
+      { label: 'Page read', detail: 'Fetch structured page content.' },
       { label: 'Page create', detail: 'Create follow-up documents from approved client workflows.' }
     ]
   },
@@ -120,11 +122,11 @@ export const supportedProviders = [
     status: 'live',
     surface: 'provider',
     category: 'storage',
-    summary: 'Workspace and personal Dropbox installs with file search and governed file reads.',
+    summary: 'Workspace and personal Dropbox installs with file search and file reads.',
     connectLabel: 'Dropbox',
     capabilities: [
-      { label: 'File search', detail: 'Search shared Dropbox content and metadata through MCP.' },
-      { label: 'File read', detail: 'Read Dropbox file content with workspace-scoped auth.' }
+      { label: 'File search', detail: 'Search shared Dropbox content and metadata.' },
+      { label: 'File read', detail: 'Read Dropbox file content with workspace permissions.' }
     ]
   },
   {
@@ -134,11 +136,11 @@ export const supportedProviders = [
     status: 'live',
     surface: 'provider',
     category: 'storage',
-    summary: 'Enterprise Box installs with file search and governed file reads for content-heavy teams.',
+    summary: 'Enterprise Box installs with file search and file reads for content-heavy teams.',
     connectLabel: 'Box',
     capabilities: [
-      { label: 'File search', detail: 'Search Box files and folders from approved MCP workflows.' },
-      { label: 'File read', detail: 'Read Box file content and metadata through the provider adapter.' }
+      { label: 'File search', detail: 'Search Box files and folders from approved workflows.' },
+      { label: 'File read', detail: 'Read Box file content and metadata.' }
     ]
   },
   {
@@ -152,7 +154,7 @@ export const supportedProviders = [
     connectLabel: 'HubSpot',
     capabilities: [
       { label: 'Contact search', detail: 'Search contacts and companies by workspace context.' },
-      { label: 'Contact updates', detail: 'Write governed lifecycle notes and updates.' }
+      { label: 'Contact updates', detail: 'Write controlled lifecycle notes and updates.' }
     ]
   },
   {
@@ -166,7 +168,7 @@ export const supportedProviders = [
     connectLabel: 'Salesforce',
     capabilities: [
       { label: 'Account lookup', detail: 'Resolve accounts and related objects by context.' },
-      { label: 'Case comments', detail: 'Post governed updates back into support cases.' }
+      { label: 'Case comments', detail: 'Post controlled updates back into support cases.' }
     ]
   },
   {
@@ -180,7 +182,7 @@ export const supportedProviders = [
     connectLabel: 'ServiceNow',
     capabilities: [
       { label: 'Incident search', detail: 'Find incidents and service records quickly.' },
-      { label: 'Incident comments', detail: 'Add governed follow-ups and status context.' }
+      { label: 'Incident comments', detail: 'Add controlled follow-ups and status context.' }
     ]
   },
   {
@@ -190,7 +192,7 @@ export const supportedProviders = [
     status: 'live',
     surface: 'provider',
     category: 'identity',
-    summary: 'Identity and group lookup workflows for admin control-plane use cases.',
+    summary: 'User and group lookup workflows for admin and access-management use cases.',
     connectLabel: 'Okta',
     capabilities: [
       { label: 'User lookup', detail: 'Resolve user identity records and lifecycle state.' },
@@ -208,7 +210,7 @@ export const supportedProviders = [
     connectLabel: 'Asana',
     capabilities: [
       { label: 'Task search', detail: 'Find tasks by query and workspace context.' },
-      { label: 'Task comments', detail: 'Post governed status updates back into Asana.' }
+      { label: 'Task comments', detail: 'Post controlled status updates back into Asana.' }
     ]
   },
   {
@@ -250,7 +252,7 @@ export const supportedProviders = [
     connectLabel: 'GitHub',
     capabilities: [
       { label: 'Repo search', detail: 'Search repositories and issues across orgs.' },
-      { label: 'Governed comments', detail: 'Leave governed comments on pull requests.' }
+      { label: 'Pull request comments', detail: 'Leave comments and follow-ups on pull requests.' }
     ]
   },
   {
@@ -278,7 +280,7 @@ export const supportedProviders = [
     connectLabel: 'Jira',
     capabilities: [
       { label: 'Issue search', detail: 'Find incidents and project tickets by workspace context.' },
-      { label: 'Status updates', detail: 'Advance or comment on tasks from MCP workflows.' }
+      { label: 'Status updates', detail: 'Advance or comment on tasks from approved workflows.' }
     ]
   },
   {
@@ -292,7 +294,7 @@ export const supportedProviders = [
     connectLabel: 'Confluence',
     capabilities: [
       { label: 'Space search', detail: 'Search enterprise spaces and documentation for context grounding.' },
-      { label: 'Page read', detail: 'Read Confluence pages inside governed MCP tool flows.' }
+      { label: 'Page read', detail: 'Read Confluence pages inside approved workflows.' }
     ]
   },
   {
@@ -335,7 +337,33 @@ export const plannedProviderPlatforms = [
     rationale: 'Adds conversational context around decisions, notes, and action items that never make it into docs.',
     capabilities: [
       { label: 'Meeting search', detail: 'Find meetings and participants tied to workspace context.' },
-      { label: 'Transcript read', detail: 'Pull transcripts and summaries into MCP workflows.' }
+      { label: 'Transcript read', detail: 'Pull transcripts and summaries into workflow context.' }
+    ]
+  },
+  {
+    id: 'quickbooks',
+    name: 'QuickBooks Online',
+    status: 'planned',
+    surface: 'provider',
+    category: 'productivity',
+    summary: 'Accounts-receivable and customer finance workflows for finance operators.',
+    rationale: 'Brings finance context into the same approval and workspace-scoped tool model used by CRM and support tools.',
+    capabilities: [
+      { label: 'Customer search', detail: 'Find customers and invoices tied to workspace context.' },
+      { label: 'Invoice lookup', detail: 'Retrieve invoice state and detail for operators and handoffs.' }
+    ]
+  },
+  {
+    id: 'xero',
+    name: 'Xero',
+    status: 'planned',
+    surface: 'provider',
+    category: 'productivity',
+    summary: 'Core bookkeeping operations for payment and billing workflows.',
+    rationale: 'Complements QuickBooks and CRM coverage for operators handling finance approvals and follow-ups.',
+    capabilities: [
+      { label: 'Contact search', detail: 'Find finance contacts and account summaries by query.' },
+      { label: 'Invoice read', detail: 'Pull billed/unbilled and draft invoice snapshots into context workflows.' }
     ]
   }
 ] as const satisfies readonly PlatformCatalogEntry[];
@@ -347,11 +375,11 @@ export const supportedMcpClients = [
     status: 'beta',
     surface: 'mcp_client',
     category: 'productivity',
-    summary: 'OAuth-native MCP metadata and bearer-token flow are designed to work with OpenAI-compatible MCP clients.',
+    summary: 'Connect OpenAI-based assistants to your workspace tools with secure sign-in and approvals.',
     rationale: 'Strong standards fit and a core target for the product surface.',
     capabilities: [
-      { label: 'OAuth 2.1', detail: 'Authorize against plusmy.ai with PKCE and workspace consent.' },
-      { label: 'MCP tools + resources', detail: 'Consume provider tools and bound workspace context.' }
+      { label: 'Secure sign-in', detail: 'Authorize with PKCE and workspace consent.' },
+      { label: 'Tool access', detail: 'Use connected provider tools and workspace context.' }
     ]
   },
   {
@@ -360,11 +388,11 @@ export const supportedMcpClients = [
     status: 'beta',
     surface: 'mcp_client',
     category: 'productivity',
-    summary: 'Positioned for modern MCP clients built around Anthropic-compatible workflows.',
+    summary: 'Connect Anthropic-based assistants to your workspace tools with secure sign-in and approvals.',
     rationale: 'Important ecosystem target and aligned with the standards-based transport surface.',
     capabilities: [
-      { label: 'OAuth discovery', detail: 'Use protected-resource and auth-server metadata.' },
-      { label: 'Workspace consent', detail: 'Operators can approve access with workspace scoping.' }
+      { label: 'Secure sign-in', detail: 'Use standards-based OAuth discovery and sign-in.' },
+      { label: 'Workspace consent', detail: 'Operators approve access with workspace scoping.' }
     ]
   },
   {
@@ -373,11 +401,11 @@ export const supportedMcpClients = [
     status: 'beta',
     surface: 'mcp_client',
     category: 'productivity',
-    summary: 'Standards-based MCP access for Gemini-adjacent tools and experiments.',
+    summary: 'Connect Gemini assistants and adjacent tools to your workspace tools with secure sign-in.',
     rationale: 'Keeps the product positioned as a neutral operator layer instead of a single-model utility.',
     capabilities: [
-      { label: 'Client registration', detail: 'Register a compatible client and complete PKCE auth.' },
-      { label: 'Resource access', detail: 'Read provider-backed resources through the MCP endpoint.' }
+      { label: 'Client setup', detail: 'Register a compatible client and complete OAuth sign-in.' },
+      { label: 'Workspace access', detail: 'Use provider-backed tools through the workspace integration endpoint.' }
     ]
   },
   {
@@ -386,11 +414,11 @@ export const supportedMcpClients = [
     status: 'beta',
     surface: 'mcp_client',
     category: 'engineering',
-    summary: 'Developer-facing MCP workflows that combine platform tools with workspace context.',
+    summary: 'Use Cursor with your workspace tools and context for faster delivery workflows.',
     rationale: 'Practical day-one coding-agent target and already reflected in the product copy.',
     capabilities: [
-      { label: 'Coding workflows', detail: 'Use provider tools inside code-assistant workflows.' },
-      { label: 'Workspace-scoped auth', detail: 'Keep approvals and tool visibility tenant-aware.' }
+      { label: 'Coding workflows', detail: 'Use connected tools inside code-assistant workflows.' },
+      { label: 'Workspace permissions', detail: 'Keep approvals and tool visibility workspace-aware.' }
     ]
   }
 ] as const satisfies readonly PlatformCatalogEntry[];
