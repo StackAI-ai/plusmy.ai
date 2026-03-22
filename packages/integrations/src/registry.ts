@@ -1,6 +1,8 @@
 import { googleIntegration } from './providers/google';
 import { slackIntegration } from './providers/slack';
 import { notionIntegration } from './providers/notion';
+import { dropboxIntegration } from './providers/dropbox';
+import { boxIntegration } from './providers/box';
 import { microsoft365Integration } from './providers/microsoft365';
 import { githubIntegration } from './providers/github';
 import { linearIntegration } from './providers/linear';
@@ -9,7 +11,7 @@ import { zendeskIntegration } from './providers/zendesk';
 import { confluenceIntegration } from './providers/confluence';
 import type { IntegrationDefinition } from './types';
 
-const registry = [googleIntegration, slackIntegration, notionIntegration] as const satisfies readonly IntegrationDefinition[];
+const registry = [googleIntegration, slackIntegration, notionIntegration, dropboxIntegration, boxIntegration] as const satisfies readonly IntegrationDefinition[];
 
 export const plannedIntegrationScaffolds = [
   microsoft365Integration,

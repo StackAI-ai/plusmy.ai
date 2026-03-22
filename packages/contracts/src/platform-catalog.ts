@@ -25,12 +25,12 @@ export interface PlatformCatalogEntry {
   category: PlatformCategory;
   summary: string;
   rationale?: string;
-  providerId?: 'google' | 'slack' | 'notion';
+  providerId?: 'google' | 'slack' | 'notion' | 'dropbox' | 'box';
   capabilities: PlatformCapability[];
 }
 
 type LiveProviderMetadata = PlatformCatalogEntry & {
-  providerId: 'google' | 'slack' | 'notion';
+  providerId: 'google' | 'slack' | 'notion' | 'dropbox' | 'box';
   connectLabel: string;
 };
 
@@ -77,6 +77,34 @@ export const supportedProviders = [
       { label: 'Workspace search', detail: 'Search pages and databases from MCP tools.' },
       { label: 'Page read', detail: 'Fetch structured page content through the provider adapter.' },
       { label: 'Page create', detail: 'Create follow-up documents from approved client workflows.' }
+    ]
+  },
+  {
+    id: 'dropbox',
+    providerId: 'dropbox',
+    name: 'Dropbox',
+    status: 'live',
+    surface: 'provider',
+    category: 'storage',
+    summary: 'Workspace and personal Dropbox installs with file search and governed file reads.',
+    connectLabel: 'Dropbox',
+    capabilities: [
+      { label: 'File search', detail: 'Search shared Dropbox content and metadata through MCP.' },
+      { label: 'File read', detail: 'Read Dropbox file content with workspace-scoped auth.' }
+    ]
+  },
+  {
+    id: 'box',
+    providerId: 'box',
+    name: 'Box',
+    status: 'live',
+    surface: 'provider',
+    category: 'storage',
+    summary: 'Enterprise Box installs with file search and governed file reads for content-heavy teams.',
+    connectLabel: 'Box',
+    capabilities: [
+      { label: 'File search', detail: 'Search Box files and folders from approved MCP workflows.' },
+      { label: 'File read', detail: 'Read Box file content and metadata through the provider adapter.' }
     ]
   }
 ] as const satisfies readonly LiveProviderMetadata[];
@@ -187,19 +215,6 @@ export const plannedProviderPlatforms = [
     ]
   },
   {
-    id: 'dropbox',
-    name: 'Dropbox',
-    status: 'planned',
-    surface: 'provider',
-    category: 'storage',
-    summary: 'File search/read coverage for organizations that do not standardize on Drive or SharePoint.',
-    rationale: 'Extends the same document-access pattern already proven with Google Drive.',
-    capabilities: [
-      { label: 'File search', detail: 'Search files and metadata quickly.' },
-      { label: 'File read', detail: 'Open shared content for MCP workflows.' }
-    ]
-  },
-  {
     id: 'airtable',
     name: 'Airtable',
     status: 'planned',
@@ -210,19 +225,6 @@ export const plannedProviderPlatforms = [
     capabilities: [
       { label: 'Base search', detail: 'Find records across connected bases.' },
       { label: 'Record updates', detail: 'Write controlled updates into operational tables.' }
-    ]
-  },
-  {
-    id: 'box',
-    name: 'Box',
-    status: 'planned',
-    surface: 'provider',
-    category: 'storage',
-    summary: 'Enterprise content collaboration and file search/read coverage for Box-heavy teams.',
-    rationale: 'Fills the same storage-access gap as Dropbox while targeting stricter enterprise content programs.',
-    capabilities: [
-      { label: 'File search', detail: 'Search content and metadata across connected Box folders.' },
-      { label: 'File read', detail: 'Open shared documents and files through governed MCP tools.' }
     ]
   },
   {

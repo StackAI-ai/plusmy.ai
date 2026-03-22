@@ -5,6 +5,8 @@ The live provider surface in this repo is still intentionally small:
 - Google Workspace for Drive search and Docs read
 - Slack for channel listing, history read, and post-message workflows
 - Notion for search, page read, and page creation
+- Dropbox for file search and file reads
+- Box for enterprise file search and file reads
 
 The MCP client target set currently called out in product surfaces is:
 
@@ -45,7 +47,7 @@ Highest-value reviewed gaps, ordered by current operator impact:
 1. Airtable
 1. Zoom
 
-The first eight gaps are the clearest high-value additions because they expand storage, CRM, service management, identity, and project-management coverage without changing the current workspace-scoped security model.
+The first eight gaps are the clearest high-value additions because they expand CRM, service management, identity, project-management, and document coverage without changing the current workspace-scoped security model.
 
 These next-wave platforms stay aligned with the same tenant model as the live providers: workspace-scoped installs, Vault-backed credentials, MCP-gated tools, and explicit audit/re-auth boundaries.
 

@@ -7,6 +7,8 @@ export type ProviderId =
   | 'google'
   | 'slack'
   | 'notion'
+  | 'dropbox'
+  | 'box'
   | 'microsoft365'
   | 'github'
   | 'linear'
@@ -149,6 +151,20 @@ export interface ContextChunkMatch {
   metadata: Json;
 }
 
+export interface ContextEmbeddingHealth {
+  totalAssets: number;
+  visibleAssets: number;
+  systemManagedAssets: number;
+  totalChunks: number;
+  embeddedChunks: number;
+  chunksMissingEmbeddings: number;
+  lastEmbeddedAt: string | null;
+  embeddingIndexName: string | null;
+  embeddingIndexPresent: boolean;
+  embeddingIndexStatus: 'healthy' | 'missing' | 'stale';
+  embeddingIndexRecommendation: string | null;
+}
+
 export interface ContextInjectionResult {
   query: string;
   matches: ContextChunkMatch[];
@@ -158,6 +174,20 @@ export interface ProviderRuntimeContext {
   resources: BoundContextResource[];
   prompts: BoundContextResource[];
   skills: BoundContextResource[];
+}
+
+export type ProviderHealthStatus = 'healthy' | 'attention' | 'reauth_required' | 'revoked' | 'inactive';
+
+export interface ProviderHealthSnapshot {
+  provider: ProviderId;
+  connectionId: string;
+  displayName: string;
+  status: ProviderHealthStatus;
+  summary: string;
+  signals: string[];
+  requiredScopes: string[];
+  missingScopes: string[];
+  lastValidatedAt: string | null;
 }
 
 export interface AuditLogRecord {
@@ -251,6 +281,9 @@ export interface OAuthClientApprovalRecord {
   token_endpoint_auth_method?: string | null;
   approved_by_display_name?: string | null;
   approved_by_avatar_url?: string | null;
+  latest_refresh_token_issued_at?: string | null;
+  latest_refresh_token_expires_at?: string | null;
+  latest_refresh_token_revoked_at?: string | null;
 }
 
 export interface OAuthTokenResponse {

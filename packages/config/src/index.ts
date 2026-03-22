@@ -13,6 +13,10 @@ const serverEnvSchema = z.object({
   SLACK_CLIENT_SECRET: z.string().optional(),
   NOTION_CLIENT_ID: z.string().optional(),
   NOTION_CLIENT_SECRET: z.string().optional(),
+  DROPBOX_CLIENT_ID: z.string().optional(),
+  DROPBOX_CLIENT_SECRET: z.string().optional(),
+  BOX_CLIENT_ID: z.string().optional(),
+  BOX_CLIENT_SECRET: z.string().optional(),
   OPENAI_API_KEY: z.string().optional()
 });
 

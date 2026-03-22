@@ -18,7 +18,6 @@ const plannedCategoryOrder: PlannedPlatform['category'][] = [
   'project_management',
   'crm',
   'support',
-  'storage',
   'productivity',
   'identity'
 ];
@@ -30,12 +29,11 @@ const categoryLabels: Record<PlannedPlatform['category'], string> = {
   project_management: 'Project management',
   crm: 'CRM',
   support: 'Support',
-  storage: 'Storage',
   productivity: 'Productivity',
   identity: 'Identity'
 };
 
-const highValueMissingPlatformIds = ['dropbox', 'box', 'hubspot', 'salesforce', 'servicenow', 'okta', 'asana', 'monday'];
+const highValueMissingPlatformIds = ['hubspot', 'salesforce', 'servicenow', 'okta', 'asana', 'monday', 'microsoft-365', 'github'];
 
 const plannedPlatformsByCategory = plannedProviderPlatforms.reduce<Record<PlannedPlatform['category'], PlannedPlatform[]>>(
   (groups, platform) => {
@@ -78,7 +76,7 @@ export default function PlatformsPage() {
             </div>
             <CardTitle className="text-3xl">Platform coverage</CardTitle>
             <CardDescription className="max-w-3xl">
-              plusmy.ai is live today on Google Workspace, Slack, and Notion. The reviewed next wave expands into
+              plusmy.ai is live today on Google Workspace, Slack, Notion, Dropbox, and Box. The reviewed next wave expands into
               Microsoft 365, engineering systems, knowledge bases, project management, CRM, support, storage,
               productivity, and identity platforms without changing the current workspace-scoped OAuth and Vault
               model.

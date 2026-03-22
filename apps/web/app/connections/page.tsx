@@ -47,7 +47,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
         <CardHeader>
           <CardTitle className="text-2xl">Connections</CardTitle>
           <CardDescription>
-            Sign in to attach Google, Slack, or Notion accounts. Connection state is stored in workspace-scoped
+            Sign in to attach live provider accounts. Connection state is stored in workspace-scoped
             tables and secrets are kept in Vault.
           </CardDescription>
         </CardHeader>

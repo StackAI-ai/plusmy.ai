@@ -49,7 +49,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
       label: 'Install providers',
       done: connections.length > 0,
       href: workspace ? '/connections?workspace=' + workspace.id : '/connections',
-      detail: connections.length > 0 ? String(connections.length) + ' connection record(s)' : 'Connect Google, Slack, or Notion'
+      detail: connections.length > 0 ? String(connections.length) + ' connection record(s)' : 'Connect one of the live providers'
     },
     {
       label: 'Load context and prompts',
