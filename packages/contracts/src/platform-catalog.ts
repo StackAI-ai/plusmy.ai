@@ -25,12 +25,46 @@ export interface PlatformCatalogEntry {
   category: PlatformCategory;
   summary: string;
   rationale?: string;
-  providerId?: 'google' | 'slack' | 'notion' | 'dropbox' | 'box';
+  providerId?:
+    | 'google'
+    | 'slack'
+    | 'notion'
+    | 'dropbox'
+    | 'box'
+    | 'confluence'
+    | 'zendesk'
+    | 'hubspot'
+    | 'salesforce'
+    | 'servicenow'
+    | 'okta'
+    | 'asana'
+    | 'monday'
+    | 'microsoft365'
+    | 'github'
+    | 'linear'
+    | 'jira';
   capabilities: PlatformCapability[];
 }
 
 type LiveProviderMetadata = PlatformCatalogEntry & {
-  providerId: 'google' | 'slack' | 'notion' | 'dropbox' | 'box';
+  providerId:
+    | 'google'
+    | 'slack'
+    | 'notion'
+    | 'dropbox'
+    | 'box'
+    | 'confluence'
+    | 'zendesk'
+    | 'hubspot'
+    | 'salesforce'
+    | 'servicenow'
+    | 'okta'
+    | 'asana'
+    | 'monday'
+    | 'microsoft365'
+    | 'github'
+    | 'linear'
+    | 'jira';
   connectLabel: string;
 };
 
@@ -106,18 +140,100 @@ export const supportedProviders = [
       { label: 'File search', detail: 'Search Box files and folders from approved MCP workflows.' },
       { label: 'File read', detail: 'Read Box file content and metadata through the provider adapter.' }
     ]
-  }
-] as const satisfies readonly LiveProviderMetadata[];
-
-export const plannedProviderPlatforms = [
+  },
+  {
+    id: 'hubspot',
+    providerId: 'hubspot',
+    name: 'HubSpot',
+    status: 'live',
+    surface: 'provider',
+    category: 'crm',
+    summary: 'CRM contact and company workflows for customer-facing operators.',
+    connectLabel: 'HubSpot',
+    capabilities: [
+      { label: 'Contact search', detail: 'Search contacts and companies by workspace context.' },
+      { label: 'Contact updates', detail: 'Write governed lifecycle notes and updates.' }
+    ]
+  },
+  {
+    id: 'salesforce',
+    providerId: 'salesforce',
+    name: 'Salesforce',
+    status: 'live',
+    surface: 'provider',
+    category: 'crm',
+    summary: 'Enterprise CRM workflows for accounts, opportunities, and support handoffs.',
+    connectLabel: 'Salesforce',
+    capabilities: [
+      { label: 'Account lookup', detail: 'Resolve accounts and related objects by context.' },
+      { label: 'Case comments', detail: 'Post governed updates back into support cases.' }
+    ]
+  },
+  {
+    id: 'servicenow',
+    providerId: 'servicenow',
+    name: 'ServiceNow',
+    status: 'live',
+    surface: 'provider',
+    category: 'support',
+    summary: 'Incident and request workflows for IT and enterprise operations teams.',
+    connectLabel: 'ServiceNow',
+    capabilities: [
+      { label: 'Incident search', detail: 'Find incidents and service records quickly.' },
+      { label: 'Incident comments', detail: 'Add governed follow-ups and status context.' }
+    ]
+  },
+  {
+    id: 'okta',
+    providerId: 'okta',
+    name: 'Okta',
+    status: 'live',
+    surface: 'provider',
+    category: 'identity',
+    summary: 'Identity and group lookup workflows for admin control-plane use cases.',
+    connectLabel: 'Okta',
+    capabilities: [
+      { label: 'User lookup', detail: 'Resolve user identity records and lifecycle state.' },
+      { label: 'Group inspection', detail: 'Inspect group membership and access posture.' }
+    ]
+  },
+  {
+    id: 'asana',
+    providerId: 'asana',
+    name: 'Asana',
+    status: 'live',
+    surface: 'provider',
+    category: 'project_management',
+    summary: 'Task and comment workflows for planning-heavy operating teams.',
+    connectLabel: 'Asana',
+    capabilities: [
+      { label: 'Task search', detail: 'Find tasks by query and workspace context.' },
+      { label: 'Task comments', detail: 'Post governed status updates back into Asana.' }
+    ]
+  },
+  {
+    id: 'monday',
+    providerId: 'monday',
+    name: 'monday.com',
+    status: 'live',
+    surface: 'provider',
+    category: 'project_management',
+    summary: 'Board-centric operations workflows for teams running on monday.com.',
+    connectLabel: 'monday.com',
+    capabilities: [
+      { label: 'Board search', detail: 'Locate boards and items quickly.' },
+      { label: 'Item updates', detail: 'Write controlled updates into monday.com items.' }
+    ]
+  },
   {
     id: 'microsoft-365',
+    providerId: 'microsoft365',
     name: 'Microsoft 365',
-    status: 'planned',
+    status: 'live',
     surface: 'provider',
     category: 'documents',
-    summary: 'OneDrive, SharePoint, Word, and Excel parity for enterprises that are not on Google.',
-    rationale: 'Closes the largest document-platform gap and fits the current OAuth + workspace model cleanly.',
+    summary: 'OneDrive and SharePoint file search/read workflows for Microsoft-first orgs.',
+    connectLabel: 'Microsoft 365',
     capabilities: [
       { label: 'OneDrive search', detail: 'Search files and folders by workspace context.' },
       { label: 'SharePoint read', detail: 'Read tenant knowledge stored in sites and document libraries.' }
@@ -125,38 +241,41 @@ export const plannedProviderPlatforms = [
   },
   {
     id: 'github',
+    providerId: 'github',
     name: 'GitHub',
-    status: 'planned',
+    status: 'live',
     surface: 'provider',
     category: 'engineering',
-    summary: 'Repository, issue, and pull-request workflows for engineering operators and coding agents.',
-    rationale: 'Natural MCP workload and a strong complement to Slack plus Notion for software teams.',
+    summary: 'Repository, issue, and pull-request workflows for engineering operators.',
+    connectLabel: 'GitHub',
     capabilities: [
-      { label: 'Repo search', detail: 'Search code and issues across connected repositories.' },
-      { label: 'PR actions', detail: 'Read pull requests and leave governed comments.' }
+      { label: 'Repo search', detail: 'Search repositories and issues across orgs.' },
+      { label: 'Governed comments', detail: 'Leave governed comments on pull requests.' }
     ]
   },
   {
     id: 'linear',
+    providerId: 'linear',
     name: 'Linear',
-    status: 'planned',
+    status: 'live',
     surface: 'provider',
     category: 'project_management',
-    summary: 'Issue search, updates, and comments for internal dogfooding and operator follow-up loops.',
-    rationale: 'Matches the current workflow style and is a high-signal system of record for product work.',
+    summary: 'Issue search and update workflows for operator follow-up loops.',
+    connectLabel: 'Linear',
     capabilities: [
       { label: 'Issue search', detail: 'Find backlog and in-flight issues quickly.' },
-      { label: 'Comment + update', detail: 'Post execution notes and close finished tasks.' }
+      { label: 'Comments + updates', detail: 'Post execution notes and status updates.' }
     ]
   },
   {
     id: 'jira',
+    providerId: 'jira',
     name: 'Jira',
-    status: 'planned',
+    status: 'live',
     surface: 'provider',
     category: 'project_management',
     summary: 'Enterprise ticket search and update flows for cross-team delivery environments.',
-    rationale: 'Important for larger customer environments where Jira remains the operational source of truth.',
+    connectLabel: 'Jira',
     capabilities: [
       { label: 'Issue search', detail: 'Find incidents and project tickets by workspace context.' },
       { label: 'Status updates', detail: 'Advance or comment on tasks from MCP workflows.' }
@@ -164,56 +283,35 @@ export const plannedProviderPlatforms = [
   },
   {
     id: 'confluence',
+    providerId: 'confluence',
     name: 'Confluence',
-    status: 'planned',
+    status: 'live',
     surface: 'provider',
     category: 'knowledge',
-    summary: 'Knowledge-base search and read support alongside Jira-driven delivery workflows.',
-    rationale: 'Pairs naturally with Jira and broadens enterprise documentation coverage beyond Notion.',
+    summary: 'Knowledge-base search and read support for documentation-heavy engineering orgs.',
+    connectLabel: 'Confluence',
     capabilities: [
-      { label: 'Space search', detail: 'Search enterprise docs and runbooks.' },
-      { label: 'Page read', detail: 'Open documentation during tool execution and audit review.' }
-    ]
-  },
-  {
-    id: 'hubspot',
-    name: 'HubSpot',
-    status: 'planned',
-    surface: 'provider',
-    category: 'crm',
-    summary: 'CRM access for sales, lifecycle, and customer-facing operator workflows.',
-    rationale: 'Adds a high-value customer-data surface while staying compatible with workspace-scoped approval rules.',
-    capabilities: [
-      { label: 'Contact search', detail: 'Search contacts and companies by workspace context.' },
-      { label: 'Deal updates', detail: 'Write notes or stage changes with governed access.' }
-    ]
-  },
-  {
-    id: 'salesforce',
-    name: 'Salesforce',
-    status: 'planned',
-    surface: 'provider',
-    category: 'crm',
-    summary: 'Enterprise CRM coverage for accounts, opportunities, and support handoff workflows.',
-    rationale: 'Critical for enterprise buyers and well suited to strict approval and audit boundaries.',
-    capabilities: [
-      { label: 'Account lookup', detail: 'Read account and opportunity context on demand.' },
-      { label: 'Case updates', detail: 'Support guided handoffs between AI clients and operators.' }
+      { label: 'Space search', detail: 'Search enterprise spaces and documentation for context grounding.' },
+      { label: 'Page read', detail: 'Read Confluence pages inside governed MCP tool flows.' }
     ]
   },
   {
     id: 'zendesk',
+    providerId: 'zendesk',
     name: 'Zendesk',
-    status: 'planned',
+    status: 'live',
     surface: 'provider',
     category: 'support',
     summary: 'Ticket search and reply support for customer operations teams.',
-    rationale: 'Adds a clear support-data system that pairs well with Slack and CRM integrations.',
+    connectLabel: 'Zendesk',
     capabilities: [
-      { label: 'Ticket search', detail: 'Find open and recent support cases.' },
-      { label: 'Reply drafting', detail: 'Post governed follow-up messages back to agents.' }
+      { label: 'Ticket search', detail: 'Locate open customer tickets by workspace context.' },
+      { label: 'Reply drafting', detail: 'Post controlled follow-up messages and status changes.' }
     ]
-  },
+  }
+] as const satisfies readonly LiveProviderMetadata[];
+
+export const plannedProviderPlatforms = [
   {
     id: 'airtable',
     name: 'Airtable',
@@ -228,45 +326,6 @@ export const plannedProviderPlatforms = [
     ]
   },
   {
-    id: 'asana',
-    name: 'Asana',
-    status: 'planned',
-    surface: 'provider',
-    category: 'project_management',
-    summary: 'Task, project, and comment workflows for planning-heavy operating teams.',
-    rationale: 'Adds a broad project-management surface that complements Linear for less engineering-centric customers.',
-    capabilities: [
-      { label: 'Project search', detail: 'Find projects, portfolios, and task lists by workspace context.' },
-      { label: 'Task updates', detail: 'Post governed updates and comments back into Asana.' }
-    ]
-  },
-  {
-    id: 'monday',
-    name: 'monday.com',
-    status: 'planned',
-    surface: 'provider',
-    category: 'project_management',
-    summary: 'Board-centric workflow updates for teams running operations on monday.com.',
-    rationale: 'Covers visual operations teams that model work as boards rather than issue trackers.',
-    capabilities: [
-      { label: 'Board search', detail: 'Locate boards, items, and automation state quickly.' },
-      { label: 'Item updates', detail: 'Write controlled updates into monday.com items.' }
-    ]
-  },
-  {
-    id: 'servicenow',
-    name: 'ServiceNow',
-    status: 'planned',
-    surface: 'provider',
-    category: 'support',
-    summary: 'Incident, request, and change workflows for IT and enterprise operations teams.',
-    rationale: 'Captures a major service-management system that often sits at the center of enterprise automation.',
-    capabilities: [
-      { label: 'Incident search', detail: 'Find incidents and related service records.' },
-      { label: 'Request updates', detail: 'Add notes or governed state changes to service requests.' }
-    ]
-  },
-  {
     id: 'zoom',
     name: 'Zoom',
     status: 'planned',
@@ -277,19 +336,6 @@ export const plannedProviderPlatforms = [
     capabilities: [
       { label: 'Meeting search', detail: 'Find meetings and participants tied to workspace context.' },
       { label: 'Transcript read', detail: 'Pull transcripts and summaries into MCP workflows.' }
-    ]
-  },
-  {
-    id: 'okta',
-    name: 'Okta',
-    status: 'planned',
-    surface: 'provider',
-    category: 'identity',
-    summary: 'Identity, group, and app-assignment workflows for enterprise admin control planes.',
-    rationale: 'Useful for understanding access posture and tenant automation without introducing a separate security model.',
-    capabilities: [
-      { label: 'User lookup', detail: 'Resolve identity records and lifecycle state.' },
-      { label: 'Group sync', detail: 'Inspect group membership and application assignments.' }
     ]
   }
 ] as const satisfies readonly PlatformCatalogEntry[];

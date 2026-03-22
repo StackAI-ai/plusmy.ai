@@ -1,17 +1,20 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { ArrowRight } from 'lucide-react';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
+import { createServerSupabaseClient } from '@plusmy/supabase';
 import {
   getPlatformCategoryCounts,
   getPlatformCounts,
   plannedProviderPlatforms,
   supportedMcpClients,
-  supportedProviders
+  supportedProviders,
+  type PlatformCategory
 } from '@plusmy/contracts';
 
 type PlannedPlatform = (typeof plannedProviderPlatforms)[number];
 
-const plannedCategoryOrder: PlannedPlatform['category'][] = [
+const plannedCategoryOrder: PlatformCategory[] = [
   'documents',
   'engineering',
   'knowledge',
@@ -22,34 +25,44 @@ const plannedCategoryOrder: PlannedPlatform['category'][] = [
   'identity'
 ];
 
-const categoryLabels: Record<PlannedPlatform['category'], string> = {
+const categoryLabels: Record<PlatformCategory, string> = {
+  chat: 'Chat',
   documents: 'Documents',
   engineering: 'Engineering',
   knowledge: 'Knowledge',
   project_management: 'Project management',
   crm: 'CRM',
   support: 'Support',
+  storage: 'Storage',
   productivity: 'Productivity',
   identity: 'Identity'
 };
 
-const highValueMissingPlatformIds = ['hubspot', 'salesforce', 'servicenow', 'okta', 'asana', 'monday', 'microsoft-365', 'github'];
+const highValueMissingPlatformIds = ['airtable', 'zoom'];
 
-const plannedPlatformsByCategory = plannedProviderPlatforms.reduce<Record<PlannedPlatform['category'], PlannedPlatform[]>>(
+const plannedPlatformsByCategory = plannedProviderPlatforms.reduce<Record<PlatformCategory, PlannedPlatform[]>>(
   (groups, platform) => {
     const group = groups[platform.category] ?? [];
     group.push(platform);
     groups[platform.category] = group;
     return groups;
   },
-  {} as Record<PlannedPlatform['category'], PlannedPlatform[]>
+  {} as Record<PlatformCategory, PlannedPlatform[]>
 );
 
 const highValueMissingPlatforms = highValueMissingPlatformIds
   .map((platformId) => plannedProviderPlatforms.find((platform) => platform.id === platformId))
   .filter((platform): platform is PlannedPlatform => Boolean(platform));
 
-export default function PlatformsPage() {
+export default async function PlatformsPage() {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect('/login');
+  }
+
   const counts = getPlatformCounts();
   const categoryCounts = getPlatformCategoryCounts();
 
@@ -76,10 +89,9 @@ export default function PlatformsPage() {
             </div>
             <CardTitle className="text-3xl">Platform coverage</CardTitle>
             <CardDescription className="max-w-3xl">
-              plusmy.ai is live today on Google Workspace, Slack, Notion, Dropbox, and Box. The reviewed next wave expands into
-              Microsoft 365, engineering systems, knowledge bases, project management, CRM, support, storage,
-              productivity, and identity platforms without changing the current workspace-scoped OAuth and Vault
-              model.
+              plusmy.ai is now built for business workflows with live support for CRM, support, project management, identity,
+              documents, and engineering operations. Planned additions focus on operational depth in Airtable and customer-facing
+              tooling instead of infra-first surfaces.
             </CardDescription>
           </div>
         </CardHeader>
@@ -154,9 +166,9 @@ export default function PlatformsPage() {
 
       <section className="space-y-4">
         <div>
-          <h2 className="text-2xl font-semibold text-foreground">Highest-value missing platforms</h2>
+          <h2 className="text-2xl font-semibold text-foreground">Highest-value next additions</h2>
           <p className="text-sm text-muted-foreground">
-            These are the clearest next additions if we want broader enterprise adoption without changing the current trust model.
+            These are the short-list priorities for broadening business-tool coverage while preserving the current security model.
           </p>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
