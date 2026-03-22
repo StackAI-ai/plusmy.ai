@@ -35,6 +35,8 @@ const categoryLabels: Record<PlannedPlatform['category'], string> = {
   identity: 'Identity'
 };
 
+const highValueMissingPlatformIds = ['dropbox', 'box', 'hubspot', 'salesforce', 'servicenow', 'okta', 'asana', 'monday'];
+
 const plannedPlatformsByCategory = plannedProviderPlatforms.reduce<Record<PlannedPlatform['category'], PlannedPlatform[]>>(
   (groups, platform) => {
     const group = groups[platform.category] ?? [];
@@ -44,6 +46,10 @@ const plannedPlatformsByCategory = plannedProviderPlatforms.reduce<Record<Planne
   },
   {} as Record<PlannedPlatform['category'], PlannedPlatform[]>
 );
+
+const highValueMissingPlatforms = highValueMissingPlatformIds
+  .map((platformId) => plannedProviderPlatforms.find((platform) => platform.id === platformId))
+  .filter((platform): platform is PlannedPlatform => Boolean(platform));
 
 export default function PlatformsPage() {
   const counts = getPlatformCounts();
@@ -142,6 +148,39 @@ export default function PlatformsPage() {
                     <p className="mt-1 text-sm text-muted-foreground">{capability.detail}</p>
                   </div>
                 ))}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-2xl font-semibold text-foreground">Highest-value missing platforms</h2>
+          <p className="text-sm text-muted-foreground">
+            These are the clearest next additions if we want broader enterprise adoption without changing the current trust model.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {highValueMissingPlatforms.map((platform) => (
+            <Card key={platform.id}>
+              <CardHeader className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle className="text-lg">{platform.name}</CardTitle>
+                  <Badge tone="brass">planned</Badge>
+                </div>
+                <CardDescription>{platform.summary}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-muted-foreground">{platform.rationale}</p>
+                <div className="space-y-2">
+                  {platform.capabilities.map((capability) => (
+                    <div key={capability.label} className="rounded-2xl border border-border/60 bg-background/70 p-3">
+                      <p className="font-medium text-foreground">{capability.label}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{capability.detail}</p>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           ))}

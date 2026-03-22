@@ -26,14 +26,26 @@ The next-wave platforms were chosen because they fit that same model without req
 
 ## Next-Wave Expansion Candidates
 
-Highest-value reviewed gaps by category:
+Highest-value reviewed gaps, ordered by current operator impact:
 
-- Documents and storage: Microsoft 365, Dropbox, and Box
-- Engineering and knowledge: GitHub, Linear, Jira, and Confluence
-- Project management: Asana and monday.com
-- CRM and customer ops: HubSpot and Salesforce
-- Support and service management: Zendesk and ServiceNow
-- Productivity and identity: Airtable, Zoom, and Okta
+1. Dropbox
+1. Box
+1. HubSpot
+1. Salesforce
+1. ServiceNow
+1. Okta
+1. Asana
+1. monday.com
+1. Microsoft 365
+1. GitHub
+1. Linear
+1. Jira
+1. Confluence
+1. Zendesk
+1. Airtable
+1. Zoom
+
+The first eight gaps are the clearest high-value additions because they expand storage, CRM, service management, identity, and project-management coverage without changing the current workspace-scoped security model.
 
 These next-wave platforms stay aligned with the same tenant model as the live providers: workspace-scoped installs, Vault-backed credentials, MCP-gated tools, and explicit audit/re-auth boundaries.
 
