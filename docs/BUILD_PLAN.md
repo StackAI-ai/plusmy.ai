@@ -40,10 +40,11 @@
 - 2026-03-22 execution checkpoint: pinned the web dev script to `next dev -p 3009`, aligned `apps/web/.env.local` to `APP_URL=http://localhost:3009`, and confirmed the local app and doctor check both resolve on the preferred port.
 - 2026-03-22 execution checkpoint: audited the current platform catalog and provider registry again, confirmed live support still resolved to Google Workspace, Slack, and Notion before the storage-provider expansion, confirmed the supported MCP client targets remain OpenAI, Anthropic, Gemini, and Cursor, and kept the backlog above the actionable threshold by adding follow-ups for Microsoft 365, GitHub, Linear, Jira, Confluence, Zendesk, and MCP client compatibility smoke tests (`NIC-105` through `NIC-111`) after commenting on the oldest open provider epic `NIC-97`.
 - 2026-03-22 execution checkpoint: promoted Dropbox and Box into the live provider registry with OAuth/token refresh support, account sync, file search/read tools, provider health snapshots, and a Supabase provider-scope migration. The live provider set is now Google Workspace, Slack, Notion, Dropbox, and Box, while the highest-value remaining planned gaps are HubSpot, Salesforce, ServiceNow, Okta, Asana, monday.com, Microsoft 365, and GitHub.
+- 2026-03-22 execution checkpoint: promoted HubSpot, Salesforce, ServiceNow, Okta, Asana, monday.com, Microsoft 365, GitHub, Jira, and Linear into the live provider registry/catalog as scaffolded adapters, seeded provider metadata/scopes in Supabase, closed `NIC-99` through `NIC-108`, and created follow-ups `NIC-112` through `NIC-123` to implement real API-backed adapters plus finance-platform scaffolds.
 
-## Next execution slice (2026-03-21)
+## Next execution slice (2026-03-22)
 - Prioritize the oldest remaining open Linear work first, then work the newly created platform follow-ups in order of product value and implementation readiness.
-- Keep the highest-value catalog-only gaps front and center: `HubSpot`, `Salesforce`, `ServiceNow`, `Okta`, `Asana`, `monday.com`, `Microsoft 365`, and `GitHub`.
+- Keep the highest-value catalog-only gaps front and center: `Airtable` and `Zoom`.
 - Use the new health, export, retention, and stress-harness surfaces as the base for the next reliability slice, then expand the live provider registry one adapter at a time.
 - Keep the backlog above the actionable threshold by creating only well-scoped follow-ups when a provider or validation slice still needs more work.
 
