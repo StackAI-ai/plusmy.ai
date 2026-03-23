@@ -3,6 +3,7 @@ import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitl
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import { getAuthorizedWorkspace, listUserWorkspaces } from '@plusmy/core';
 import { getSearchParam, type AppSearchParams } from '../../_lib/search-params';
+import { redirect } from 'next/navigation';
 import { getAppOrigin } from '../../_lib/origin';
 import { CopyButton } from '../../_components/copy-button';
 
@@ -17,9 +18,13 @@ export default async function McpQuickstartPage({ searchParams }: { searchParams
   const {
     data: { user }
   } = await supabase.auth.getUser();
+  if (!user) {
+    redirect('/login');
+  }
+
   const requestedWorkspaceId = await getSearchParam(searchParams, 'workspace');
-  const workspaces = user ? await listUserWorkspaces(user.id) : [];
-  const workspace = user ? await getAuthorizedWorkspace(user.id, requestedWorkspaceId) : null;
+  const workspaces = await listUserWorkspaces(user.id);
+  const workspace = await getAuthorizedWorkspace(user.id, requestedWorkspaceId);
   const workspaceHref = workspace ? `/mcp-setup?workspace=${workspace.id}` : '/mcp-setup';
   const clientRedirectUri = 'http://localhost:3000/callback';
   const authorizeUrl = `${baseUrl}/authorize?response_type=code&client_id=YOUR_CLIENT_ID&redirect_uri=${encodeURIComponent(clientRedirectUri)}&scope=mcp%3Atools%20mcp%3Aresources${workspace ? `&workspace_id=${workspace.id}` : ''}&code_challenge=REPLACE_WITH_PKCE_CHALLENGE&code_challenge_method=S256`;
@@ -39,7 +44,7 @@ export default async function McpQuickstartPage({ searchParams }: { searchParams
     },
     {
       title: 'Authorize with PKCE',
-      detail: 'Open the authorize URL, complete consent, and let the client exchange the code for tokens.'
+      detail: 'Open the authorize URL, complete workspace consent, and let the client exchange the code for tokens.'
     },
     {
       title: 'Point the client at plusmy.ai',
@@ -54,8 +59,9 @@ export default async function McpQuickstartPage({ searchParams }: { searchParams
           <div className="space-y-3">
             <Badge tone={workspace ? 'moss' : 'brass'}>{workspace ? workspace.name : `${workspaces.length} workspaces available`}</Badge>
             <CardTitle className="text-3xl">MCP quickstart</CardTitle>
-            <CardDescription>
-              A compact operator guide for connecting an MCP-capable client to plusmy.ai. Use this page when you need the canonical URLs, the authorize template, and the exact flow in one place.
+          <CardDescription>
+              A compact operator guide for connecting MCP clients to your business tool layer.
+              Use these URLs only when configuring your assistant or automation client.
             </CardDescription>
             <p className="text-sm leading-6 text-muted-foreground">
               Example callback URI: <span className="font-mono text-xs">{clientRedirectUri}</span>
@@ -69,9 +75,9 @@ export default async function McpQuickstartPage({ searchParams }: { searchParams
 
       <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
         <Card>
-          <CardHeader>
-            <CardTitle>Setup steps</CardTitle>
-            <CardDescription>Keep the workspace query parameter on the URL so the right tenancy stays selected.</CardDescription>
+        <CardHeader>
+          <CardTitle>Setup steps</CardTitle>
+            <CardDescription>Keep the workspace query parameter on each URL so approvals stay in the right tenancy.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {steps.map((step, index) => (
@@ -131,9 +137,9 @@ export default async function McpQuickstartPage({ searchParams }: { searchParams
 
       <Card>
         <CardHeader>
-          <CardTitle>What to verify</CardTitle>
-          <CardDescription>Use these checks to confirm the client is wired correctly before handing it off.</CardDescription>
-        </CardHeader>
+            <CardTitle>Operational checks</CardTitle>
+            <CardDescription>Verify these items before handing a client to your team.</CardDescription>
+          </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3">
           {[
             'The client redirects back to the registered callback URI.',

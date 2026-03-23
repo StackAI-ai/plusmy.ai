@@ -56,7 +56,7 @@ export function MemberRoleSelect({
           <SelectItem value="member">Member</SelectItem>
         </SelectContent>
       </Select>
-      {status ? <p className="text-xs text-muted-foreground">{status}</p> : null}
+      {status ? <p aria-live="polite" className="text-xs text-muted-foreground" role="status">{status}</p> : null}
     </div>
   );
 }

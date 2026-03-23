@@ -1,5 +1,12 @@
 import { getServerEnv } from '@plusmy/config';
-import type { ConnectionRecord, Json, McpResourceDefinition, McpToolDefinition, ProviderTokenSet } from '@plusmy/contracts';
+import type {
+  ConnectionRecord,
+  Json,
+  McpResourceDefinition,
+  McpToolDefinition,
+  ProviderHealthSnapshot,
+  ProviderTokenSet
+} from '@plusmy/contracts';
 import type {
   AuthorizationCodeInput,
   AuthorizationUrlInput,
@@ -8,6 +15,7 @@ import type {
   ResolvedProviderAccount,
   SyncJobHandlerInput
 } from '../types';
+import { getMissingScopes } from '../scope-drift';
 
 const oauth = {
   authorizationUrl: 'https://slack.com/oauth/v2/authorize',
@@ -113,6 +121,65 @@ const tools: McpToolDefinition[] = [
   }
 ];
 
+const liveScopes = ['channels:read', 'channels:history', 'chat:write'];
+
+function buildHealthSnapshot(connection: ConnectionRecord): ProviderHealthSnapshot {
+  if (connection.status === 'revoked') {
+    return {
+      provider: 'slack',
+      connectionId: connection.id,
+      displayName: connection.display_name,
+      status: 'revoked',
+      summary: 'This Slack connection has been revoked.',
+      signals: [connection.reauth_required_reason ?? 'Reconnect Slack before tool calls resume.'],
+      requiredScopes: liveScopes,
+      missingScopes: [],
+      lastValidatedAt: connection.last_validated_at
+    };
+  }
+
+  if (connection.status === 'reauth_required') {
+    return {
+      provider: 'slack',
+      connectionId: connection.id,
+      displayName: connection.display_name,
+      status: 'reauth_required',
+      summary: 'Slack needs reauthorization before channel or message tools can run.',
+      signals: [connection.reauth_required_reason ?? 'Slack flagged the install for reauthorization.'],
+      requiredScopes: liveScopes,
+      missingScopes: [],
+      lastValidatedAt: connection.last_validated_at
+    };
+  }
+
+  const missingScopes = getMissingScopes(liveScopes, connection.granted_scopes);
+  if (missingScopes.length > 0) {
+    return {
+      provider: 'slack',
+      connectionId: connection.id,
+      displayName: connection.display_name,
+      status: 'attention',
+      summary: 'Slack is missing one or more scopes required by the live tool set.',
+      signals: [`Missing scopes: ${missingScopes.join(', ')}`, 'Reconnect Slack to restore channel history and posting workflows.'],
+      requiredScopes: liveScopes,
+      missingScopes,
+      lastValidatedAt: connection.last_validated_at
+    };
+  }
+
+  return {
+    provider: 'slack',
+    connectionId: connection.id,
+    displayName: connection.display_name,
+    status: 'healthy',
+    summary: 'Slack channel and message access is healthy.',
+    signals: ['OAuth grant active', 'Channel read and post scopes present'],
+    requiredScopes: liveScopes,
+    missingScopes: [],
+    lastValidatedAt: connection.last_validated_at
+  };
+}
+
 export const slackIntegration: IntegrationDefinition = {
   id: 'slack',
   displayName: 'Slack',
@@ -163,6 +230,9 @@ export const slackIntegration: IntegrationDefinition = {
   },
   listResources(_connection: ConnectionRecord): McpResourceDefinition[] {
     return [];
+  },
+  health(connection: ConnectionRecord) {
+    return buildHealthSnapshot(connection);
   },
   syncJobs: [
     {

@@ -1,5 +1,12 @@
 import { getServerEnv } from '@plusmy/config';
-import type { ConnectionRecord, Json, McpResourceDefinition, McpToolDefinition, ProviderTokenSet } from '@plusmy/contracts';
+import type {
+  ConnectionRecord,
+  Json,
+  McpResourceDefinition,
+  McpToolDefinition,
+  ProviderHealthSnapshot,
+  ProviderTokenSet
+} from '@plusmy/contracts';
 import type {
   AuthorizationCodeInput,
   AuthorizationUrlInput,
@@ -8,6 +15,7 @@ import type {
   ResolvedProviderAccount,
   SyncJobHandlerInput
 } from '../types';
+import { getMissingScopes } from '../scope-drift';
 
 const oauth = {
   authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
@@ -117,6 +125,68 @@ const tools: McpToolDefinition[] = [
   }
 ];
 
+const liveScopes = [
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/documents.readonly'
+];
+
+function buildHealthSnapshot(connection: ConnectionRecord): ProviderHealthSnapshot {
+  if (connection.status === 'revoked') {
+    return {
+      provider: 'google',
+      connectionId: connection.id,
+      displayName: connection.display_name,
+      status: 'revoked',
+      summary: 'This Google connection has been revoked.',
+      signals: [connection.reauth_required_reason ?? 'Reauthorize the install before Google tools can run again.'],
+      requiredScopes: liveScopes,
+      missingScopes: [],
+      lastValidatedAt: connection.last_validated_at
+    };
+  }
+
+  if (connection.status === 'reauth_required') {
+    return {
+      provider: 'google',
+      connectionId: connection.id,
+      displayName: connection.display_name,
+      status: 'reauth_required',
+      summary: 'Google needs reauthorization before Drive or Docs tools can run.',
+      signals: [connection.reauth_required_reason ?? 'The provider flagged this install for reauthorization.'],
+      requiredScopes: liveScopes,
+      missingScopes: [],
+      lastValidatedAt: connection.last_validated_at
+    };
+  }
+
+  const missingScopes = getMissingScopes(liveScopes, connection.granted_scopes);
+  if (missingScopes.length > 0) {
+    return {
+      provider: 'google',
+      connectionId: connection.id,
+      displayName: connection.display_name,
+      status: 'attention',
+      summary: 'Google is missing scopes required by the live Drive and Docs tool set.',
+      signals: [`Missing scopes: ${missingScopes.join(', ')}`, 'Reconnect the install to restore full tool coverage.'],
+      requiredScopes: liveScopes,
+      missingScopes,
+      lastValidatedAt: connection.last_validated_at
+    };
+  }
+
+  return {
+    provider: 'google',
+    connectionId: connection.id,
+    displayName: connection.display_name,
+    status: 'healthy',
+    summary: 'Google Drive and Docs access is healthy.',
+    signals: ['OAuth grant active', 'Drive and Docs scopes present'],
+    requiredScopes: liveScopes,
+    missingScopes: [],
+    lastValidatedAt: connection.last_validated_at
+  };
+}
+
 export const googleIntegration: IntegrationDefinition = {
   id: 'google',
   displayName: 'Google Workspace',
@@ -170,6 +240,9 @@ export const googleIntegration: IntegrationDefinition = {
   },
   listResources(_connection: ConnectionRecord): McpResourceDefinition[] {
     return [];
+  },
+  health(connection: ConnectionRecord) {
+    return buildHealthSnapshot(connection);
   },
   syncJobs: [
     {

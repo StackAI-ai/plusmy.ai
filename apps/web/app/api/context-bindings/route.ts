@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { createServerSupabaseClient } from '@plusmy/supabase'
 import {
   createContextBinding,
@@ -7,8 +8,28 @@ import {
   listContextBindings,
   listUserWorkspaces
 } from '@plusmy/core'
+import { parseJsonBody, parseSearchParams, validationErrorResponse } from '../_lib/validation'
 
 export const runtime = 'nodejs'
+
+const contextBindingQuerySchema = z.object({
+  workspace_id: z.string().uuid().optional()
+})
+
+const createContextBindingSchema = z.object({
+  workspace_id: z.string().uuid(),
+  binding_type: z.enum(['workspace', 'provider', 'tool']),
+  target_key: z.string().trim().min(1).max(160),
+  prompt_template_id: z.string().uuid().nullable().optional(),
+  skill_definition_id: z.string().uuid().nullable().optional(),
+  priority: z.coerce.number().int().min(0).max(10000).default(100),
+  metadata: z.record(z.string(), z.unknown()).optional()
+})
+
+const deleteContextBindingSchema = z.object({
+  workspace_id: z.string().uuid(),
+  binding_id: z.string().uuid()
+})
 
 function canManageWorkspace(role: string | undefined) {
   return role === 'owner' || role === 'admin'
@@ -24,8 +45,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 
-  const requestedWorkspace = new URL(request.url).searchParams.get('workspace_id')
-  const workspace = await getAuthorizedWorkspace(user.id, requestedWorkspace)
+  let query: z.infer<typeof contextBindingQuerySchema>
+  try {
+    query = parseSearchParams(request.url, contextBindingQuerySchema)
+  } catch (error) {
+    return validationErrorResponse(error)
+  }
+
+  const workspace = await getAuthorizedWorkspace(user.id, query.workspace_id ?? null)
   if (!workspace) {
     return NextResponse.json({ error: 'workspace_required' }, { status: 404 })
   }
@@ -44,8 +71,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 
-  const body = await request.json()
-  const workspace = await getAuthorizedWorkspace(user.id, String(body.workspace_id ?? ''))
+  let body: z.infer<typeof createContextBindingSchema>
+  try {
+    body = await parseJsonBody(request, createContextBindingSchema)
+  } catch (error) {
+    return validationErrorResponse(error)
+  }
+
+  const workspace = await getAuthorizedWorkspace(user.id, body.workspace_id)
   if (!workspace) {
     return NextResponse.json({ error: 'workspace_required' }, { status: 404 })
   }
@@ -60,11 +93,11 @@ export async function POST(request: NextRequest) {
     const binding = await createContextBinding({
       workspaceId: workspace.id,
       actorUserId: user.id,
-      bindingType: String(body.binding_type ?? 'workspace') as 'workspace' | 'provider' | 'tool',
-      targetKey: String(body.target_key ?? ''),
-      promptTemplateId: body.prompt_template_id ? String(body.prompt_template_id) : null,
-      skillDefinitionId: body.skill_definition_id ? String(body.skill_definition_id) : null,
-      priority: typeof body.priority === 'number' ? body.priority : Number(body.priority ?? 100),
+      bindingType: body.binding_type,
+      targetKey: body.target_key,
+      promptTemplateId: body.prompt_template_id ?? null,
+      skillDefinitionId: body.skill_definition_id ?? null,
+      priority: body.priority ?? 100,
       metadata: body.metadata ?? {}
     })
 
@@ -87,8 +120,14 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 
-  const body = await request.json()
-  const workspace = await getAuthorizedWorkspace(user.id, String(body.workspace_id ?? ''))
+  let body: z.infer<typeof deleteContextBindingSchema>
+  try {
+    body = await parseJsonBody(request, deleteContextBindingSchema)
+  } catch (error) {
+    return validationErrorResponse(error)
+  }
+
+  const workspace = await getAuthorizedWorkspace(user.id, body.workspace_id)
   if (!workspace) {
     return NextResponse.json({ error: 'workspace_required' }, { status: 404 })
   }
@@ -102,7 +141,7 @@ export async function DELETE(request: NextRequest) {
   try {
     await deleteContextBinding({
       workspaceId: workspace.id,
-      bindingId: String(body.binding_id ?? ''),
+      bindingId: body.binding_id,
       actorUserId: user.id
     })
 

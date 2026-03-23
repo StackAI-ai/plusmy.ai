@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import {
   getAuthorizedWorkspace,
@@ -7,8 +8,24 @@ import {
   removeWorkspaceMember,
   updateWorkspaceMemberRole
 } from '@plusmy/core';
+import { parseJsonBody, parseSearchParams, validationErrorResponse } from '../_lib/validation';
 
 export const runtime = 'nodejs';
+
+const workspaceQuerySchema = z.object({
+  workspace_id: z.string().uuid().optional()
+});
+
+const patchWorkspaceMemberSchema = z.object({
+  workspace_id: z.string().uuid(),
+  member_id: z.string().uuid(),
+  role: z.enum(['owner', 'admin', 'member'])
+});
+
+const deleteWorkspaceMemberSchema = z.object({
+  workspace_id: z.string().uuid(),
+  member_id: z.string().uuid()
+});
 
 function canManageWorkspace(role: string | undefined) {
   return role === 'owner' || role === 'admin';
@@ -22,7 +39,14 @@ export async function GET(request: NextRequest) {
 
   if (user == null) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-  const workspace = await getAuthorizedWorkspace(user.id, new URL(request.url).searchParams.get('workspace_id'));
+  let query: z.infer<typeof workspaceQuerySchema>;
+  try {
+    query = parseSearchParams(request.url, workspaceQuerySchema);
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
+
+  const workspace = await getAuthorizedWorkspace(user.id, query.workspace_id ?? null);
   if (workspace == null) return NextResponse.json({ error: 'workspace_required' }, { status: 404 });
 
   const memberships = await listUserWorkspaces(user.id);
@@ -39,8 +63,14 @@ export async function PATCH(request: NextRequest) {
 
   if (user == null) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-  const body = await request.json();
-  const workspace = await getAuthorizedWorkspace(user.id, String(body.workspace_id ?? ''));
+  let body: z.infer<typeof patchWorkspaceMemberSchema>;
+  try {
+    body = await parseJsonBody(request, patchWorkspaceMemberSchema);
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
+
+  const workspace = await getAuthorizedWorkspace(user.id, body.workspace_id);
   if (workspace == null) return NextResponse.json({ error: 'workspace_required' }, { status: 404 });
 
   const memberships = await listUserWorkspaces(user.id);
@@ -50,19 +80,14 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  const nextRole = body.role === 'owner' || body.role === 'admin' || body.role === 'member' ? body.role : null;
-  if (nextRole == null) {
-    return NextResponse.json({ error: 'invalid_role' }, { status: 400 });
-  }
-
   const actorIsOwner = membership?.role === 'owner';
-  const ownerSelected = nextRole === 'owner';
+  const ownerSelected = body.role === 'owner';
   if (ownerSelected && actorIsOwner === false) {
     return NextResponse.json({ error: 'owner_required' }, { status: 403 });
   }
 
   const members = await listWorkspaceMembers(workspace.id);
-  const target = members.find((member) => member.id === String(body.member_id ?? ''));
+  const target = members.find((member) => member.id === body.member_id);
   if (target == null) {
     return NextResponse.json({ error: 'member_not_found' }, { status: 404 });
   }
@@ -74,8 +99,8 @@ export async function PATCH(request: NextRequest) {
 
   await updateWorkspaceMemberRole({
     workspaceId: workspace.id,
-    memberId: String(body.member_id ?? ''),
-    role: nextRole,
+    memberId: body.member_id,
+    role: body.role,
     actorUserId: user.id
   });
 
@@ -90,8 +115,14 @@ export async function DELETE(request: NextRequest) {
 
   if (user == null) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-  const body = await request.json();
-  const workspace = await getAuthorizedWorkspace(user.id, String(body.workspace_id ?? ''));
+  let body: z.infer<typeof deleteWorkspaceMemberSchema>;
+  try {
+    body = await parseJsonBody(request, deleteWorkspaceMemberSchema);
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
+
+  const workspace = await getAuthorizedWorkspace(user.id, body.workspace_id);
   if (workspace == null) return NextResponse.json({ error: 'workspace_required' }, { status: 404 });
 
   const memberships = await listUserWorkspaces(user.id);
@@ -102,7 +133,7 @@ export async function DELETE(request: NextRequest) {
   }
 
   const members = await listWorkspaceMembers(workspace.id);
-  const target = members.find((member) => member.id === String(body.member_id ?? ''));
+  const target = members.find((member) => member.id === body.member_id);
   if (target == null) {
     return NextResponse.json({ error: 'member_not_found' }, { status: 404 });
   }
@@ -115,7 +146,7 @@ export async function DELETE(request: NextRequest) {
 
   await removeWorkspaceMember({
     workspaceId: workspace.id,
-    memberId: String(body.member_id ?? ''),
+    memberId: body.member_id,
     actorUserId: user.id
   });
 

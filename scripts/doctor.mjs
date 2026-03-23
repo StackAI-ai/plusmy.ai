@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -95,6 +96,56 @@ check(
   migrationFiles.length ? `${migrationFiles.length} migration files found` : 'no migration files found',
   failures,
   warnings
+);
+
+const migrationPrefixes = migrationFiles.map((file) => file.slice(0, 14));
+const duplicateMigrationPrefixes = migrationPrefixes.filter((prefix, index) => migrationPrefixes.indexOf(prefix) !== index);
+check(
+  'Migration timestamps are unique',
+  duplicateMigrationPrefixes.length === 0,
+  duplicateMigrationPrefixes.length ? `duplicate prefixes ${Array.from(new Set(duplicateMigrationPrefixes)).join(', ')}` : 'all migration prefixes unique',
+  failures,
+  warnings
+);
+
+const sortedMigrationFiles = [...migrationFiles].sort((left, right) => left.localeCompare(right));
+check(
+  'Migration filenames stay ordered',
+  migrationFiles.every((file, index) => file === sortedMigrationFiles[index]),
+  'lexical order matches migration execution order',
+  failures,
+  warnings
+);
+
+const migrationChecksum = createHash('sha256')
+  .update(
+    sortedMigrationFiles
+      .map((file) => `${file}:${readFileSync(resolve(migrationsPath, file), 'utf8')}`)
+      .join('\n')
+  )
+  .digest('hex');
+const storedMigrationChecksumPath = resolve(repoRoot, 'supabase/migrations/checksum.sha256');
+const storedMigrationChecksum = existsSync(storedMigrationChecksumPath) ? readFileSync(storedMigrationChecksumPath, 'utf8').trim() : null;
+check(
+  'Migration checksum',
+  storedMigrationChecksum === migrationChecksum,
+  storedMigrationChecksum ? `${migrationChecksum.slice(0, 16)} matches checked-in checksum` : 'missing checked-in checksum file',
+  failures,
+  warnings
+);
+
+const migrationGitStatus = spawnSync('git', ['status', '--short', '--', 'supabase/migrations'], { cwd: repoRoot, encoding: 'utf8' });
+const dirtyMigrationFiles = migrationGitStatus.stdout
+  .split('\n')
+  .map((line) => line.trim())
+  .filter(Boolean);
+check(
+  'Migration working tree drift',
+  dirtyMigrationFiles.length === 0,
+  dirtyMigrationFiles.length ? dirtyMigrationFiles.join(', ') : 'no local migration edits pending',
+  failures,
+  warnings,
+  dirtyMigrationFiles.length > 0
 );
 
 const bundledSupabaseCli = resolve(repoRoot, 'node_modules/supabase/bin/supabase');

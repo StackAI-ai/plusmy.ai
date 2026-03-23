@@ -1,8 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import { getAuthorizedWorkspace, listAuditLogs, listToolInvocations, listUserWorkspaces } from '@plusmy/core';
+import { parseSearchParams, validationErrorResponse } from '../_lib/validation';
 
 export const runtime = 'nodejs';
+
+const auditQuerySchema = z.object({
+  workspace_id: z.string().uuid().optional(),
+  limit: z.string().optional(),
+  status: z.string().optional(),
+  actor: z.enum(['user', 'mcp_client', 'system']).optional(),
+  actor_type: z.enum(['user', 'mcp_client', 'system']).optional(),
+  resource: z.string().optional(),
+  resource_type: z.string().optional(),
+  resource_id: z.string().optional(),
+  action: z.string().optional(),
+  action_prefix: z.string().optional(),
+  client: z.string().optional(),
+  client_id: z.string().optional(),
+  provider: z.string().optional(),
+  tool: z.string().optional(),
+  tool_name: z.string().optional(),
+  connection: z.string().uuid().optional(),
+  audit_cursor: z.string().optional(),
+  audit_direction: z.enum(['next', 'prev']).optional(),
+  invocation_cursor: z.string().optional(),
+  invocation_direction: z.enum(['next', 'prev']).optional()
+});
 
 function canManageWorkspace(role: string | undefined) {
   return role === 'owner' || role === 'admin';
@@ -24,8 +49,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const url = new URL(request.url);
-  const workspace = await getAuthorizedWorkspace(user.id, url.searchParams.get('workspace_id'));
+  let query: z.infer<typeof auditQuerySchema>;
+  try {
+    query = parseSearchParams(request.url, auditQuerySchema);
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
+
+  const workspace = await getAuthorizedWorkspace(user.id, query.workspace_id ?? null);
   if (!workspace) {
     return NextResponse.json({ error: 'workspace_required' }, { status: 404 });
   }
@@ -36,19 +67,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  const limit = normalizeLimit(url.searchParams.get('limit'), 25);
-  const status = url.searchParams.get('status');
-  const actorType = url.searchParams.get('actor') ?? url.searchParams.get('actor_type');
-  const resourceType = url.searchParams.get('resource') ?? url.searchParams.get('resource_type');
-  const resourceId = url.searchParams.get('resource_id');
-  const actionPrefix = url.searchParams.get('action') ?? url.searchParams.get('action_prefix');
-  const clientId = url.searchParams.get('client') ?? url.searchParams.get('client_id');
-  const provider = url.searchParams.get('provider');
-  const toolName = url.searchParams.get('tool') ?? url.searchParams.get('tool_name');
-  const auditCursor = url.searchParams.get('audit_cursor');
-  const auditDirection = url.searchParams.get('audit_direction');
-  const invocationCursor = url.searchParams.get('invocation_cursor');
-  const invocationDirection = url.searchParams.get('invocation_direction');
+  const limit = normalizeLimit(query.limit ?? null, 25);
+  const status = query.status ?? null;
+  const actorType = query.actor ?? query.actor_type ?? null;
+  const resourceType = query.resource ?? query.resource_type ?? null;
+  const resourceId = query.resource_id ?? null;
+  const actionPrefix = query.action ?? query.action_prefix ?? null;
+  const clientId = query.client ?? query.client_id ?? null;
+  const provider = query.provider ?? null;
+  const toolName = query.tool ?? query.tool_name ?? null;
+  const auditCursor = query.audit_cursor ?? null;
+  const auditDirection = query.audit_direction ?? null;
+  const invocationCursor = query.invocation_cursor ?? null;
+  const invocationDirection = query.invocation_direction ?? null;
 
   const audit = await listAuditLogs(workspace.id, {
     limit,
@@ -67,7 +98,7 @@ export async function GET(request: NextRequest) {
     provider,
     toolName,
     actorClientId: clientId,
-    connectionId: url.searchParams.get('connection'),
+    connectionId: query.connection ?? null,
     cursor: invocationCursor,
     direction: invocationDirection === 'prev' ? 'prev' : 'next'
   });

@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import { createWorkspaceBootstrap, listUserWorkspaces } from '@plusmy/core';
+import { parseJsonBody, validationErrorResponse } from '../_lib/validation';
 
 export const runtime = 'nodejs';
+
+const createWorkspaceSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  slug: z.string().trim().min(1).max(120).optional().nullable()
+});
 
 export async function GET() {
   const supabase = await createServerSupabaseClient();
@@ -28,11 +35,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const body = await request.json();
+  let body: z.infer<typeof createWorkspaceSchema>;
+  try {
+    body = await parseJsonBody(request, createWorkspaceSchema);
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
+
   const workspace = await createWorkspaceBootstrap({
     userId: user.id,
-    name: String(body.name ?? 'New workspace'),
-    slug: body.slug ? String(body.slug) : null
+    name: body.name,
+    slug: body.slug ?? null
   });
 
   return NextResponse.json({ workspace }, { status: 201 });

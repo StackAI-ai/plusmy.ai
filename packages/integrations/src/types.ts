@@ -5,6 +5,7 @@ import type {
   McpToolDefinition,
   ProviderId,
   ProviderRuntimeContext,
+  ProviderHealthSnapshot,
   ProviderTokenSet,
   ResolvedConnectionCredentials
 } from '@plusmy/contracts';
@@ -13,15 +14,18 @@ export interface AuthorizationUrlInput {
   redirectUri: string;
   state: string;
   scopes: string[];
+  providerConfig?: Record<string, string>;
 }
 
 export interface AuthorizationCodeInput {
   code: string;
   redirectUri: string;
+  providerConfig?: Record<string, string>;
 }
 
 export interface RefreshTokenInput {
   refreshToken: string;
+  metadata?: Record<string, Json> | null;
 }
 
 export interface ResolvedProviderAccount {
@@ -91,6 +95,7 @@ export interface IntegrationDefinition {
   listTools: ToolFactory;
   listResources: ResourceFactory;
   callTool(toolName: string, input: Record<string, unknown>, context: ProviderCallContext): Promise<unknown>;
+  health?(connection: ConnectionRecord): Promise<ProviderHealthSnapshot> | ProviderHealthSnapshot;
   syncJobs?: SyncJobHandler[];
   webhooks?: WebhookHandler[];
 }

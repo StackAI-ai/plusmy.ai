@@ -1,6 +1,15 @@
 import { createServiceRoleClient } from '@plusmy/supabase';
 import { logAuditEvent } from './connections';
 
+function isVisibleContextAsset(metadata: unknown) {
+  if (!metadata || Array.isArray(metadata) || typeof metadata !== 'object') {
+    return true;
+  }
+
+  const value = metadata as Record<string, unknown>;
+  return value.system_managed !== true && value.hidden_from_operator !== true;
+}
+
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -84,15 +93,17 @@ export async function getWorkspaceOverview(workspaceId: string, userId: string |
     supabase.schema('app').from('connections').select('id,scope,owner_user_id', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
     supabase.schema('app').from('prompt_templates').select('id,owner_user_id', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
     supabase.schema('app').from('skill_definitions').select('id,owner_user_id', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
-    supabase.schema('app').from('context_assets').select('id,owner_user_id', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
+    supabase.schema('app').from('context_assets').select('id,owner_user_id,metadata').eq('workspace_id', workspaceId),
     supabase.schema('app').from('context_bindings').select('id', { count: 'exact', head: true }).eq('workspace_id', workspaceId)
   ])
+
+  const visibleAssets = (assets.data ?? []).filter((asset) => isVisibleContextAsset(asset.metadata))
 
   return {
     connections: connections.count ?? 0,
     prompts: prompts.count ?? 0,
     skills: skills.count ?? 0,
-    assets: assets.count ?? 0,
+    assets: visibleAssets.length,
     bindings: bindings.count ?? 0,
     userId: userId ?? null
   }

@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import type { McpJsonRpcRequest } from '@plusmy/contracts';
 import { handleMcpJsonRpcRequest } from '@plusmy/mcp';
 import { resolveMcpAuthContextFromRequest } from '@plusmy/core';
 
 export const runtime = 'nodejs';
+
+const mcpJsonRpcRequestSchema = z.object({
+  jsonrpc: z.literal('2.0'),
+  id: z.union([z.string(), z.number(), z.null()]),
+  method: z.string().min(1),
+  params: z.record(z.string(), z.unknown()).optional()
+});
 
 function withRateLimitHeaders(headers: HeadersInit, rateLimit?: { limit: number; remaining: number; resetAt: number; resetAfterSeconds: number }) {
   if (!rateLimit) {
@@ -57,8 +66,29 @@ export async function POST(request: NextRequest) {
   const authContext = await resolveMcpAuthContextFromRequest(request);
   if (!authContext) return unauthorized(origin);
 
-  const body = await request.json();
-  const result = await handleMcpJsonRpcRequest(authContext, body);
+  const body = mcpJsonRpcRequestSchema.safeParse(await request.json().catch(() => null));
+  if (!body.success) {
+    return NextResponse.json(
+      {
+        jsonrpc: '2.0',
+        id: null,
+        error: {
+          code: -32600,
+          message: 'Invalid JSON-RPC request.',
+          data: body.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message }))
+        }
+      },
+      {
+        status: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Authorization, Content-Type, MCP-Protocol-Version'
+        }
+      }
+    );
+  }
+
+  const result = await handleMcpJsonRpcRequest(authContext, body.data as McpJsonRpcRequest);
   return NextResponse.json(result.response, {
     headers: withRateLimitHeaders(
       {

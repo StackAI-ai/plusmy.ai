@@ -207,7 +207,7 @@ export function ContextBindingForm({
         {!canSubmit ? (
           <p className="text-sm text-muted-foreground">Create a workspace-shared prompt or skill before adding a binding.</p>
         ) : null}
-        {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
+        {status ? <p aria-live="polite" className="text-sm text-muted-foreground" role="status">{status}</p> : null}
         </form>
       </CardContent>
     </Card>

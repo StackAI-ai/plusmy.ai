@@ -42,7 +42,7 @@ export function RevokeApprovalButton({
       <Button onClick={handleClick} disabled={submitting} tone="secondary" type="button">
         {submitting ? 'Revoking…' : 'Revoke approval'}
       </Button>
-      {status ? <p className="text-xs text-slate-500">{status}</p> : null}
+      {status ? <p aria-live="polite" className="text-xs text-slate-500" role="status">{status}</p> : null}
     </div>
   );
 }

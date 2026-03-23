@@ -22,6 +22,7 @@ interface ProviderStateClaims extends JWTPayload {
   workspaceId: string;
   connectionScope: 'workspace' | 'personal';
   redirectTo: string;
+  providerConfig?: Record<string, string>;
 }
 
 function secret() {
@@ -76,6 +77,15 @@ export async function signProviderState(claims: ProviderStateClaims) {
     .sign(secret());
 }
 
+function sanitizeProviderConfig(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const normalized = value as Record<string, unknown>;
+  const entries = Object.entries(normalized).filter(
+    ([_, raw]) => typeof raw === 'string' && raw.trim().length > 0
+  ) as [string, string][];
+  return Object.fromEntries(entries);
+}
+
 export async function verifyProviderState(token: string): Promise<ProviderStateClaims | null> {
   try {
     const { payload } = await jwtVerify(token, secret());
@@ -84,7 +94,8 @@ export async function verifyProviderState(token: string): Promise<ProviderStateC
       userId: String(payload.userId ?? ''),
       workspaceId: String(payload.workspaceId ?? ''),
       connectionScope: payload.connectionScope === 'personal' ? 'personal' : 'workspace',
-      redirectTo: String(payload.redirectTo ?? '/connections')
+      redirectTo: String(payload.redirectTo ?? '/connections'),
+      providerConfig: sanitizeProviderConfig(payload.providerConfig)
     };
   } catch {
     return null;

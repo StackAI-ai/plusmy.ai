@@ -1,4 +1,6 @@
+import { nanoid } from 'nanoid';
 import { createServiceRoleClient } from '@plusmy/supabase';
+import { hashOpaqueToken } from './auth-context';
 import { registerDynamicClient } from './oauth';
 import { logAuditEvent } from './connections';
 import type { OAuthClientApprovalRecord, OAuthClientRegistrationInput } from '@plusmy/contracts';
@@ -44,6 +46,12 @@ type WorkspaceMemberIdentity = {
   } | null;
 };
 
+type RefreshTokenTelemetry = {
+  latest_refresh_token_issued_at: string | null;
+  latest_refresh_token_expires_at: string | null;
+  latest_refresh_token_revoked_at: string | null;
+};
+
 async function listWorkspaceMemberIdentities(workspaceId: string) {
   const supabase = createServiceRoleClient();
   const { data } = await supabase
@@ -70,6 +78,43 @@ function enrichApprovalWithIdentity(
   };
 }
 
+async function listApprovalRefreshTokenTelemetry(workspaceId: string) {
+  const supabase = createServiceRoleClient();
+  const { data } = await supabase
+    .schema('app')
+    .from('oauth_refresh_tokens')
+    .select('client_id,user_id,workspace_id,created_at,expires_at,revoked_at')
+    .eq('workspace_id', workspaceId)
+    .order('created_at', { ascending: false });
+
+  const telemetry = new Map<string, RefreshTokenTelemetry>();
+  for (const row of data ?? []) {
+    const key = `${row.client_id}:${row.workspace_id}:${row.user_id}`;
+    if (telemetry.has(key)) continue;
+    telemetry.set(key, {
+      latest_refresh_token_issued_at: row.created_at ? String(row.created_at) : null,
+      latest_refresh_token_expires_at: row.expires_at ? String(row.expires_at) : null,
+      latest_refresh_token_revoked_at: row.revoked_at ? String(row.revoked_at) : null
+    });
+  }
+
+  return telemetry;
+}
+
+function enrichApprovalWithRefreshTokenTelemetry(
+  approval: OAuthClientApprovalRecord,
+  telemetry: Map<string, RefreshTokenTelemetry>
+): OAuthClientApprovalRecord {
+  const key = `${approval.client_id}:${approval.workspace_id}:${approval.user_id}`;
+  const entry = telemetry.get(key);
+  return {
+    ...approval,
+    latest_refresh_token_issued_at: entry?.latest_refresh_token_issued_at ?? null,
+    latest_refresh_token_expires_at: entry?.latest_refresh_token_expires_at ?? null,
+    latest_refresh_token_revoked_at: entry?.latest_refresh_token_revoked_at ?? null
+  };
+}
+
 export async function listOAuthClients(createdBy: string) {
   const supabase = createServiceRoleClient();
   const { data } = await supabase
@@ -84,6 +129,83 @@ export async function listOAuthClients(createdBy: string) {
 
 export async function createOAuthClient(createdBy: string, input: OAuthClientRegistrationInput) {
   return await registerDynamicClient(input, createdBy);
+}
+
+export async function rotateOAuthClientSecret(input: { clientId: string; actorUserId: string }) {
+  const supabase = createServiceRoleClient();
+  const { data: client } = await supabase
+    .schema('app')
+    .from('oauth_clients')
+    .select('client_id,client_name,token_endpoint_auth_method,created_by,metadata')
+    .eq('client_id', input.clientId)
+    .maybeSingle();
+
+  if (!client) {
+    throw new Error('OAuth client not found.');
+  }
+
+  if (client.created_by == null || String(client.created_by) !== input.actorUserId) {
+    throw new Error('forbidden');
+  }
+
+  const authMethod = String(client.token_endpoint_auth_method ?? 'none');
+  if (authMethod === 'none') {
+    throw new Error('Client does not use a secret.');
+  }
+
+  const rotatedAt = new Date().toISOString();
+  const clientSecret = nanoid(48);
+  const metadata =
+    client.metadata && typeof client.metadata === 'object' && !Array.isArray(client.metadata)
+      ? { ...(client.metadata as Record<string, unknown>) }
+      : {};
+
+  metadata.last_secret_rotation_at = rotatedAt;
+  metadata.last_secret_rotation_by = input.actorUserId;
+
+  const { error } = await supabase
+    .schema('app')
+    .from('oauth_clients')
+    .update({
+      client_secret_hash: hashOpaqueToken(clientSecret),
+      metadata
+    })
+    .eq('client_id', input.clientId);
+
+  if (error) {
+    throw error;
+  }
+
+  const { data: approvals } = await supabase
+    .schema('app')
+    .from('oauth_client_approvals')
+    .select('workspace_id')
+    .eq('client_id', input.clientId);
+
+  const workspaceIds = Array.from(new Set((approvals ?? []).map((entry) => String(entry.workspace_id))));
+  for (const workspaceId of workspaceIds) {
+    await logAuditEvent({
+      workspaceId,
+      actorType: 'user',
+      actorUserId: input.actorUserId,
+      action: 'oauth_client.secret_rotated',
+      resourceType: 'oauth_client',
+      resourceId: String(client.client_id),
+      metadata: {
+        client_id: input.clientId,
+        token_endpoint_auth_method: authMethod,
+        rotated_at: rotatedAt
+      }
+    });
+  }
+
+  return {
+    client_id: String(client.client_id),
+    client_name: String(client.client_name),
+    token_endpoint_auth_method: authMethod,
+    rotated_at: rotatedAt,
+    client_secret: clientSecret
+  };
 }
 
 export async function getOAuthClientApproval(input: {
@@ -106,7 +228,8 @@ export async function getOAuthClientApproval(input: {
 
   const identities = await listWorkspaceMemberIdentities(input.workspaceId);
   const identityMap = new Map(identities.map((entry) => [entry.user_id, entry]));
-  return enrichApprovalWithIdentity(approval, identityMap);
+  const telemetry = await listApprovalRefreshTokenTelemetry(input.workspaceId);
+  return enrichApprovalWithRefreshTokenTelemetry(enrichApprovalWithIdentity(approval, identityMap), telemetry);
 }
 
 export async function getOAuthClientApprovalById(approvalId: string) {
@@ -123,7 +246,8 @@ export async function getOAuthClientApprovalById(approvalId: string) {
 
   const identities = await listWorkspaceMemberIdentities(approval.workspace_id);
   const identityMap = new Map(identities.map((entry) => [entry.user_id, entry]));
-  return enrichApprovalWithIdentity(approval, identityMap);
+  const telemetry = await listApprovalRefreshTokenTelemetry(approval.workspace_id);
+  return enrichApprovalWithRefreshTokenTelemetry(enrichApprovalWithIdentity(approval, identityMap), telemetry);
 }
 
 export async function listOAuthClientApprovals(input: {
@@ -147,12 +271,16 @@ export async function listOAuthClientApprovals(input: {
   const { data } = await query;
   const approvals = (data ?? []).map((row) => mapApprovalRecord(row as Record<string, unknown>));
   if (!input.includeMemberIdentity || approvals.length === 0) {
-    return approvals;
+    const telemetry = await listApprovalRefreshTokenTelemetry(input.workspaceId);
+    return approvals.map((approval) => enrichApprovalWithRefreshTokenTelemetry(approval, telemetry));
   }
 
   const identities = await listWorkspaceMemberIdentities(input.workspaceId);
   const identityMap = new Map(identities.map((entry) => [entry.user_id, entry]));
-  return approvals.map((approval) => enrichApprovalWithIdentity(approval, identityMap));
+  const telemetry = await listApprovalRefreshTokenTelemetry(input.workspaceId);
+  return approvals.map((approval) =>
+    enrichApprovalWithRefreshTokenTelemetry(enrichApprovalWithIdentity(approval, identityMap), telemetry)
+  );
 }
 
 export async function upsertOAuthClientApproval(input: {

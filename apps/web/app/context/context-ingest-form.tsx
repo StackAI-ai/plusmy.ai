@@ -171,7 +171,7 @@ export function ContextIngestForm({ workspaceId }: { workspaceId: string }) {
         <Button disabled={submitting} type="submit">
           {submitting ? 'Saving…' : `Create ${mode}`}
         </Button>
-        {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
+        {status ? <p aria-live="polite" className="text-sm text-muted-foreground" role="status">{status}</p> : null}
         </form>
       </CardContent>
     </Card>

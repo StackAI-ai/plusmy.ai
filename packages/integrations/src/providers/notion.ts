@@ -1,6 +1,14 @@
 import { getServerEnv } from '@plusmy/config';
-import type { ConnectionRecord, Json, McpResourceDefinition, McpToolDefinition, ProviderTokenSet } from '@plusmy/contracts';
+import type {
+  ConnectionRecord,
+  Json,
+  McpResourceDefinition,
+  McpToolDefinition,
+  ProviderHealthSnapshot,
+  ProviderTokenSet
+} from '@plusmy/contracts';
 import type { AuthorizationCodeInput, AuthorizationUrlInput, IntegrationDefinition, ProviderCallContext, SyncJobHandlerInput } from '../types';
+import { getMissingScopes } from '../scope-drift';
 
 const oauth = {
   authorizationUrl: 'https://api.notion.com/v1/oauth/authorize',
@@ -93,6 +101,65 @@ const tools: McpToolDefinition[] = [
   }
 ];
 
+const liveScopes = ['read', 'write'];
+
+function buildHealthSnapshot(connection: ConnectionRecord): ProviderHealthSnapshot {
+  if (connection.status === 'revoked') {
+    return {
+      provider: 'notion',
+      connectionId: connection.id,
+      displayName: connection.display_name,
+      status: 'revoked',
+      summary: 'This Notion connection has been revoked.',
+      signals: [connection.reauth_required_reason ?? 'Reconnect Notion before search or page creation resumes.'],
+      requiredScopes: liveScopes,
+      missingScopes: [],
+      lastValidatedAt: connection.last_validated_at
+    };
+  }
+
+  if (connection.status === 'reauth_required') {
+    return {
+      provider: 'notion',
+      connectionId: connection.id,
+      displayName: connection.display_name,
+      status: 'reauth_required',
+      summary: 'Notion needs reauthorization before search or page creation can run.',
+      signals: [connection.reauth_required_reason ?? 'Notion flagged the install for reauthorization.'],
+      requiredScopes: liveScopes,
+      missingScopes: [],
+      lastValidatedAt: connection.last_validated_at
+    };
+  }
+
+  const missingScopes = getMissingScopes(liveScopes, connection.granted_scopes);
+  if (missingScopes.length > 0) {
+    return {
+      provider: 'notion',
+      connectionId: connection.id,
+      displayName: connection.display_name,
+      status: 'attention',
+      summary: 'Notion is missing one or more scopes required by the live tool set.',
+      signals: [`Missing scopes: ${missingScopes.join(', ')}`, 'Reconnect Notion to restore search and page creation workflows.'],
+      requiredScopes: liveScopes,
+      missingScopes,
+      lastValidatedAt: connection.last_validated_at
+    };
+  }
+
+  return {
+    provider: 'notion',
+    connectionId: connection.id,
+    displayName: connection.display_name,
+    status: 'healthy',
+    summary: 'Notion search and page creation access is healthy.',
+    signals: ['OAuth grant active', 'Read and write scopes present'],
+    requiredScopes: liveScopes,
+    missingScopes: [],
+    lastValidatedAt: connection.last_validated_at
+  };
+}
+
 export const notionIntegration: IntegrationDefinition = {
   id: 'notion',
   displayName: 'Notion',
@@ -167,6 +234,9 @@ export const notionIntegration: IntegrationDefinition = {
   },
   listResources(_connection: ConnectionRecord): McpResourceDefinition[] {
     return [];
+  },
+  health(connection: ConnectionRecord) {
+    return buildHealthSnapshot(connection);
   },
   syncJobs: [
     {

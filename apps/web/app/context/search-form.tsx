@@ -60,7 +60,7 @@ export function ContextSearchForm({ workspaceId }: { workspaceId: string }) {
         <Button disabled={submitting} type="submit">
           {submitting ? 'Searching…' : 'Search context'}
         </Button>
-        {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
+        {status ? <p aria-live="polite" className="text-sm text-muted-foreground" role="status">{status}</p> : null}
         </form>
         {matches.length ? (
           <div className="space-y-3">

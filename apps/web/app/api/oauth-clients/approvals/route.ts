@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import {
   getAuthorizedWorkspace,
@@ -7,8 +8,18 @@ import {
   listUserWorkspaces,
   revokeOAuthClientApproval
 } from '@plusmy/core';
+import { parseJsonBody, parseSearchParams, validationErrorResponse } from '../../_lib/validation';
 
 export const runtime = 'nodejs';
+
+const workspaceQuerySchema = z.object({
+  workspace_id: z.string().uuid().optional()
+});
+
+const deleteApprovalSchema = z.object({
+  workspace_id: z.string().uuid(),
+  approval_id: z.string().uuid()
+});
 
 function canManageWorkspace(role: string | undefined) {
   return role === 'owner' || role === 'admin';
@@ -24,8 +35,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const requestedWorkspace = new URL(request.url).searchParams.get('workspace_id');
-  const workspace = await getAuthorizedWorkspace(user.id, requestedWorkspace);
+  let query: z.infer<typeof workspaceQuerySchema>;
+  try {
+    query = parseSearchParams(request.url, workspaceQuerySchema);
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
+
+  const workspace = await getAuthorizedWorkspace(user.id, query.workspace_id ?? null);
   if (workspace == null) {
     return NextResponse.json({ error: 'workspace_required' }, { status: 404 });
   }
@@ -51,15 +68,21 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const body = await request.json();
-  const workspace = await getAuthorizedWorkspace(user.id, String(body.workspace_id ?? ''));
+  let body: z.infer<typeof deleteApprovalSchema>;
+  try {
+    body = await parseJsonBody(request, deleteApprovalSchema);
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
+
+  const workspace = await getAuthorizedWorkspace(user.id, body.workspace_id);
   if (workspace == null) {
     return NextResponse.json({ error: 'workspace_required' }, { status: 404 });
   }
 
   const memberships = await listUserWorkspaces(user.id);
   const membership = memberships.find((entry) => entry.id === workspace.id);
-  const approval = await getOAuthClientApprovalById(String(body.approval_id ?? ''));
+  const approval = await getOAuthClientApprovalById(body.approval_id);
 
   if (!approval || approval.workspace_id !== workspace.id) {
     return NextResponse.json({ error: 'approval_not_found' }, { status: 404 });

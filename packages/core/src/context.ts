@@ -1,6 +1,7 @@
 import type {
   BoundContextResource,
   BoundContextResourceKind,
+  ContextEmbeddingHealth,
   ContextAssetType,
   ContextBindingRecord,
   ContextBindingType,
@@ -74,6 +75,8 @@ interface ContextChunkMatchRow {
   similarity: number
   metadata: Json
 }
+
+type ContextAssetMetadata = Record<string, Json>
 
 function parseResourceUri(uri: string) {
   const directMatch = uri.match(/^plusmy:\/\/(prompt|skill)\/([a-f0-9-]+)$/i)
@@ -260,6 +263,136 @@ function buildContextQuery(parts: Array<string | null | undefined>, maxChars = 4
   }
 
   return query.trim()
+}
+
+function asContextAssetMetadata(value: Json | null | undefined): ContextAssetMetadata {
+  if (!value || Array.isArray(value) || typeof value !== 'object') {
+    return {}
+  }
+
+  return value as ContextAssetMetadata
+}
+
+function isSystemManagedContextAsset(value: Json | null | undefined) {
+  const metadata = asContextAssetMetadata(value)
+  return metadata.system_managed === true || metadata.hidden_from_operator === true
+}
+
+function buildDerivedContextAssetMetadata(input: {
+  sourceKind: 'prompt_template' | 'skill_definition'
+  sourceId: string
+  description?: string | null
+  metadata?: Record<string, unknown>
+}) {
+  return {
+    ...(input.metadata ?? {}),
+    system_managed: true,
+    hidden_from_operator: true,
+    source_kind: input.sourceKind,
+    source_id: input.sourceId,
+    description: input.description ?? null
+  } satisfies Record<string, Json>
+}
+
+async function replaceContextAssetChunks(input: {
+  workspaceId: string
+  assetId: string
+  content: string
+  metadata?: Record<string, Json>
+}) {
+  const supabase = createServiceRoleClient()
+
+  await supabase
+    .schema('app')
+    .from('context_asset_chunks')
+    .delete()
+    .eq('workspace_id', input.workspaceId)
+    .eq('asset_id', input.assetId)
+
+  const chunks = chunkText(input.content)
+  for (const [index, chunk] of chunks.entries()) {
+    const embedding = await createEmbedding(chunk)
+    await supabase.schema('app').from('context_asset_chunks').insert({
+      workspace_id: input.workspaceId,
+      asset_id: input.assetId,
+      chunk_index: index,
+      content: chunk,
+      token_count: Math.ceil(chunk.length / 4),
+      embedding,
+      metadata: {
+        ...(input.metadata ?? {}),
+        embedded: Boolean(embedding),
+        embedded_at: new Date().toISOString(),
+        model: embedding ? 'text-embedding-3-small' : null
+      }
+    })
+  }
+}
+
+async function syncDerivedContextAsset(input: {
+  workspaceId: string
+  sourceKind: 'prompt_template' | 'skill_definition'
+  sourceId: string
+  title: string
+  content: string
+  description?: string | null
+  metadata?: Record<string, unknown>
+  type: ContextAssetType
+}) {
+  const supabase = createServiceRoleClient()
+  const sourceUri = `plusmy://${input.sourceKind === 'prompt_template' ? 'prompt' : 'skill'}/${input.sourceId}`
+  const assetMetadata = buildDerivedContextAssetMetadata({
+    sourceKind: input.sourceKind,
+    sourceId: input.sourceId,
+    description: input.description ?? null,
+    metadata: input.metadata
+  })
+
+  const { data: existingAsset } = await supabase
+    .schema('app')
+    .from('context_assets')
+    .select('id')
+    .eq('workspace_id', input.workspaceId)
+    .eq('source_uri', sourceUri)
+    .maybeSingle()
+
+  const payload = {
+    workspace_id: input.workspaceId,
+    owner_user_id: null,
+    type: input.type,
+    title: input.title,
+    source_uri: sourceUri,
+    content: input.content,
+    metadata: assetMetadata,
+    embedding_model: 'text-embedding-3-small'
+  }
+
+  const asset = existingAsset
+    ? await supabase
+        .schema('app')
+        .from('context_assets')
+        .update(payload)
+        .eq('id', existingAsset.id)
+        .eq('workspace_id', input.workspaceId)
+        .select('id')
+        .single()
+    : await supabase.schema('app').from('context_assets').insert(payload).select('id').single()
+
+  if (asset.error || !asset.data) {
+    throw asset.error ?? new Error('Failed to sync derived context asset.')
+  }
+
+  await replaceContextAssetChunks({
+    workspaceId: input.workspaceId,
+    assetId: String(asset.data.id),
+    content: input.content,
+    metadata: {
+      source_kind: input.sourceKind,
+      source_id: input.sourceId,
+      hidden_from_operator: true,
+      system_managed: true
+    }
+  })
 }
 
 function matchesBindingTarget(
@@ -470,11 +603,17 @@ export async function listContextAssets(workspaceId: string, userId: string | nu
   const { data } = await supabase
     .schema('app')
     .from('context_assets')
-    .select('id,title,type,source_uri,owner_user_id,updated_at')
+    .select('id,title,type,source_uri,owner_user_id,updated_at,metadata')
     .eq('workspace_id', workspaceId)
     .order('updated_at', { ascending: false })
 
-  return (data ?? []).filter((item) => !item.owner_user_id || item.owner_user_id === userId)
+  return (data ?? []).filter((item) => {
+    if (isSystemManagedContextAsset(item.metadata)) {
+      return false
+    }
+
+    return !item.owner_user_id || item.owner_user_id === userId
+  })
 }
 
 export async function createContextAsset(input: {
@@ -504,22 +643,11 @@ export async function createContextAsset(input: {
 
   if (error || !asset) throw error ?? new Error('Failed to create context asset.')
 
-  const chunks = chunkText(input.content)
-  for (const [index, chunk] of chunks.entries()) {
-    const embedding = await createEmbedding(chunk)
-    await supabase.schema('app').from('context_asset_chunks').insert({
-      workspace_id: input.workspaceId,
-      asset_id: asset.id,
-      chunk_index: index,
-      content: chunk,
-      token_count: Math.ceil(chunk.length / 4),
-      embedding,
-      metadata: {
-        embedded: Boolean(embedding),
-        model: embedding ? 'text-embedding-3-small' : null
-      }
-    })
-  }
+  await replaceContextAssetChunks({
+    workspaceId: input.workspaceId,
+    assetId: asset.id,
+    content: input.content
+  })
 
   return asset
 }
@@ -561,6 +689,79 @@ export async function createPromptTemplate(input: {
     .single()
 
   if (error || !data) throw error ?? new Error('Failed to create prompt template.')
+
+  if (!input.ownerUserId) {
+    await syncDerivedContextAsset({
+      workspaceId: input.workspaceId,
+      sourceKind: 'prompt_template',
+      sourceId: data.id,
+      title: input.name,
+      content: input.content,
+      description: input.description ?? null,
+      metadata: input.metadata,
+      type: 'prompt'
+    })
+  }
+
+  return data
+}
+
+export async function updatePromptTemplate(input: {
+  workspaceId: string
+  promptTemplateId: string
+  actorUserId: string
+  name: string
+  description?: string | null
+  content: string
+  metadata?: Record<string, unknown>
+}) {
+  const supabase = createServiceRoleClient()
+  const { data: existing } = await supabase
+    .schema('app')
+    .from('prompt_templates')
+    .select('id,workspace_id,owner_user_id')
+    .eq('workspace_id', input.workspaceId)
+    .eq('id', input.promptTemplateId)
+    .maybeSingle()
+
+  if (!existing) {
+    throw new Error('Prompt template not found.')
+  }
+
+  if (existing.owner_user_id && existing.owner_user_id !== input.actorUserId) {
+    throw new Error('Prompt template not found.')
+  }
+
+  const { data, error } = await supabase
+    .schema('app')
+    .from('prompt_templates')
+    .update({
+      name: input.name,
+      slug: slugify(input.name),
+      description: input.description ?? null,
+      content: input.content,
+      metadata: input.metadata ?? {}
+    })
+    .eq('workspace_id', input.workspaceId)
+    .eq('id', input.promptTemplateId)
+    .select('*')
+    .single()
+
+  if (error || !data) throw error ?? new Error('Failed to update prompt template.')
+
+  if (!existing.owner_user_id) {
+    await syncDerivedContextAsset({
+      workspaceId: input.workspaceId,
+      sourceKind: 'prompt_template',
+      sourceId: data.id,
+      title: input.name,
+      content: input.content,
+      description: input.description ?? null,
+      metadata: input.metadata,
+      type: 'prompt'
+    })
+  }
+
   return data
 }
 
@@ -601,6 +802,79 @@ export async function createSkillDefinition(input: {
     .single()
 
   if (error || !data) throw error ?? new Error('Failed to create skill definition.')
+
+  if (!input.ownerUserId) {
+    await syncDerivedContextAsset({
+      workspaceId: input.workspaceId,
+      sourceKind: 'skill_definition',
+      sourceId: data.id,
+      title: input.name,
+      content: input.instructions,
+      description: input.description ?? null,
+      metadata: input.metadata,
+      type: 'workflow'
+    })
+  }
+
+  return data
+}
+
+export async function updateSkillDefinition(input: {
+  workspaceId: string
+  skillDefinitionId: string
+  actorUserId: string
+  name: string
+  description?: string | null
+  instructions: string
+  metadata?: Record<string, unknown>
+}) {
+  const supabase = createServiceRoleClient()
+  const { data: existing } = await supabase
+    .schema('app')
+    .from('skill_definitions')
+    .select('id,workspace_id,owner_user_id')
+    .eq('workspace_id', input.workspaceId)
+    .eq('id', input.skillDefinitionId)
+    .maybeSingle()
+
+  if (!existing) {
+    throw new Error('Skill definition not found.')
+  }
+
+  if (existing.owner_user_id && existing.owner_user_id !== input.actorUserId) {
+    throw new Error('Skill definition not found.')
+  }
+
+  const { data, error } = await supabase
+    .schema('app')
+    .from('skill_definitions')
+    .update({
+      name: input.name,
+      slug: slugify(input.name),
+      description: input.description ?? null,
+      instructions: input.instructions,
+      metadata: input.metadata ?? {}
+    })
+    .eq('workspace_id', input.workspaceId)
+    .eq('id', input.skillDefinitionId)
+    .select('*')
+    .single()
+
+  if (error || !data) throw error ?? new Error('Failed to update skill definition.')
+
+  if (!existing.owner_user_id) {
+    await syncDerivedContextAsset({
+      workspaceId: input.workspaceId,
+      sourceKind: 'skill_definition',
+      sourceId: data.id,
+      title: input.name,
+      content: input.instructions,
+      description: input.description ?? null,
+      metadata: input.metadata,
+      type: 'workflow'
+    })
+  }
+
   return data
 }
 
@@ -1001,4 +1275,71 @@ export async function matchContextChunks(workspaceId: string, query: string, lim
     similarity: item.similarity,
     metadata: item.metadata ?? {}
   }))
+}
+
+export async function getContextEmbeddingHealth(workspaceId: string): Promise<ContextEmbeddingHealth> {
+  const supabase = createServiceRoleClient()
+  const [{ count: totalAssets }, { data: assets }, { data: chunks }, { data: indexHealth }] = await Promise.all([
+    supabase.schema('app').from('context_assets').select('id', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
+    supabase.schema('app').from('context_assets').select('id,metadata').eq('workspace_id', workspaceId),
+    supabase.schema('app').from('context_asset_chunks').select('metadata,created_at').eq('workspace_id', workspaceId),
+    supabase.schema('app').rpc('context_vector_index_health')
+  ])
+
+  const assetRows = dataOrEmptyArray(assets)
+  const chunkRows = dataOrEmptyArray(chunks)
+  const systemManagedAssets = assetRows.filter((asset) => isSystemManagedContextAsset(asset.metadata)).length
+  const embeddedChunks = chunkRows.filter((chunk) => asContextAssetMetadata(chunk.metadata).embedded === true).length
+  const createdTimestamps = chunkRows
+    .map((chunk) => {
+      const metadata = asContextAssetMetadata(chunk.metadata)
+      return typeof metadata.embedded_at === 'string' ? metadata.embedded_at : chunk.created_at
+    })
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())
+
+  const vectorIndexHealth = Array.isArray(indexHealth) ? indexHealth[0] : indexHealth
+  const indexName =
+    vectorIndexHealth && typeof vectorIndexHealth === 'object' && 'index_name' in vectorIndexHealth && typeof vectorIndexHealth.index_name === 'string'
+      ? vectorIndexHealth.index_name
+      : null
+  const indexPresent = Boolean(
+    vectorIndexHealth &&
+      typeof vectorIndexHealth === 'object' &&
+      'index_present' in vectorIndexHealth &&
+      vectorIndexHealth.index_present === true
+  )
+  const indexStatus =
+    vectorIndexHealth && typeof vectorIndexHealth === 'object' && 'index_status' in vectorIndexHealth && typeof vectorIndexHealth.index_status === 'string'
+      ? (vectorIndexHealth.index_status as ContextEmbeddingHealth['embeddingIndexStatus'])
+      : indexPresent
+        ? 'healthy'
+        : 'missing'
+  const indexRecommendation =
+    vectorIndexHealth &&
+    typeof vectorIndexHealth === 'object' &&
+    'recommendation' in vectorIndexHealth &&
+    typeof vectorIndexHealth.recommendation === 'string'
+      ? vectorIndexHealth.recommendation
+      : indexPresent
+        ? null
+        : 'Create or rebuild the pgvector ivfflat index before relying on semantic search.'
+
+  return {
+    totalAssets: totalAssets ?? 0,
+    visibleAssets: assetRows.length - systemManagedAssets,
+    systemManagedAssets,
+    totalChunks: chunkRows.length,
+    embeddedChunks,
+    chunksMissingEmbeddings: Math.max(chunkRows.length - embeddedChunks, 0),
+    lastEmbeddedAt: createdTimestamps[0] ?? null,
+    embeddingIndexName: indexName,
+    embeddingIndexPresent: indexPresent,
+    embeddingIndexStatus: indexStatus,
+    embeddingIndexRecommendation: indexRecommendation
+  }
+}
+
+function dataOrEmptyArray<T>(value: T[] | null | undefined) {
+  return value ?? []
 }

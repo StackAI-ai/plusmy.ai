@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  typecheck-and-doctor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Doctor
+        run: node scripts/doctor.mjs
+
+      - name: Supabase pgTAP regression suite
+        run: node_modules/supabase/bin/supabase test db supabase/tests/security_regressions.sql --local
+
+      - name: Start web app for MCP smoke checks
+        run: |
+          pnpm --filter @plusmy/web dev > /tmp/web-dev.log 2>&1 &
+          echo $! > /tmp/web-dev.pid
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3009 >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "Web app failed to start:"
+              cat /tmp/web-dev.log
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: MCP compatibility smoke checks
+        env:
+          MCP_COMPAT_BASE_URL: http://127.0.0.1:3009
+        run: pnpm mcp:compat
+
+      - name: Stop web app
+        if: always()
+        run: |
+          if [ -f /tmp/web-dev.pid ]; then
+            kill "$(cat /tmp/web-dev.pid)" || true
+          fi

@@ -21,7 +21,7 @@ const mono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: 'plusmy.ai',
-  description: 'Universal context, secure integrations, and OAuth-native MCP for AI teams.'
+  description: 'Business tool access, secure integrations, and governed workspace context for AI teams.'
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
@@ -46,13 +46,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   plusmy.ai
                 </Link>
                 <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground md:text-base">
-                  Secure business integrations, shared AI context, and a single OAuth-native MCP endpoint for every operator, client, and workspace.
+                  Secure business integrations, shared AI context, and a governed access layer for every workspace.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 lg:max-w-xl lg:justify-end">
                 <Badge>
                   <Network className="h-3.5 w-3.5" />
-                  OAuth-native MCP
+                  Business tool access
                 </Badge>
                 <Badge tone="moss">
                   <ShieldCheck className="h-3.5 w-3.5" />

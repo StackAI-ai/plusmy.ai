@@ -8,6 +8,7 @@ import type {
   ConnectionScope,
   Json,
   ProviderId,
+  ProviderHealthSnapshot,
   ProviderTokenSet,
   ResolvedConnectionCredentials,
   ToolInvocationRecord
@@ -30,6 +31,19 @@ export interface AuditLogFilters {
   direction?: 'next' | 'prev' | null;
 }
 
+export interface AuditExportFilters {
+  limit?: number;
+  status?: string | null;
+  actorType?: AuditActorType | null;
+  resourceType?: string | null;
+  resourceId?: string | null;
+  actionPrefix?: string | null;
+  clientId?: string | null;
+  from?: string | null;
+  to?: string | null;
+  order?: 'asc' | 'desc';
+}
+
 export interface ToolInvocationFilters {
   limit?: number;
   status?: string | null;
@@ -40,6 +54,19 @@ export interface ToolInvocationFilters {
   connectionId?: string | null;
   cursor?: string | null;
   direction?: 'next' | 'prev' | null;
+}
+
+export interface ToolInvocationExportFilters {
+  limit?: number;
+  status?: string | null;
+  provider?: string | null;
+  toolName?: string | null;
+  actorClientId?: string | null;
+  actorUserId?: string | null;
+  connectionId?: string | null;
+  from?: string | null;
+  to?: string | null;
+  order?: 'asc' | 'desc';
 }
 
 export interface ConnectionJobFilters {
@@ -53,6 +80,12 @@ function normalizeLimit(value: number | null | undefined, fallback: number) {
   const limit = Number(value ?? fallback);
   if (!Number.isFinite(limit)) return fallback;
   return Math.min(Math.max(Math.trunc(limit), 1), 200);
+}
+
+function normalizeExportLimit(value: number | null | undefined, fallback: number) {
+  const limit = Number(value ?? fallback);
+  if (!Number.isFinite(limit)) return fallback;
+  return Math.min(Math.max(Math.trunc(limit), 1), 10000);
 }
 
 function normalizeCursorDirection(value: 'next' | 'prev' | null | undefined) {
@@ -144,6 +177,20 @@ function asJsonObject(value: Json | null | undefined) {
   return value as Record<string, Json>;
 }
 
+function withConnectionAuditMetadata(
+  connection: {
+    id: string;
+    provider: string;
+  },
+  metadata: Record<string, unknown> = {}
+) {
+  return {
+    ...metadata,
+    provider: connection.provider,
+    connection_id: connection.id
+  };
+}
+
 function calculateRetryDelaySeconds(jobType: string, attempts: number) {
   const normalizedAttempts = Math.max(attempts - 1, 0);
   const isTokenRefresh = jobType === 'token_refresh';
@@ -232,6 +279,60 @@ export async function listConnectionsForWorkspace(workspaceId: string, userId?: 
   return rows.filter((row) => row.scope === 'workspace' || row.owner_user_id === userId);
 }
 
+function buildFallbackConnectionHealth(connection: ConnectionRecord): ProviderHealthSnapshot {
+  const status =
+    connection.status === 'reauth_required' || connection.status === 'revoked'
+      ? connection.status
+      : connection.status === 'active'
+        ? 'healthy'
+        : 'attention';
+
+  const summaryMap: Record<ProviderHealthSnapshot['status'], string> = {
+    healthy: 'Connection is active and ready for MCP tool execution.',
+    attention: 'Connection is pending validation or has degraded state.',
+    reauth_required: 'Connection requires reauthorization before MCP tool execution can resume.',
+    revoked: 'Connection has been revoked.',
+    inactive: 'Connection is inactive.'
+  };
+
+  return {
+    provider: connection.provider,
+    connectionId: connection.id,
+    displayName: connection.display_name,
+    status,
+    summary: summaryMap[status],
+    signals: connection.reauth_required_reason ? [connection.reauth_required_reason] : [],
+    requiredScopes: [],
+    missingScopes: [],
+    lastValidatedAt: connection.last_validated_at
+  };
+}
+
+export async function listConnectionHealthSnapshots(workspaceId: string, userId?: string | null) {
+  const connections = await listConnectionsForWorkspace(workspaceId, userId);
+  return await Promise.all(
+    connections.map(async (connection) => {
+      const integration = getIntegration(connection.provider);
+      if (!integration?.health) {
+        return buildFallbackConnectionHealth(connection);
+      }
+
+      try {
+        return await integration.health(connection);
+      } catch (error) {
+        return {
+          ...buildFallbackConnectionHealth(connection),
+          status: connection.status === 'active' ? 'attention' : connection.status,
+          summary: error instanceof Error ? error.message : 'Failed to compute provider health snapshot.',
+          signals: [
+            error instanceof Error ? error.message : 'Failed to compute provider health snapshot.'
+          ]
+        };
+      }
+    })
+  );
+}
+
 export async function getConnectionById(connectionId: string) {
   const supabase = createServiceRoleClient();
   const { data } = await supabase.schema('app').from('connections').select('*').eq('id', connectionId).maybeSingle();
@@ -300,7 +401,7 @@ export async function scheduleConnectionJob(input: {
       resourceType: 'connection_job',
       resourceId: jobId,
       metadata: {
-        connection_id: input.connectionId,
+        ...withConnectionAuditMetadata(connection, {}),
         job_type: input.jobType,
         run_after: input.runAfter ?? null,
         max_attempts: input.maxAttempts ?? 3
@@ -497,14 +598,18 @@ export async function upsertInstalledConnection(input: {
     await scheduleTokenRefreshJob(connection.id, input.credentials.expiresAt, existingConnection ? 'credential_updated' : 'connection_installed');
   }
 
-  await logAuditEvent({
-    workspaceId: input.workspaceId,
-    actorType: 'system',
-    action: existingConnection ? 'connection.updated' : 'connection.created',
-    resourceType: 'connection',
-    resourceId: connection.id,
-    metadata: { provider: input.provider, scope: input.scope }
-  });
+      await logAuditEvent({
+        workspaceId: input.workspaceId,
+        actorType: 'system',
+        action: existingConnection ? 'connection.updated' : 'connection.created',
+        resourceType: 'connection',
+        resourceId: connection.id,
+        metadata: {
+          ...withConnectionAuditMetadata(connection, {
+            scope: input.scope
+          })
+        }
+      });
 
   return connection as ConnectionRecord;
 }
@@ -542,7 +647,10 @@ async function performRefresh(
   if (!lockId) return credentials;
 
   try {
-    const refreshed = await integration.refreshTokens({ refreshToken: credentials.refreshToken });
+    const refreshed = await integration.refreshTokens({
+      refreshToken: credentials.refreshToken,
+      metadata: asJsonObject(connection.metadata)
+    });
     await upsertInstalledConnection({
       workspaceId: connection.workspace_id,
       ownerUserId: connection.owner_user_id,
@@ -570,15 +678,19 @@ async function performRefresh(
     } satisfies ResolvedConnectionCredentials;
   } catch (error) {
     await markConnectionReauthRequired(connection.id, error instanceof Error ? error.message : 'Token refresh failed.');
-    await logAuditEvent({
-      workspaceId: connection.workspace_id,
-      actorType: 'system',
-      action: 'connection.reauth_required',
-      resourceType: 'connection',
-      resourceId: connection.id,
-      status: 'error',
-      metadata: { reason: error instanceof Error ? error.message : 'Token refresh failed.' }
-    });
+      await logAuditEvent({
+        workspaceId: connection.workspace_id,
+        actorType: 'system',
+        action: 'connection.reauth_required',
+        resourceType: 'connection',
+        resourceId: connection.id,
+        status: 'error',
+        metadata: {
+          ...withConnectionAuditMetadata(connection, {
+            reason: error instanceof Error ? error.message : 'Token refresh failed.'
+          })
+        }
+      });
     throw error;
   } finally {
     await releaseRefreshLock(connection.id, lockId);
@@ -748,7 +860,7 @@ export async function processDueConnectionJobs(input?: { limit?: number; workerI
         resourceType: 'connection_job',
         resourceId: job.id,
         metadata: {
-          connection_id: job.connection_id,
+          ...withConnectionAuditMetadata(connection),
           job_type: job.job_type,
           attempts: job.attempts
         }
@@ -780,7 +892,7 @@ export async function processDueConnectionJobs(input?: { limit?: number; workerI
           resourceId: job.id,
           status: 'error',
           metadata: {
-            connection_id: job.connection_id,
+            ...withConnectionAuditMetadata(connection),
             job_type: job.job_type,
             attempts: job.attempts,
             retry_delay_seconds: retryDelaySeconds,
@@ -806,7 +918,7 @@ export async function processDueConnectionJobs(input?: { limit?: number; workerI
         resourceId: job.id,
         status: 'error',
         metadata: {
-          connection_id: job.connection_id,
+          ...withConnectionAuditMetadata(connection),
           job_type: job.job_type,
           attempts: job.attempts,
           max_attempts: job.max_attempts,
@@ -1025,12 +1137,167 @@ export async function listToolInvocations(
   };
 }
 
+export async function listAuditLogsForExport(
+  workspaceId: string,
+  options: AuditExportFilters = {}
+): Promise<AuditLogRecord[]> {
+  const supabase = createServiceRoleClient();
+  const limit = normalizeExportLimit(options.limit, 5000);
+  const order = options.order === 'asc' ? 'asc' : 'desc';
+  const direction: 'next' | 'prev' = order === 'asc' ? 'prev' : 'next';
+  const batchLimit = options.clientId ? Math.min(limit + 1, 2000) : Math.min(limit, 2000);
+
+  const collected: AuditLogRecord[] = [];
+  let exhausted = false;
+  let cursor: CursorRecord | null = null;
+
+  while (collected.length < limit && !exhausted) {
+    let query = supabase
+      .schema('app')
+      .from('audit_logs')
+      .select('*')
+      .eq('workspace_id', workspaceId)
+      .order('created_at', { ascending: order === 'asc' })
+      .order('id', { ascending: order === 'asc' })
+      .limit(batchLimit);
+
+    query = applyCursorFilter(query, cursor, direction);
+
+    if (options.status) {
+      query = query.eq('status', options.status);
+    }
+
+    if (options.actorType) {
+      query = query.eq('actor_type', options.actorType);
+    }
+
+    if (options.resourceType) {
+      query = query.eq('resource_type', options.resourceType);
+    }
+
+    if (options.resourceId) {
+      query = query.eq('resource_id', options.resourceId);
+    }
+
+    if (options.actionPrefix) {
+      query = query.ilike('action', `${options.actionPrefix}%`);
+    }
+
+    if (options.from) {
+      query = query.gte('created_at', options.from);
+    }
+
+    if (options.to) {
+      query = query.lte('created_at', options.to);
+    }
+
+    const { data } = await query;
+    const rawRows = (data ?? []) as AuditLogRecord[];
+    if (rawRows.length === 0) {
+      exhausted = true;
+      break;
+    }
+
+    cursor = rawRows.at(-1) ?? cursor;
+
+    const matchingRows = options.clientId
+      ? rawRows.filter((record) => auditRecordClientId(record) === options.clientId)
+      : rawRows;
+
+    collected.push(...matchingRows);
+
+    if (rawRows.length < batchLimit) {
+      exhausted = true;
+    }
+  }
+
+  return collected.slice(0, limit);
+}
+
+export async function listToolInvocationsForExport(
+  workspaceId: string,
+  options: ToolInvocationExportFilters = {}
+): Promise<ToolInvocationRecord[]> {
+  const supabase = createServiceRoleClient();
+  const limit = normalizeExportLimit(options.limit, 5000);
+  const order = options.order === 'asc' ? 'asc' : 'desc';
+
+  let query = supabase
+    .schema('app')
+    .from('tool_invocations')
+    .select('*')
+    .eq('workspace_id', workspaceId)
+    .order('created_at', { ascending: order === 'asc' })
+    .order('id', { ascending: order === 'asc' })
+    .limit(limit);
+
+  if (options.status) {
+    query = query.eq('status', options.status);
+  }
+
+  if (options.provider) {
+    query = query.eq('provider', options.provider);
+  }
+
+  if (options.toolName) {
+    query = query.eq('tool_name', options.toolName);
+  }
+
+  if (options.actorClientId) {
+    query = query.eq('actor_client_id', options.actorClientId);
+  }
+
+  if (options.actorUserId) {
+    query = query.eq('actor_user_id', options.actorUserId);
+  }
+
+  if (options.connectionId) {
+    query = query.eq('connection_id', options.connectionId);
+  }
+
+  if (options.from) {
+    query = query.gte('created_at', options.from);
+  }
+
+  if (options.to) {
+    query = query.lte('created_at', options.to);
+  }
+
+  const { data } = await query;
+  return (data ?? []) as ToolInvocationRecord[];
+}
+
+export async function purgeAuditLogs(workspaceId: string, before: string) {
+  const supabase = createServiceRoleClient();
+  const { count, error } = await supabase
+    .schema('app')
+    .from('audit_logs')
+    .delete({ count: 'exact' })
+    .eq('workspace_id', workspaceId)
+    .lt('created_at', before);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+export async function purgeToolInvocations(workspaceId: string, before: string) {
+  const supabase = createServiceRoleClient();
+  const { count, error } = await supabase
+    .schema('app')
+    .from('tool_invocations')
+    .delete({ count: 'exact' })
+    .eq('workspace_id', workspaceId)
+    .lt('created_at', before);
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export async function revokeConnection(input: {
   workspaceId: string;
   connectionId: string;
   actorUserId: string;
 }) {
   const supabase = createServiceRoleClient();
+  const connection = await getConnectionById(input.connectionId);
   const { error } = await supabase
     .schema('app')
     .from('connections')
@@ -1050,6 +1317,7 @@ export async function revokeConnection(input: {
     actorUserId: input.actorUserId,
     action: 'connection.revoked',
     resourceType: 'connection',
-    resourceId: input.connectionId
+    resourceId: input.connectionId,
+    metadata: connection ? withConnectionAuditMetadata(connection, {}) : { connection_id: input.connectionId }
   });
 }

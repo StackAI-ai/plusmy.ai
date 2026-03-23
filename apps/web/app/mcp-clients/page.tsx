@@ -15,6 +15,7 @@ import {
 import { getIntegration, getToolScopeDrift } from '@plusmy/integrations';
 import { ClientRegistrationForm } from './client-registration-form';
 import { RevokeApprovalButton } from './revoke-approval-button';
+import { RotateClientSecretButton } from './rotate-client-secret-button';
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
 import { LinkBadge } from '../_components/link-badge';
 import { buildAuditHref } from '../_lib/audit-href';
@@ -47,6 +48,12 @@ function latestTimestamp(left: string | null, right: string | null) {
   if (!left) return right;
   if (!right) return left;
   return new Date(left).getTime() >= new Date(right).getTime() ? left : right;
+}
+
+function earliestTimestamp(left: string | null, right: string | null) {
+  if (!left) return right;
+  if (!right) return left;
+  return new Date(left).getTime() <= new Date(right).getTime() ? left : right;
 }
 
 function buildClientAuditHref(workspaceId: string, clientId: string) {
@@ -186,6 +193,10 @@ function getApprovalMetadataString(approval: OAuthClientApprovalRecord, key: str
   return trimmedValue.length > 0 ? trimmedValue : null;
 }
 
+function formatTimestamp(value: string | null | undefined) {
+  return value ? new Date(value).toLocaleString() : null;
+}
+
 export default async function McpClientsPage({ searchParams }: { searchParams?: AppSearchParams }) {
   const currentSearchParams: Record<string, string | string[] | undefined> = searchParams ? await searchParams : {};
   const supabase = await createServerSupabaseClient();
@@ -254,6 +265,15 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
   const hasApprovalFilters = selectedApprovalHealth !== 'all';
   const clientActivity = buildClientActivitySummaries(approvals, approvalActivity.items, recentInvocations.items);
   const activeClients = clientActivity.filter((entry) => entry.recentToolCalls > 0 || entry.recentAuditEvents > 0).length;
+  const approvalsWithRefreshTelemetry = approvals.filter((approval) => approval.latest_refresh_token_expires_at).length;
+  const earliestRefreshExpiry = approvals.reduce<string | null>(
+    (currentValue, approval) => earliestTimestamp(currentValue, approval.latest_refresh_token_expires_at ?? null),
+    null
+  );
+  const latestRefreshRotation = approvals.reduce<string | null>(
+    (currentValue, approval) => latestTimestamp(currentValue, approval.latest_refresh_token_issued_at ?? null),
+    null
+  );
 
   return (
     <div className="space-y-5">
@@ -318,6 +338,22 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
             <p className="text-sm text-muted-foreground">Only the original approving user can reauthorize an active approval.</p>
           </CardContent>
         </Card>
+        <Card className="space-y-2">
+          <CardHeader>
+            <CardTitle className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Refresh token telemetry</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-semibold text-foreground">{approvalsWithRefreshTelemetry}</p>
+            <p className="text-sm text-muted-foreground">
+              {earliestRefreshExpiry
+                ? `Earliest refresh expiry ${formatTimestamp(earliestRefreshExpiry)}.`
+                : 'No refresh-token telemetry recorded yet.'}
+            </p>
+            {latestRefreshRotation ? (
+              <p className="mt-2 text-sm text-muted-foreground">Latest rotation {formatTimestamp(latestRefreshRotation)}.</p>
+            ) : null}
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-5 md:grid-cols-[1.2fr_1fr]">
@@ -356,6 +392,11 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                         <p key={uri}>{uri}</p>
                       ))}
                     </div>
+                    {client.token_endpoint_auth_method !== 'none' ? (
+                      <div className="mt-4">
+                        <RotateClientSecretButton clientId={client.client_id} />
+                      </div>
+                    ) : null}
                     {workspace ? (
                       <div className="mt-4 rounded-2xl border border-black/5 bg-black/5 p-3 text-xs text-slate-700">
                         <p className="font-semibold text-ink">Workspace-scoped authorize URL</p>
@@ -491,6 +532,15 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                       <p>{getApprovalActorLabel(approval, user.id, approvalMemberDisplayNames)}</p>
                       <p>Approved at {approval.approved_at}</p>
                       <p>{approval.last_used_at ? `Last token issued ${approval.last_used_at}` : 'No token exchanges recorded yet.'}</p>
+                      {approval.latest_refresh_token_issued_at ? (
+                        <p>Latest refresh token issued {formatTimestamp(approval.latest_refresh_token_issued_at) ?? approval.latest_refresh_token_issued_at}.</p>
+                      ) : null}
+                      {approval.latest_refresh_token_expires_at ? (
+                        <p>Refresh token expires {formatTimestamp(approval.latest_refresh_token_expires_at) ?? approval.latest_refresh_token_expires_at}.</p>
+                      ) : null}
+                      {approval.latest_refresh_token_revoked_at ? (
+                        <p>Previous refresh token revoked {formatTimestamp(approval.latest_refresh_token_revoked_at) ?? approval.latest_refresh_token_revoked_at}.</p>
+                      ) : null}
                       {approvalHealthReasons.map((reason) => (
                         <p key={reason.key} className={reason.tone === 'brass' ? 'text-amber-700' : 'text-slate-700'}>
                           {reason.detail}

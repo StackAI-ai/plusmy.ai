@@ -1,7 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { exchangeAuthorizationCode, exchangeRefreshToken } from '@plusmy/core';
 
 export const runtime = 'nodejs';
+
+const authorizationCodeGrantSchema = z.object({
+  grant_type: z.literal('authorization_code'),
+  code: z.string().min(1),
+  redirect_uri: z.string().url(),
+  code_verifier: z.string().min(1),
+  client_id: z.string().min(1).optional(),
+  client_secret: z.string().min(1).optional()
+});
+
+const refreshTokenGrantSchema = z.object({
+  grant_type: z.literal('refresh_token'),
+  refresh_token: z.string().min(1),
+  client_id: z.string().min(1).optional(),
+  client_secret: z.string().min(1).optional()
+});
+
+const tokenRequestSchema = z.union([authorizationCodeGrantSchema, refreshTokenGrantSchema]);
 
 function parseBasicAuth(header: string | null) {
   if (!header?.startsWith('Basic ')) return { clientId: null, clientSecret: null };
@@ -20,20 +39,32 @@ async function parseTokenRequest(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await parseTokenRequest(request);
+  const rawBody = await parseTokenRequest(request);
   const basic = parseBasicAuth(request.headers.get('authorization'));
-  const grantType = String(body.grant_type ?? '');
-  const clientId = String(body.client_id ?? basic.clientId ?? '');
-  const clientSecret = String(body.client_secret ?? basic.clientSecret ?? '');
+  const parsed = tokenRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return NextResponse.json(
+      {
+        error: 'invalid_request',
+        error_description: parsed.error.issues.map((issue) => issue.message).join('; ')
+      },
+      { status: 400 }
+    );
+  }
+
+  const body = parsed.data;
+  const grantType = body.grant_type;
+  const clientId = body.client_id ?? basic.clientId ?? '';
+  const clientSecret = body.client_secret ?? basic.clientSecret ?? '';
 
   try {
     if (grantType === 'authorization_code') {
       const token = await exchangeAuthorizationCode({
         clientId,
         clientSecret: clientSecret || null,
-        code: String(body.code ?? ''),
-        redirectUri: String(body.redirect_uri ?? ''),
-        codeVerifier: String(body.code_verifier ?? '')
+        code: body.code,
+        redirectUri: body.redirect_uri,
+        codeVerifier: body.code_verifier
       });
       return NextResponse.json(token);
     }
@@ -42,7 +73,7 @@ export async function POST(request: NextRequest) {
       const token = await exchangeRefreshToken({
         clientId,
         clientSecret: clientSecret || null,
-        refreshToken: String(body.refresh_token ?? '')
+        refreshToken: body.refresh_token
       });
       return NextResponse.json(token);
     }

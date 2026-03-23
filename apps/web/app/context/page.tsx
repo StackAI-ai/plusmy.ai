@@ -3,6 +3,7 @@ import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from
 import { createServerSupabaseClient } from '@plusmy/supabase'
 import {
   getAuthorizedWorkspace,
+  getContextEmbeddingHealth,
   listContextAssets,
   listContextBindings,
   listPromptTemplates,
@@ -66,14 +67,15 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
   const activeMembership = workspace ? workspaces.find((entry) => entry.id === workspace.id) : null
   const canManageBindings = canManageWorkspace(activeMembership?.role)
 
-  const [assets, prompts, skills, bindings] = workspace
+  const [assets, prompts, skills, bindings, embeddingHealth] = workspace
     ? await Promise.all([
         listContextAssets(workspace.id, user.id),
         listPromptTemplates(workspace.id, user.id),
         listSkillDefinitions(workspace.id, user.id),
-        listContextBindings(workspace.id, user.id)
+        listContextBindings(workspace.id, user.id),
+        getContextEmbeddingHealth(workspace.id)
       ])
-    : [[], [], [], []]
+    : [[], [], [], [], null]
 
   const sharedPrompts = prompts
     .filter((prompt) => !prompt.owner_user_id)
@@ -102,12 +104,22 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
                   Context assets are chunked and optionally embedded on ingest, then exposed as MCP resources and
                   similarity matches through the API layer.
                 </CardDescription>
+                {embeddingHealth ? (
+                  <p className="text-sm text-muted-foreground">
+                    {embeddingHealth.totalChunks === 0
+                      ? 'No vector chunks are stored yet.'
+                      : `${embeddingHealth.embeddedChunks} of ${embeddingHealth.totalChunks} stored chunks have embeddings.${embeddingHealth.lastEmbeddedAt ? ` Last embed ${embeddingHealth.lastEmbeddedAt}.` : ''}`}
+                    {embeddingHealth.embeddingIndexName
+                      ? ` Index ${embeddingHealth.embeddingIndexName} is ${embeddingHealth.embeddingIndexStatus}.`
+                      : ' Vector index health is unavailable.'}
+                  </p>
+                ) : null}
               </div>
               <Badge>{workspace?.name ?? 'No workspace'}</Badge>
             </CardHeader>
           </Card>
 
-          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Assets</CardTitle>
@@ -157,6 +169,35 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
                 {bindings.slice(0, 4).map((binding) => (
                   <p key={binding.id}>{bindingTargetLabel(binding.binding_type, binding.target_key)}</p>
                 ))}
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Embedding health</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-4xl font-semibold text-foreground">
+                  {embeddingHealth ? `${embeddingHealth.embeddedChunks}/${embeddingHealth.totalChunks}` : '0/0'}
+                </p>
+                <div className="mt-4 space-y-2 text-sm text-muted-foreground">
+                  <p>
+                    {embeddingHealth
+                      ? `${embeddingHealth.chunksMissingEmbeddings} chunks missing embeddings`
+                      : 'No embedding summary yet'}
+                  </p>
+                  <p>
+                    {embeddingHealth?.systemManagedAssets
+                      ? `${embeddingHealth.systemManagedAssets} hidden prompt and skill mirrors`
+                      : 'No hidden prompt or skill mirrors'}
+                  </p>
+                  <p>
+                    {embeddingHealth?.embeddingIndexRecommendation
+                      ? embeddingHealth.embeddingIndexRecommendation
+                      : embeddingHealth?.embeddingIndexPresent
+                        ? 'Vector index present and ready for similarity lookup.'
+                        : 'Vector index missing.'}
+                  </p>
                 </div>
               </CardContent>
             </Card>

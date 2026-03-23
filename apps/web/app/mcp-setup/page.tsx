@@ -3,6 +3,7 @@ import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitl
 import { supportedMcpClients } from '@plusmy/contracts';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import { getAuthorizedWorkspace, listUserWorkspaces } from '@plusmy/core';
+import { redirect } from 'next/navigation';
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
 import { getAppOrigin } from '../_lib/origin';
 import { CopyButton } from '../_components/copy-button';
@@ -18,9 +19,13 @@ export default async function McpSetupPage({ searchParams }: { searchParams?: Ap
   const {
     data: { user }
   } = await supabase.auth.getUser();
+  if (!user) {
+    redirect('/login');
+  }
+
   const requestedWorkspaceId = await getSearchParam(searchParams, 'workspace');
-  const workspaces = user ? await listUserWorkspaces(user.id) : [];
-  const workspace = user ? await getAuthorizedWorkspace(user.id, requestedWorkspaceId) : null;
+  const workspaces = await listUserWorkspaces(user.id);
+  const workspace = await getAuthorizedWorkspace(user.id, requestedWorkspaceId);
   const exampleAuthorizeUrl = `${baseUrl}/authorize?response_type=code&client_id=YOUR_CLIENT_ID&redirect_uri=${encodeURIComponent(exampleClient.redirectUri)}&scope=mcp%3Atools%20mcp%3Aresources${workspace ? `&workspace_id=${workspace.id}` : ''}&code_challenge=REPLACE_WITH_PKCE_CHALLENGE&code_challenge_method=S256`;
   const discoveryUrls = [
     { label: 'Authorization server', value: `${baseUrl}/.well-known/oauth-authorization-server` },
@@ -36,8 +41,8 @@ export default async function McpSetupPage({ searchParams }: { searchParams?: Ap
           <div className="space-y-3">
             <CardTitle className="text-2xl">MCP setup</CardTitle>
             <CardDescription>
-              plusmy.ai exposes a standard OAuth authorization server and a protected MCP resource endpoint.
-              Register a client, then point your MCP-capable tool at the metadata URLs below.
+              Manage AI tool onboarding for your business integrations.
+              Register an MCP client, approve the workspace scope once, and route tools through your workspace controls.
             </CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -108,20 +113,19 @@ export default async function McpSetupPage({ searchParams }: { searchParams?: Ap
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Connection flow</CardTitle>
-          <CardDescription>Standard OAuth + PKCE setup for an MCP-capable client.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <ol className="space-y-3 text-sm leading-7 text-muted-foreground">
-            <li>1. Register your MCP client on the MCP clients page.</li>
-            <li>2. Start the client’s OAuth connection flow.</li>
-            <li>3. Approve access in plusmy.ai using your workspace session.</li>
-            <li>4. The client stores the returned tokens and calls `{baseUrl}/mcp` with bearer auth.</li>
-            <li>5. plusmy.ai resolves tools and resources from your workspace and connected providers.</li>
-          </ol>
-          <div className="flex flex-wrap gap-3">
+        <Card>
+          <CardHeader>
+            <CardTitle>Connection flow</CardTitle>
+            <CardDescription>Standard OAuth + PKCE setup for AI clients.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <ol className="space-y-3 text-sm leading-7 text-muted-foreground">
+              <li>1. Register a client for your AI assistant on the MCP clients page.</li>
+              <li>2. Start the client auth flow and approve access with your current workspace.</li>
+              <li>3. Use the approved token with your client&apos;s MCP endpoint callouts.</li>
+              <li>4. plusmy.ai exposes only workspace-approved tools from connected business integrations.</li>
+            </ol>
+            <div className="flex flex-wrap gap-3">
             <Link className="inline-flex items-center justify-center rounded-xl border border-border/70 bg-background/80 px-4 py-2 text-sm font-medium text-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:bg-muted" href={setupHref}>
               Open quickstart
             </Link>

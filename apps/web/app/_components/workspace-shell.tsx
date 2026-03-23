@@ -13,7 +13,7 @@ const navItems = [
   { href: '/context', label: 'Context', icon: BookText },
   { href: '/audit', label: 'Audit', icon: Activity },
   { href: '/mcp-clients', label: 'MCP clients', icon: Bot },
-  { href: '/mcp-setup', label: 'MCP setup', icon: Waypoints },
+  { href: '/mcp-setup', label: 'Client access', icon: Waypoints },
   { href: '/onboarding', label: 'Onboarding', icon: Rocket }
 ];
 
