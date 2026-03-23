@@ -16,6 +16,29 @@ function buildStatusRedirect(basePath: string, origin: string, provider: string,
   return redirectUrl;
 }
 
+function mergeProviderMetadata(
+  accountMetadata: Record<string, unknown> | undefined,
+  providerConfig: Record<string, string> | undefined,
+  callbackMetadata?: Record<string, string>
+) {
+  return {
+    ...(accountMetadata ?? {}),
+    ...(providerConfig ?? {}),
+    ...(callbackMetadata ?? {})
+  } as Record<string, unknown>;
+}
+
+function getCallbackMetadata(provider: string, url: URL) {
+  if (provider === 'quickbooks') {
+    const realmId = url.searchParams.get('realmId') ?? url.searchParams.get('realm_id');
+    if (realmId && realmId.trim().length > 0) {
+      return { realmId: realmId.trim() };
+    }
+  }
+
+  return undefined;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ provider: string }> }
@@ -55,7 +78,18 @@ export async function GET(
   }
 
   try {
-    const tokenSet = await integration.exchangeAuthorizationCode({ code, redirectUri });
+    const tokenSet = await integration.exchangeAuthorizationCode({
+      code,
+      redirectUri,
+      providerConfig: decodedState.providerConfig
+    });
+    const callbackMetadata = getCallbackMetadata(provider, url);
+    if (callbackMetadata && tokenSet.raw && typeof tokenSet.raw === 'object' && !Array.isArray(tokenSet.raw)) {
+      tokenSet.raw = {
+        ...(tokenSet.raw as Record<string, unknown>),
+        ...callbackMetadata
+      };
+    }
     const account = await integration.resolveAccount(tokenSet);
 
     await upsertInstalledConnection({
@@ -68,7 +102,11 @@ export async function GET(
       displayName: account.displayName ?? integration.displayName,
       grantedScopes: tokenSet.scopes,
       credentials: tokenSet,
-      metadata: account.metadata
+      metadata: mergeProviderMetadata(
+        account.metadata as Record<string, unknown> | undefined,
+        decodedState.providerConfig,
+        callbackMetadata
+      )
     });
 
     return NextResponse.redirect(buildStatusRedirect(decodedState.redirectTo, url.origin, provider, 'connected'));

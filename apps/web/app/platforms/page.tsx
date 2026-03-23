@@ -21,6 +21,7 @@ const plannedCategoryOrder: PlatformCategory[] = [
   'project_management',
   'crm',
   'support',
+  'finance',
   'productivity',
   'identity'
 ];
@@ -33,10 +34,13 @@ const categoryLabels: Record<PlatformCategory, string> = {
   project_management: 'Project management',
   crm: 'CRM',
   support: 'Support',
+  finance: 'Finance',
   storage: 'Storage',
   productivity: 'Productivity',
   identity: 'Identity'
 };
+
+const businessCategoryOrder: PlatformCategory[] = ['crm', 'support', 'finance', 'project_management', 'productivity', 'identity', 'documents'];
 
 const highValueMissingPlatformIds = ['quickbooks', 'xero', 'airtable', 'zoom'];
 
@@ -65,6 +69,14 @@ export default async function PlatformsPage() {
 
   const counts = getPlatformCounts();
   const categoryCounts = getPlatformCategoryCounts();
+  const hasPlannedProviders = plannedProviderPlatforms.length > 0;
+  const highPriorityBusinessPlatforms = supportedProviders
+    .filter((provider) => businessCategoryOrder.includes(provider.category))
+    .sort((left, right) => {
+      const leftIndex = businessCategoryOrder.indexOf(left.category);
+      const rightIndex = businessCategoryOrder.indexOf(right.category);
+      return leftIndex === rightIndex ? left.name.localeCompare(right.name) : leftIndex - rightIndex;
+    });
 
   return (
     <div className="space-y-5">
@@ -89,12 +101,64 @@ export default async function PlatformsPage() {
             </div>
             <CardTitle className="text-3xl">Platform coverage</CardTitle>
             <CardDescription className="max-w-3xl">
-              plusmy.ai is built for business workflows with live CRM, support, delivery, identity, document, and engineering providers.
-              Planned additions prioritize finance and sales operations next, then sales/ops tooling that adds operational depth.
+              plusmy.ai is built for business workflows with live CRM, support, finance, delivery, identity, document, and engineering providers.
+              {hasPlannedProviders
+                ? ' Planned additions stay focused on the highest-value operator gaps that fit the same security model.'
+                : ' Current focus is hardening the live catalog, client onboarding, and context quality for private beta.'}
             </CardDescription>
           </div>
         </CardHeader>
       </Card>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-2xl font-semibold text-foreground">Business tools first</h2>
+          <p className="text-sm text-muted-foreground">
+            CRM, support, finance, operations, identity, and document workflows stay front and center for operator workloads.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {highPriorityBusinessPlatforms.map((provider) => (
+            <Card key={provider.id}>
+              <CardHeader>
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle>{provider.name}</CardTitle>
+                  <Badge tone="moss">live</Badge>
+                </div>
+                <CardDescription>{provider.summary}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Badge>{provider.category.replaceAll('_', ' ')}</Badge>
+                <p className="text-sm text-muted-foreground">
+                  {provider.capabilities.map((capability) => capability.label).join(' · ')}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+          {!hasPlannedProviders ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Private beta hardening</CardTitle>
+                <CardDescription>The remaining work is quality-focused: validation, client access polish, and clearer operator context.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="rounded-2xl border border-border/70 bg-background/70 p-3">
+                  <p className="font-medium text-foreground">Provider reliability</p>
+                  <p className="text-sm text-muted-foreground">Keep auth refresh, health snapshots, and sync behavior consistent across the live catalog.</p>
+                </div>
+                <div className="rounded-2xl border border-border/70 bg-background/70 p-3">
+                  <p className="font-medium text-foreground">Client onboarding</p>
+                  <p className="text-sm text-muted-foreground">Make AI-client setup readable for operators without exposing protocol-heavy detail by default.</p>
+                </div>
+                <div className="rounded-2xl border border-border/70 bg-background/70 p-3">
+                  <p className="font-medium text-foreground">Context quality</p>
+                  <p className="text-sm text-muted-foreground">Improve prompt, skill, and asset grounding so workflows are useful immediately after connection.</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+        </div>
+      </section>
 
       <section className="space-y-4">
         <div className="flex items-end justify-between gap-3">
@@ -163,7 +227,8 @@ export default async function PlatformsPage() {
         </div>
       </section>
 
-	      <section className="space-y-4">
+      {hasPlannedProviders ? (
+        <section className="space-y-4">
 	        <div>
 	          <h2 className="text-2xl font-semibold text-foreground">Highest-value next additions</h2>
 	          <p className="text-sm text-muted-foreground">
@@ -194,8 +259,10 @@ export default async function PlatformsPage() {
             </Card>
           ))}
         </div>
-      </section>
+        </section>
+      ) : null}
 
+      {hasPlannedProviders ? (
 	      <section className="space-y-4">
 	        <div>
 	          <h2 className="text-2xl font-semibold text-foreground">Next-wave integrations</h2>
@@ -237,6 +304,7 @@ export default async function PlatformsPage() {
             ))}
         </div>
       </section>
+      ) : null}
     </div>
   );
 }

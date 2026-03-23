@@ -9,6 +9,7 @@ export type PlatformCategory =
   | 'crm'
   | 'support'
   | 'storage'
+  | 'finance'
   | 'productivity'
   | 'identity';
 
@@ -31,6 +32,8 @@ export interface PlatformCatalogEntry {
     | 'notion'
     | 'dropbox'
     | 'box'
+    | 'airtable'
+    | 'zoom'
     | 'confluence'
     | 'zendesk'
     | 'hubspot'
@@ -55,6 +58,10 @@ type LiveProviderMetadata = PlatformCatalogEntry & {
     | 'notion'
     | 'dropbox'
     | 'box'
+    | 'airtable'
+    | 'zoom'
+    | 'quickbooks'
+    | 'xero'
     | 'confluence'
     | 'zendesk'
     | 'hubspot'
@@ -141,6 +148,35 @@ export const supportedProviders = [
     capabilities: [
       { label: 'File search', detail: 'Search Box files and folders from approved workflows.' },
       { label: 'File read', detail: 'Read Box file content and metadata.' }
+    ]
+  },
+  {
+    id: 'airtable',
+    providerId: 'airtable',
+    name: 'Airtable',
+    status: 'live',
+    surface: 'provider',
+    category: 'productivity',
+    summary: 'Operational-table workflows for teams that run lightweight systems and handoffs in Airtable.',
+    connectLabel: 'Airtable',
+    capabilities: [
+      { label: 'Base search', detail: 'List and inspect accessible bases for operator workflows.' },
+      { label: 'Record lookup', detail: 'Read records from selected tables with workspace-scoped access.' },
+      { label: 'Record updates', detail: 'Create or update records for operational follow-through.' }
+    ]
+  },
+  {
+    id: 'zoom',
+    providerId: 'zoom',
+    name: 'Zoom',
+    status: 'live',
+    surface: 'provider',
+    category: 'productivity',
+    summary: 'Meeting and recording workflows for distributed teams that need context beyond chat and docs.',
+    connectLabel: 'Zoom',
+    capabilities: [
+      { label: 'Meeting search', detail: 'List and filter recent meetings by topic or schedule.' },
+      { label: 'Recording context', detail: 'Inspect meeting recordings and transcript-capable files.' }
     ]
   },
   {
@@ -310,63 +346,38 @@ export const supportedProviders = [
       { label: 'Ticket search', detail: 'Locate open customer tickets by workspace context.' },
       { label: 'Reply drafting', detail: 'Post controlled follow-up messages and status changes.' }
     ]
-  }
-] as const satisfies readonly LiveProviderMetadata[];
-
-export const plannedProviderPlatforms = [
-  {
-    id: 'airtable',
-    name: 'Airtable',
-    status: 'planned',
-    surface: 'provider',
-    category: 'productivity',
-    summary: 'Operational-table read/write support for teams using Airtable as a lightweight app layer.',
-    rationale: 'Strong fit for agent-assisted operational updates with explicit audit requirements.',
-    capabilities: [
-      { label: 'Base search', detail: 'Find records across connected bases.' },
-      { label: 'Record updates', detail: 'Write controlled updates into operational tables.' }
-    ]
-  },
-  {
-    id: 'zoom',
-    name: 'Zoom',
-    status: 'planned',
-    surface: 'provider',
-    category: 'productivity',
-    summary: 'Meeting context, transcript, and follow-up workflows for distributed teams.',
-    rationale: 'Adds conversational context around decisions, notes, and action items that never make it into docs.',
-    capabilities: [
-      { label: 'Meeting search', detail: 'Find meetings and participants tied to workspace context.' },
-      { label: 'Transcript read', detail: 'Pull transcripts and summaries into workflow context.' }
-    ]
   },
   {
     id: 'quickbooks',
+    providerId: 'quickbooks',
     name: 'QuickBooks Online',
-    status: 'planned',
+    status: 'live',
     surface: 'provider',
-    category: 'productivity',
-    summary: 'Accounts-receivable and customer finance workflows for finance operators.',
-    rationale: 'Brings finance context into the same approval and workspace-scoped tool model used by CRM and support tools.',
+    category: 'finance',
+    summary: 'Customer and invoice workflows for finance operators who need billing context in the same control plane.',
+    connectLabel: 'QuickBooks Online',
     capabilities: [
-      { label: 'Customer search', detail: 'Find customers and invoices tied to workspace context.' },
-      { label: 'Invoice lookup', detail: 'Retrieve invoice state and detail for operators and handoffs.' }
+      { label: 'Customer search', detail: 'Find customers and customer metadata by query.' },
+      { label: 'Invoice lookup', detail: 'Read invoice state for customer and receivables workflows.' }
     ]
   },
   {
     id: 'xero',
+    providerId: 'xero',
     name: 'Xero',
-    status: 'planned',
+    status: 'live',
     surface: 'provider',
-    category: 'productivity',
-    summary: 'Core bookkeeping operations for payment and billing workflows.',
-    rationale: 'Complements QuickBooks and CRM coverage for operators handling finance approvals and follow-ups.',
+    category: 'finance',
+    summary: 'Contacts and invoice workflows for finance teams handling billing, follow-up, and bookkeeping context.',
+    connectLabel: 'Xero',
     capabilities: [
-      { label: 'Contact search', detail: 'Find finance contacts and account summaries by query.' },
-      { label: 'Invoice read', detail: 'Pull billed/unbilled and draft invoice snapshots into context workflows.' }
+      { label: 'Contact search', detail: 'Find contacts and customer-facing finance records by query.' },
+      { label: 'Invoice read', detail: 'Inspect invoices and billing status for operator actions.' }
     ]
   }
-] as const satisfies readonly PlatformCatalogEntry[];
+] as const satisfies readonly LiveProviderMetadata[];
+
+export const plannedProviderPlatforms: readonly PlatformCatalogEntry[] = [];
 
 export const supportedMcpClients = [
   {

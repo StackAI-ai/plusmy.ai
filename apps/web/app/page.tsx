@@ -33,6 +33,10 @@ export default async function HomePage() {
   }
 
   const counts = getPlatformCounts();
+  const hasPlannedProviders = plannedProviderPlatforms.length > 0;
+  const focusProviders = supportedProviders.filter((provider) =>
+    ['crm', 'support', 'finance', 'project_management', 'productivity'].includes(provider.category)
+  );
 
   return (
     <div className="space-y-8">
@@ -117,7 +121,7 @@ export default async function HomePage() {
             <div className="flex flex-wrap gap-2">
               <Badge tone="moss">{counts.liveProviders} providers live</Badge>
               <Badge>{counts.supportedClients} AI clients</Badge>
-              <Badge tone="brass">{counts.plannedPlatforms} next-wave integrations</Badge>
+              <Badge tone="brass">{hasPlannedProviders ? `${counts.plannedPlatforms} next-wave integrations` : 'Private beta hardening'}</Badge>
             </div>
             <CardTitle>Supported now</CardTitle>
             <CardDescription>
@@ -139,20 +143,22 @@ export default async function HomePage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Coming next</CardTitle>
+            <CardTitle>{hasPlannedProviders ? 'Coming next' : 'Current focus'}</CardTitle>
             <CardDescription>
-              QuickBooks, Xero, Airtable, and Zoom are next, keeping the same workspace permissions and approval flow.
+              {hasPlannedProviders
+                ? 'The next additions keep the same workspace permissions and approval flow as the live catalog.'
+                : 'The provider catalog is in place. The remaining work is reliability, clearer client onboarding, and stronger operator context.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
-              {plannedProviderPlatforms.slice(0, 6).map((platform) => (
+              {(hasPlannedProviders ? plannedProviderPlatforms.slice(0, 6) : focusProviders.slice(0, 6)).map((platform) => (
                 <div key={platform.id} className="rounded-2xl border border-border/70 bg-background/70 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium text-foreground">{platform.name}</p>
-                    <Badge tone="brass">planned</Badge>
+                    <Badge tone={hasPlannedProviders ? 'brass' : 'moss'}>{hasPlannedProviders ? 'planned' : 'live'}</Badge>
                   </div>
-                  <p className="mt-2 text-sm text-muted-foreground">{platform.rationale}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">{'rationale' in platform ? platform.rationale : platform.summary}</p>
                 </div>
               ))}
             </div>

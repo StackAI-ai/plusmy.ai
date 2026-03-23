@@ -1,12 +1,28 @@
 # Platform Catalog
 
-The live provider surface in this repo is still intentionally small:
+The live provider surface in this repo now includes these production integrations:
 
 - Google Workspace for Drive search and Docs read
 - Slack for channel listing, history read, and post-message workflows
 - Notion for search, page read, and page creation
 - Dropbox for file search and file reads
 - Box for enterprise file search and file reads
+- Airtable for operational-table search, record reads, and controlled writes
+- Zoom for meeting discovery, recording visibility, and transcript reads
+- HubSpot for CRM contact and company access
+- Salesforce for enterprise CRM account workflows
+- ServiceNow for incident and service-request workflows
+- Okta for identity and group visibility
+- Asana for task and comment workflows
+- monday.com for board-centric operations
+- Microsoft 365 for OneDrive and SharePoint document workflows
+- GitHub for repository and issue workflows
+- Linear for issue search and updates
+- Jira for engineering ticket operations
+- Confluence for enterprise knowledge search and page reads
+- Zendesk for support ticket search and comments
+- QuickBooks Online for customer and invoice workflows
+- Xero for contact and invoice workflows
 
 The MCP client target set currently called out in product surfaces is:
 
@@ -24,32 +40,11 @@ Each live provider already conforms to the same product model:
 - MCP tool exposure gated by workspace membership and approval state
 - Reauth, sync, and audit visibility on the operator surface
 
-The next-wave platforms were chosen because they fit that same model without requiring a different security posture.
+The immediate private-beta focus is no longer adding more catalog entries first. The work now shifts to:
 
-## Next-Wave Expansion Candidates
-
-Highest-value reviewed gaps, ordered by current operator impact:
-
-1. Dropbox
-1. Box
-1. HubSpot
-1. Salesforce
-1. ServiceNow
-1. Okta
-1. Asana
-1. monday.com
-1. Microsoft 365
-1. GitHub
-1. Linear
-1. Jira
-1. Confluence
-1. Zendesk
-1. Airtable
-1. Zoom
-
-The first eight gaps are the clearest high-value additions because they expand CRM, service management, identity, project-management, and document coverage without changing the current workspace-scoped security model.
-
-These next-wave platforms stay aligned with the same tenant model as the live providers: workspace-scoped installs, Vault-backed credentials, MCP-gated tools, and explicit audit/re-auth boundaries.
+1. Provider validation and reliability hardening
+1. AI-client onboarding and approval polish
+1. Context quality, search, and runtime grounding
 
 ## Source Of Truth
 

@@ -9,12 +9,22 @@ export type ProviderId =
   | 'notion'
   | 'dropbox'
   | 'box'
+  | 'airtable'
+  | 'zoom'
   | 'microsoft365'
   | 'github'
   | 'linear'
   | 'jira'
   | 'zendesk'
-  | 'confluence';
+  | 'confluence'
+  | 'hubspot'
+  | 'salesforce'
+  | 'servicenow'
+  | 'okta'
+  | 'asana'
+  | 'monday'
+  | 'quickbooks'
+  | 'xero';
 export type ToolCapability = 'read' | 'write' | 'search' | 'execute';
 export type ContextAssetType = 'document' | 'prompt' | 'brand_guideline' | 'workflow' | 'knowledge_base';
 export type AuditActorType = 'user' | 'mcp_client' | 'system';

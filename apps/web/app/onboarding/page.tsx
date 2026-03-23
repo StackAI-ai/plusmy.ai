@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
 import { getPlatformCategoryCounts, getPlatformCounts, plannedProviderPlatforms, supportedProviders } from '@plusmy/contracts';
 import { createServerSupabaseClient } from '@plusmy/supabase';
@@ -16,6 +17,9 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
   const {
     data: { user }
   } = await supabase.auth.getUser();
+  if (!user) {
+    redirect('/login');
+  }
 
   const workspaces = user ? await listUserWorkspaces(user.id) : [];
   const requestedWorkspaceId = await getSearchParam(searchParams, 'workspace');
@@ -26,6 +30,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
 
   const platformCounts = getPlatformCounts();
   const categoryCounts = getPlatformCategoryCounts();
+  const hasPlannedProviders = plannedProviderPlatforms.length > 0;
   const workspaceLabel = workspace
     ? workspace.name
     : workspaces.length > 0
@@ -59,14 +64,14 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
         ? String(overview?.assets ?? 0) + ' assets • ' + String(overview?.prompts ?? 0) + ' prompts • ' + String(overview?.skills ?? 0) + ' skills'
         : 'Choose a workspace to manage context'
     },
-    {
-      label: 'Register an MCP client',
-      done: clients.length > 0,
-      href: workspace ? '/mcp-clients?workspace=' + workspace.id : '/mcp-clients',
-      detail: clients.length > 0
-        ? String(clients.length) + ' client(s) registered'
-        : 'Create a client for OpenAI, Anthropic, Gemini, or Cursor via OAuth + PKCE'
-    },
+      {
+        label: 'Register an MCP client',
+        done: clients.length > 0,
+        href: workspace ? '/mcp-clients?workspace=' + workspace.id : '/mcp-clients',
+        detail: clients.length > 0
+          ? String(clients.length) + ' client(s) registered'
+          : 'Create a client for your assistant or automation workflow via OAuth + PKCE'
+      },
     {
       label: 'Finish MCP connection setup',
       done: clients.length > 0 && connections.length > 0,
@@ -83,8 +88,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
           <div className="space-y-3">
             <CardTitle className="text-2xl">Launch sequence</CardTitle>
             <CardDescription>
-              The onboarding surface now reflects the actual state of your selected workspace instead of a
-              static checklist.
+              The onboarding surface reflects the actual state of your selected workspace in business terms.
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -132,8 +136,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
           </CardHeader>
           <CardContent>
             <p className="text-sm leading-7 text-muted-foreground">
-              `workspaces`, member roles, invites, and join links are the tenancy boundary for every provider and
-              MCP grant.
+              Workspaces and member roles gate every business integration and approval.
             </p>
           </CardContent>
         </Card>
@@ -143,8 +146,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
           </CardHeader>
           <CardContent>
             <p className="text-sm leading-7 text-muted-foreground">
-              Provider installs, refresh flows, revocation, and workspace-vs-personal scope all resolve through
-              the connection vault.
+              Provider installs, refresh flows, and revocation all resolve through one secure connection model.
             </p>
           </CardContent>
         </Card>
@@ -154,8 +156,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
           </CardHeader>
           <CardContent>
             <p className="text-sm leading-7 text-muted-foreground">
-              Client registration, consent, and the protected `/mcp` endpoint are ready to layer on top of the
-              selected workspace.
+              Client registration, consent, and workspace-scoped access are ready for the selected workspace.
             </p>
           </CardContent>
         </Card>
@@ -167,14 +168,17 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
             <div className="flex flex-wrap gap-2">
               <Badge tone="moss">{platformCounts.liveProviders} live</Badge>
               <Badge>{platformCounts.supportedClients} clients</Badge>
-              <Badge tone="brass">{platformCounts.plannedPlatforms} next</Badge>
+              <Badge tone="brass">{hasPlannedProviders ? `${platformCounts.plannedPlatforms} next` : 'Private beta hardening'}</Badge>
               <Badge>{Object.keys(categoryCounts).length} categories</Badge>
             </div>
             <p className="text-sm leading-7 text-muted-foreground">
-              Live today: {supportedProviders.map((provider) => provider.name).join(', ')}. Reviewed next wave:
-              {' '}
-              {plannedProviderPlatforms.slice(0, 5).map((platform) => platform.name).join(', ')} and more across
-              documents, engineering, project management, CRM, support, storage, productivity, and identity.
+              Live today: {supportedProviders.map((provider) => provider.name).join(', ')}.
+              {hasPlannedProviders
+                ? ` Reviewed next wave: ${plannedProviderPlatforms
+                    .slice(0, 5)
+                    .map((platform) => platform.name)
+                    .join(', ')}.`
+                : ' Current focus is hardening the live catalog, AI-client onboarding, and context quality for private beta.'}
             </p>
             <div className="flex flex-wrap gap-2">
               <Button asChild size="sm" variant="outline">
