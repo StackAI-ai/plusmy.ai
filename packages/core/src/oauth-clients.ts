@@ -356,50 +356,19 @@ export async function revokeOAuthClientApproval(input: {
   }
 
   const supabase = createServiceRoleClient();
-  const revokedAt = approval.revoked_at ?? new Date().toISOString();
-  const metadata =
-    approval.metadata && typeof approval.metadata === 'object' && !Array.isArray(approval.metadata)
-      ? approval.metadata
-      : {};
   const revocationReason =
     input.actorUserId === approval.user_id ? 'Revoked by approving user.' : 'Revoked by workspace operator.';
 
-  const { error } = await supabase
-    .schema('app')
-    .from('oauth_client_approvals')
-    .update({
-      status: 'revoked',
-      revoked_at: revokedAt,
-      metadata: {
-        ...metadata,
-        revoked_by_user_id: input.actorUserId,
-        revocation_reason: revocationReason
-      }
-    })
-    .eq('id', approval.id)
-    .eq('workspace_id', input.workspaceId);
+  const { error } = await supabase.schema('app').rpc('revoke_oauth_client_approval', {
+    p_approval_id: approval.id,
+    p_workspace_id: input.workspaceId,
+    p_actor_user_id: input.actorUserId,
+    p_revocation_reason: revocationReason
+  });
 
   if (error) {
     throw error;
   }
-
-  await supabase
-    .schema('app')
-    .from('oauth_authorization_codes')
-    .delete()
-    .eq('client_id', approval.client_id)
-    .eq('workspace_id', approval.workspace_id)
-    .eq('user_id', approval.user_id)
-    .is('consumed_at', null);
-
-  await supabase
-    .schema('app')
-    .from('oauth_refresh_tokens')
-    .update({ revoked_at: revokedAt })
-    .eq('client_id', approval.client_id)
-    .eq('workspace_id', approval.workspace_id)
-    .eq('user_id', approval.user_id)
-    .is('revoked_at', null);
 
   await logAuditEvent({
     workspaceId: input.workspaceId,

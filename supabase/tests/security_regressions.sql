@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(24);
+select plan(32);
 
 insert into auth.users (
   instance_id,
@@ -153,8 +153,37 @@ values
     'challenge',
     'S256',
     now() - interval '1 minute'
+  ),
+  (
+    'hash-revoke',
+    'client-security-tests',
+    '11111111-1111-1111-1111-111111111111',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    'https://example.com/callback',
+    '{"mcp:tools","mcp:resources"}',
+    'challenge',
+    'S256',
+    now() + interval '10 minutes'
   )
 on conflict (code_hash) do nothing;
+
+insert into app.oauth_refresh_tokens (
+  token_hash,
+  client_id,
+  user_id,
+  workspace_id,
+  scopes,
+  expires_at
+)
+values (
+  'refresh-revoke',
+  'client-security-tests',
+  '11111111-1111-1111-1111-111111111111',
+  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+  '{"mcp:tools","mcp:resources"}',
+  now() + interval '30 days'
+)
+on conflict (token_hash) do nothing;
 
 select ok(
   has_function_privilege('service_role', 'app.consume_oauth_authorization_code(text, text, text)', 'EXECUTE'),
@@ -164,6 +193,16 @@ select ok(
 select ok(
   not has_function_privilege('authenticated', 'app.consume_oauth_authorization_code(text, text, text)', 'EXECUTE'),
   'authenticated callers cannot directly consume authorization codes'
+);
+
+select ok(
+  has_function_privilege('service_role', 'app.revoke_oauth_client_approval(uuid, uuid, uuid, text)', 'EXECUTE'),
+  'service_role can revoke OAuth client approvals through the definer helper'
+);
+
+select ok(
+  not has_function_privilege('authenticated', 'app.revoke_oauth_client_approval(uuid, uuid, uuid, text)', 'EXECUTE'),
+  'authenticated callers cannot revoke OAuth client approvals directly'
 );
 
 set local role service_role;
@@ -199,6 +238,74 @@ select is(
   ),
   null::text,
   'expired authorization codes are rejected by the database helper'
+);
+
+select ok(
+  app.revoke_oauth_client_approval(
+    'ffffffff-ffff-ffff-ffff-ffffffffffff',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    '11111111-1111-1111-1111-111111111111',
+    'Revoked by approving user.'
+  ) is null,
+  'revoking an unknown approval returns null'
+);
+
+select is(
+  (
+    select (app.revoke_oauth_client_approval(
+      (select id from app.oauth_client_approvals where client_id = 'client-security-tests'),
+      'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      '11111111-1111-1111-1111-111111111111',
+      'Revoked by approving user.'
+    )).status
+  ),
+  'revoked',
+  'revoking an approval updates the approval status'
+);
+
+select ok(
+  (
+    select revoked_at is not null
+    from app.oauth_client_approvals
+    where client_id = 'client-security-tests'
+      and workspace_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+      and user_id = '11111111-1111-1111-1111-111111111111'
+  ),
+  'revoking an approval records revoked_at on the approval row'
+);
+
+select is(
+  (
+    select metadata ->> 'revoked_by_user_id'
+    from app.oauth_client_approvals
+    where client_id = 'client-security-tests'
+      and workspace_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+      and user_id = '11111111-1111-1111-1111-111111111111'
+  ),
+  '11111111-1111-1111-1111-111111111111',
+  'revocation metadata records the revoking actor'
+);
+
+select is(
+  (
+    select count(*)::integer
+    from app.oauth_authorization_codes
+    where client_id = 'client-security-tests'
+      and workspace_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+      and user_id = '11111111-1111-1111-1111-111111111111'
+      and consumed_at is null
+  ),
+  0,
+  'revoking an approval invalidates outstanding authorization codes'
+);
+
+select ok(
+  (
+    select revoked_at is not null
+    from app.oauth_refresh_tokens
+    where token_hash = 'refresh-revoke'
+  ),
+  'revoking an approval invalidates refresh tokens for that client and workspace'
 );
 
 select ok(
