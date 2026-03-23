@@ -49,13 +49,15 @@
 - 2026-03-23 execution checkpoint: added logged-in operator API hardening for audit export/retention, connection health, OAuth client secret rotation, and workspace management; introduced shared API validation helpers, a pgTAP security regression suite, CI coverage for typecheck/doctor/Supabase smoke checks, and a migration checksum refresh for the new SQL set. Validated `pnpm typecheck`, `node scripts/doctor.mjs`, and the web app on `http://localhost:3009` after clearing stale Turbo/Next caches and restarting `npm run dev` from the repo root.
 - 2026-03-23 execution checkpoint: added a local Supabase seed for throwaway owner/admin accounts plus a starter workspace so magic-link email flows can be exercised against the built-in Mailpit inbox on local Supabase. Workspace owner/admin controls remain the admin surface; no separate global admin UI was introduced.
 - 2026-03-23 execution checkpoint: introduced a noninteractive MCP smoke-token fixture shared by compat/stress scripts and wired the stress check into CI to close the private-beta release gate.
+- 2026-03-23 execution checkpoint: added a reusable `tsx`-driven provider contract harness plus `finance:contracts`, covered QuickBooks, Xero, Airtable, and Zoom install/refresh/sync/tool/health flows, and fixed a QuickBooks invoice parsing bug surfaced by the new contract script.
 
-## Next execution slice (2026-03-22)
+## Next execution slice (2026-03-23)
 - 2026-03-22 completion notes added: harden logged-in gating for setup surfaces, and keep the shared shell and onboarding surfaces focused on business tools instead of infrastructure details.
 - Prioritize the oldest remaining open Linear work first, then work the newly created platform follow-ups in order of product value and implementation readiness.
 - The provider-expansion phase is now complete for the current catalog; the next slice is validation hardening, context/runtime quality, AI-client onboarding polish, and route-level reliability for the live business-tool surface.
 - Use the new health, export, retention, stress-harness, and compat-smoke surfaces as the base for the next reliability slice instead of opening new provider categories first.
 - Keep the backlog above the actionable threshold by creating only well-scoped follow-ups when a provider or validation slice still needs more work.
+- Next oldest open issue is `NIC-140` for CRM/support provider lifecycle contract coverage.
 
 ## Implementation changes
 1. Fresh repo bootstrap: replace the current empty workspace with a clean clone of the GitHub repo, set the default branch as the base, and treat the first commit after clone as the canonical scaffold baseline for all subsequent work.
