@@ -9,6 +9,10 @@
   - local `APP_URL` preference matches `http://localhost:3009`
   - Supabase config and migrations are present
 
+## MCP smoke checks
+- `npm run mcp:compat` and `npm run mcp:stress` will auto-mint a short-lived MCP bearer token when `MCP_JWT_SECRET` is available (or present in `apps/web/.env.local`).
+- Set `MCP_STRESS_TOKEN` or `MCP_COMPAT_TOKEN` to override the fixture token for targeted debugging.
+
 ## Provider and worker failure states
 
 | Signal | Where it shows up | Typical cause | Operator action |

@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 
 import { createHash, randomBytes } from 'node:crypto';
+import { resolveMcpSmokeToken } from './mcp-smoke-token.mjs';
 
 const baseUrl = new URL(process.env.MCP_COMPAT_BASE_URL ?? process.env.MCP_STRESS_BASE_URL ?? 'http://localhost:3009');
-const token = process.env.MCP_STRESS_TOKEN ?? process.env.MCP_COMPAT_TOKEN ?? '';
+const { token, source } = await resolveMcpSmokeToken(
+  process.env.MCP_STRESS_TOKEN ?? process.env.MCP_COMPAT_TOKEN ?? '',
+  { allowMissing: true }
+);
 const protocolVersion = '2025-03-26';
 const authorizeClientId = process.env.MCP_COMPAT_AUTHORIZE_CLIENT_ID ?? 'plusmy-smoke';
 const authorizeRedirectUri = process.env.MCP_COMPAT_AUTHORIZE_REDIRECT_URI ?? `${baseUrl}mcp-compat/callback`;
@@ -128,8 +132,11 @@ async function run() {
   );
 
   if (!token) {
-    console.log('Skipping /mcp transport checks: MCP_STRESS_TOKEN/MCP_COMPAT_TOKEN not set.');
+    console.log('Skipping /mcp transport checks: MCP_STRESS_TOKEN/MCP_COMPAT_TOKEN/MCP_JWT_SECRET not set.');
     return;
+  }
+  if (source === 'fixture') {
+    console.log('Using MCP smoke-test fixture token.');
   }
 
   const initialize = await requestWithAuth('POST', '/mcp', createRequest('compat-init', 'initialize', { protocolVersion }));

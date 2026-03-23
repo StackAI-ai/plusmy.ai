@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 
+import { resolveMcpSmokeToken } from './mcp-smoke-token.mjs';
+
 const baseUrl = process.env.MCP_STRESS_BASE_URL ?? 'http://localhost:3009';
-const token = process.env.MCP_STRESS_TOKEN ?? '';
+const { token, source } = await resolveMcpSmokeToken(process.env.MCP_STRESS_TOKEN ?? '');
 const requestCount = Number(process.env.MCP_STRESS_REQUEST_COUNT ?? 12);
 const requestBatchSize = Math.max(Number.isFinite(requestCount) ? Math.trunc(requestCount) : 12, 1);
 const protocolVersion = '2025-03-26';
 
 if (!token) {
-  console.error('MCP_STRESS_TOKEN is required.');
+  console.error('MCP_STRESS_TOKEN is required or MCP_JWT_SECRET must be available for a fixture token.');
   process.exit(1);
 }
 
@@ -73,6 +75,9 @@ async function runBatch(label) {
 }
 
 async function main() {
+  if (source === 'fixture') {
+    console.log('Using MCP smoke-test fixture token.');
+  }
   await runBatch('first');
   await new Promise((resolve) => setTimeout(resolve, 250));
   await runBatch('second');

@@ -58,6 +58,11 @@ jobs:
           MCP_COMPAT_BASE_URL: http://127.0.0.1:3009
         run: pnpm mcp:compat
 
+      - name: MCP stress smoke checks
+        env:
+          MCP_STRESS_BASE_URL: http://127.0.0.1:3009
+        run: pnpm mcp:stress
+
       - name: Stop web app
         if: always()
         run: |
