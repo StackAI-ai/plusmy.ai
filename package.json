@@ -8,6 +8,7 @@
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",
     "doctor": "node ./scripts/doctor.mjs",
+    "finance:contracts": "tsx ./scripts/finance-contracts.ts",
     "mcp:stress": "node ./scripts/mcp-stress.mjs",
     "mcp:compat": "node ./scripts/mcp-compat-smoke.mjs",
     "dev:web": "pnpm --filter @plusmy/web dev",
@@ -19,6 +20,7 @@
   "devDependencies": {
     "@types/node": "^22.13.10",
     "supabase": "^2.83.0",
+    "tsx": "^4.21.0",
     "turbo": "^2.5.0",
     "typescript": "^5.8.2"
   }

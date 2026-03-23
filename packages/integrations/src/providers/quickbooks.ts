@@ -340,8 +340,9 @@ export const quickbooksIntegration: IntegrationDefinition = {
 
       const statement = `select * from Invoice where CustomerRef = '${escapeQuickBooksValue(customerId)}' startposition 1 maxresults ${Number.isFinite(limit) ? limit : 25}`;
       const data = await queryQuickBooks(accessToken, realmId, statement);
-      const invoices = Array.isArray(getRecord(data)?.QueryResponse && getRecord(getRecord(data)?.QueryResponse)?.Invoice)
-        ? (getRecord(getRecord(data)?.QueryResponse)?.Invoice as unknown[])
+      const queryResponse = getRecord(data)?.QueryResponse;
+      const invoices = Array.isArray(queryResponse && getRecord(queryResponse)?.Invoice)
+        ? (getRecord(queryResponse)?.Invoice as unknown[])
         : [];
       return {
         customerId,
