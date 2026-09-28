@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthorizedWorkspace, listUserWorkspaces, upsertInstalledConnection, verifyProviderState } from '@plusmy/core';
 import { getIntegration } from '@plusmy/integrations';
+import { safeAppRedirectUrl } from '../../../../_lib/safe-redirect';
 
 export const runtime = 'nodejs';
 
@@ -9,7 +10,7 @@ function canManageWorkspace(role: string | undefined) {
 }
 
 function buildStatusRedirect(basePath: string, origin: string, provider: string, status: string, message?: string) {
-  const redirectUrl = new URL(basePath, origin);
+  const redirectUrl = safeAppRedirectUrl(basePath, origin, '/connections');
   redirectUrl.searchParams.set('provider', provider);
   redirectUrl.searchParams.set('status', status);
   if (message) redirectUrl.searchParams.set('message', message);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import { getAuthorizedWorkspace, listUserWorkspaces, signProviderState } from '@plusmy/core';
 import { getIntegration } from '@plusmy/integrations';
+import { safeAppRedirectPath } from '../../../../_lib/safe-redirect';
 
 export const runtime = 'nodejs';
 
@@ -144,7 +145,7 @@ export async function GET(
     userId: user.id,
     workspaceId: workspace.id,
     connectionScope,
-    redirectTo: url.searchParams.get('redirect_to') ?? '/connections',
+    redirectTo: safeAppRedirectPath(url.searchParams.get('redirect_to'), '/connections'),
     providerConfig:
       providerConfig && !('error' in providerConfig) ? (providerConfig as Record<string, string> | undefined) : undefined
   });

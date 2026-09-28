@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@plusmy/supabase';
+import { safeAppRedirectUrl } from '../../_lib/safe-redirect';
 
 export const runtime = 'nodejs';
 
@@ -13,16 +14,18 @@ export async function GET(request: NextRequest) {
   const type = url.searchParams.get('type');
 
   if (code) {
-    await supabase.auth.exchangeCodeForSession(code);
-    return NextResponse.redirect(new URL(next, url.origin));
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) return NextResponse.redirect(new URL('/login?error=callback_failed', url.origin));
+    return NextResponse.redirect(safeAppRedirectUrl(next, url.origin, '/dashboard'));
   }
 
   if (tokenHash && type) {
-    await supabase.auth.verifyOtp({
+    const { error } = await supabase.auth.verifyOtp({
       token_hash: tokenHash,
       type: type as any
     });
-    return NextResponse.redirect(new URL(next, url.origin));
+    if (error) return NextResponse.redirect(new URL('/login?error=callback_failed', url.origin));
+    return NextResponse.redirect(safeAppRedirectUrl(next, url.origin, '/dashboard'));
   }
 
   return NextResponse.redirect(new URL('/login?error=callback_failed', url.origin));
