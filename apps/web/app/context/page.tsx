@@ -1,11 +1,13 @@
 import type { ContextBindingType } from '@plusmy/contracts'
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui'
 import { createServerSupabaseClient } from '@plusmy/supabase'
+import { getIntegration, getIntegrations } from '@plusmy/integrations'
 import {
   getAuthorizedWorkspace,
   getContextEmbeddingHealth,
   listContextAssets,
   listContextBindings,
+  listConnectionsForWorkspace,
   listPromptTemplates,
   listSkillDefinitions,
   listUserWorkspaces
@@ -67,15 +69,34 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
   const activeMembership = workspace ? workspaces.find((entry) => entry.id === workspace.id) : null
   const canManageBindings = canManageWorkspace(activeMembership?.role)
 
-  const [assets, prompts, skills, bindings, embeddingHealth] = workspace
+  const [assets, prompts, skills, bindings, embeddingHealth, connections] = workspace
     ? await Promise.all([
         listContextAssets(workspace.id, user.id),
         listPromptTemplates(workspace.id, user.id),
         listSkillDefinitions(workspace.id, user.id),
         listContextBindings(workspace.id, user.id),
-        getContextEmbeddingHealth(workspace.id)
+        getContextEmbeddingHealth(workspace.id),
+        listConnectionsForWorkspace(workspace.id, user.id)
       ])
-    : [[], [], [], [], null]
+    : [[], [], [], [], null, []]
+
+  const providerOptions = getIntegrations()
+    .map((integration) => ({ value: integration.id, label: integration.displayName }))
+    .sort((left, right) => left.label.localeCompare(right.label))
+  const toolOptions = Array.from(
+    new Map(
+      (await Promise.all(
+        connections
+          .filter((connection) => connection.scope === 'workspace')
+          .map(async (connection) => {
+            const integration = getIntegration(connection.provider)
+            return integration ? await integration.listTools(connection) : []
+          })
+      ))
+        .flat()
+        .map((tool) => [tool.name, { value: tool.name, label: tool.title }] as const)
+    ).values()
+  ).sort((left, right) => left.label.localeCompare(right.label))
 
   const sharedPrompts = prompts
     .filter((prompt) => !prompt.owner_user_id)
@@ -351,7 +372,13 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
           </Card>
 
           {canManageBindings ? (
-            <ContextBindingForm workspaceId={workspace.id} prompts={sharedPrompts} skills={sharedSkills} />
+            <ContextBindingForm
+              workspaceId={workspace.id}
+              prompts={sharedPrompts}
+              skills={sharedSkills}
+              providers={providerOptions}
+              tools={toolOptions}
+            />
           ) : (
             <Card>
               <CardHeader>

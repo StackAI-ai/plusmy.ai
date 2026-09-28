@@ -268,6 +268,15 @@ test('shared context mutations require an admin while personal context stays pri
     await expect(page.getByText(`E2E asset ${suffix}`).first()).toBeVisible();
     await expect(page.getByText(`E2E prompt ${suffix}`).first()).toBeVisible();
     await expect(page.getByText(`E2E skill ${suffix}`).first()).toBeVisible();
+    await page.locator('#binding-type').click();
+    await page.getByRole('option', { name: 'Provider' }).click();
+    await page.locator('#binding-target').click();
+    await expect(page.getByRole('option', { name: 'HubSpot' })).toBeVisible();
+    await expect(page.getByRole('option', { name: 'QuickBooks Online' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.locator('#binding-type').click();
+    await page.getByRole('option', { name: 'Tool' }).click();
+    await expect(page.getByText('Install a workspace connection before binding a specific tool.')).toBeVisible();
 
     const memberPage = await memberContext.newPage();
     await signIn(memberPage, request, memberEmail);

@@ -25,47 +25,34 @@ type SelectOption = {
   description: string | null
 }
 
-const bindingTargetOptions: Record<ContextBindingType, Array<{ value: string; label: string }>> = {
-  workspace: [{ value: 'default', label: 'Default workspace context' }],
-  provider: [
-    { value: 'google', label: 'Google' },
-    { value: 'slack', label: 'Slack' },
-    { value: 'notion', label: 'Notion' }
-  ],
-  tool: [
-    { value: 'google.search_drive', label: 'Google Drive search' },
-    { value: 'google.get_document', label: 'Google Doc read' },
-    { value: 'slack.list_channels', label: 'Slack list channels' },
-    { value: 'slack.read_channel_history', label: 'Slack read history' },
-    { value: 'slack.post_message', label: 'Slack post message' },
-    { value: 'notion.search', label: 'Notion search' },
-    { value: 'notion.get_page', label: 'Notion read page' },
-    { value: 'notion.create_page', label: 'Notion create page' }
-  ]
-}
+const workspaceTargetOptions = [{ value: 'default', label: 'Default workspace context' }]
 
 const emptySelectionValue = '__none__'
 
 export function ContextBindingForm({
   workspaceId,
   prompts,
-  skills
+  skills,
+  providers,
+  tools
 }: {
   workspaceId: string
   prompts: SelectOption[]
   skills: SelectOption[]
+  providers: Array<{ value: string; label: string }>
+  tools: Array<{ value: string; label: string }>
 }) {
   const router = useRouter()
   const [bindingType, setBindingType] = useState<ContextBindingType>('workspace')
-  const [targetKey, setTargetKey] = useState(bindingTargetOptions.workspace[0]?.value ?? 'default')
+  const [targetKey, setTargetKey] = useState('default')
   const [promptTemplateId, setPromptTemplateId] = useState('')
   const [skillDefinitionId, setSkillDefinitionId] = useState('')
   const [priority, setPriority] = useState('100')
   const [status, setStatus] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const targetOptions = bindingTargetOptions[bindingType]
-  const canSubmit = prompts.length > 0 || skills.length > 0
+  const targetOptions = bindingType === 'workspace' ? workspaceTargetOptions : bindingType === 'provider' ? providers : tools
+  const canSubmit = Boolean(targetKey) && (prompts.length > 0 || skills.length > 0)
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -105,7 +92,8 @@ export function ContextBindingForm({
 
   function handleBindingTypeChange(value: ContextBindingType) {
     setBindingType(value)
-    setTargetKey(bindingTargetOptions[value][0]?.value ?? 'default')
+    const options = value === 'workspace' ? workspaceTargetOptions : value === 'provider' ? providers : tools
+    setTargetKey(options[0]?.value ?? '')
   }
 
   return (
@@ -135,7 +123,7 @@ export function ContextBindingForm({
 
         <div className="space-y-2">
           <Label htmlFor="binding-target">Target</Label>
-          <Select value={targetKey} onValueChange={setTargetKey}>
+          <Select value={targetKey || undefined} onValueChange={setTargetKey} disabled={targetOptions.length === 0}>
             <SelectTrigger id="binding-target">
               <SelectValue />
             </SelectTrigger>
@@ -147,6 +135,9 @@ export function ContextBindingForm({
               ))}
             </SelectContent>
           </Select>
+          {bindingType === 'tool' && targetOptions.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Install a workspace connection before binding a specific tool.</p>
+          ) : null}
         </div>
 
         <div className="space-y-2">
