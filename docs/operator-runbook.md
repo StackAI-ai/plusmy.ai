@@ -1,5 +1,7 @@
 # Operator runbook
 
+Private-beta release criteria and per-provider evidence are tracked in [private-beta-gates.md](./private-beta-gates.md).
+
 ## Bootstrap checks
 - Run `npm run doctor` from the repo root before local work when you are unsure about dependencies, env setup, or bundled Supabase tooling.
 - The doctor currently verifies:
