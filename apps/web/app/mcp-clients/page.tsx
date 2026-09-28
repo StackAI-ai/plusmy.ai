@@ -65,22 +65,6 @@ function buildConnectionsProviderHref(workspaceId: string, provider: ConnectionR
   return `/connections?${params.toString()}`;
 }
 
-function buildApprovalAuthorizeHref(workspaceId: string, approval: OAuthClientApprovalRecord) {
-  const storedRedirectUri = getApprovalMetadataString(approval, 'redirect_uri');
-  if (!storedRedirectUri) return null;
-
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: approval.client_id,
-    redirect_uri: storedRedirectUri,
-    scope: approval.scopes.join(' '),
-    workspace_id: workspaceId,
-    source: 'operator_ui'
-  });
-
-  return `/authorize?${params.toString()}`;
-}
-
 function getRedirectHostLabel(redirectUri: string | null) {
   if (!redirectUri) return null;
 
@@ -335,7 +319,7 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
           </CardHeader>
           <CardContent>
             <p className="text-4xl font-semibold text-foreground">{reauthorizableApprovals}</p>
-            <p className="text-sm text-muted-foreground">Only the original approving user can reauthorize an active approval.</p>
+            <p className="text-sm text-muted-foreground">Renewal must start in the MCP client so it can supply a fresh PKCE challenge; only the original user can approve.</p>
           </CardContent>
         </Card>
         <Card className="space-y-2">
@@ -494,7 +478,6 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                 const summary = clientActivity.find((entry) => entry.clientId === approval.client_id);
                 const approvalHealthReasons = getApprovalHealthReasons(approval, providerScopeDriftSummaries);
                 const storedRedirectUri = getApprovalMetadataString(approval, 'redirect_uri');
-                const reauthorizeHref = canReauthorize ? buildApprovalAuthorizeHref(workspace.id, approval) : null;
                 const redirectHostLabel = getRedirectHostLabel(storedRedirectUri);
                 const approvalAuditHref = buildClientAuditHref(workspace.id, approval.client_id);
                 const scopeDriftConnectionsHref =
@@ -553,8 +536,8 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                       {approval.status === 'active' && isStaleApproval(approval) && approval.user_id !== user.id ? (
                         <p className="text-amber-700">Only the original approving user can renew this stale approval.</p>
                       ) : null}
-                      {approval.status === 'active' && isStaleApproval(approval) && canReauthorize && !reauthorizeHref ? (
-                        <p className="text-amber-700">No stored redirect URI is available, so renewal must start from the client itself.</p>
+                      {approval.status === 'active' && isStaleApproval(approval) && canReauthorize ? (
+                        <p className="text-amber-700">Reconnect from the MCP client to renew this approval with a fresh PKCE challenge.</p>
                       ) : null}
                       {approval.revoked_at ? <p>Revoked at {approval.revoked_at}</p> : null}
                       {summary && canReviewWorkspaceApprovals ? (
@@ -573,20 +556,16 @@ export default async function McpClientsPage({ searchParams }: { searchParams?: 
                             <Link href={scopeDriftConnectionsHref}>Open connections</Link>
                           </Button>
                         ) : null}
-                        {reauthorizeHref ? (
+                        {canReauthorize ? (
                           <Button asChild size="sm" variant="outline">
-                            <Link href={reauthorizeHref} target="_blank" rel="noreferrer">
-                              {isStaleApproval(approval) ? 'Reauthorize now' : 'Open consent flow'}
-                            </Link>
+                            <Link href={`/mcp-setup?workspace=${workspace.id}`}>Client reconnect instructions</Link>
                           </Button>
                         ) : null}
                       </div>
-                    ) : reauthorizeHref ? (
+                    ) : canReauthorize ? (
                       <div className="mt-4">
                         <Button asChild size="sm" variant="outline">
-                          <Link href={reauthorizeHref} target="_blank" rel="noreferrer">
-                            {isStaleApproval(approval) ? 'Reauthorize now' : 'Open consent flow'}
-                          </Link>
+                          <Link href={`/mcp-setup?workspace=${workspace.id}`}>Client reconnect instructions</Link>
                         </Button>
                       </div>
                     ) : null}

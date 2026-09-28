@@ -39,7 +39,12 @@ async function parseTokenRequest(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const rawBody = await parseTokenRequest(request);
+  let rawBody: unknown;
+  try {
+    rawBody = await parseTokenRequest(request);
+  } catch {
+    return NextResponse.json({ error: 'invalid_request', error_description: 'Malformed token request.' }, { status: 400 });
+  }
   const basic = parseBasicAuth(request.headers.get('authorization'));
   const parsed = tokenRequestSchema.safeParse(rawBody);
   if (!parsed.success) {

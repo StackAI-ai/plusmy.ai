@@ -12,6 +12,17 @@ import {
 export const runtime = 'nodejs';
 
 const defaultScopeString = 'mcp:tools mcp:resources';
+const pkceChallengePattern = /^[A-Za-z0-9_-]{43}$/;
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[character] ?? character);
+}
+
+function hasValidPkce(challenge: string | null, method: string | null) {
+  return method === 'S256' && challenge != null && pkceChallengePattern.test(challenge);
+}
 
 function parseRequestedScopes(scope: string, client: Record<string, unknown>) {
   const requestedScopes = scope.split(' ').filter(Boolean);
@@ -62,12 +73,22 @@ function renderConsentPage(input: {
     scopes: string;
   } | null;
 }) {
+  const clientName = escapeHtml(input.clientName);
+  const clientId = escapeHtml(input.clientId);
+  const redirectUri = escapeHtml(input.redirectUri);
+  const scope = escapeHtml(input.scope);
+  const state = escapeHtml(input.state ?? '');
+  const workspaceId = escapeHtml(input.workspaceId);
+  const workspaceName = escapeHtml(input.workspaceName);
+  const codeChallenge = escapeHtml(input.codeChallenge ?? '');
+  const codeChallengeMethod = escapeHtml(input.codeChallengeMethod ?? '');
+  const source = escapeHtml(input.source ?? '');
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Authorize ${input.clientName}</title>
+    <title>Authorize ${clientName}</title>
     <style>
       :root{color-scheme:light}
       *{box-sizing:border-box}
@@ -134,17 +155,17 @@ function renderConsentPage(input: {
   <body>
     <div class="panel">
       <p class="eyebrow">plusmy.ai MCP authorization</p>
-      <h1 style="font-size:38px;line-height:1.15;margin:18px 0 10px">Authorize ${input.clientName}</h1>
-      <p class="muted">This MCP client will receive delegated access to workspace resources and integration tools for <strong>${input.workspaceName}</strong>.</p>
-      <p class="muted"><strong>Requested scopes:</strong> ${input.scope || defaultScopeString}</p>
+      <h1 style="font-size:38px;line-height:1.15;margin:18px 0 10px">Authorize ${clientName}</h1>
+      <p class="muted">This MCP client will receive delegated access to workspace resources and integration tools for <strong>${workspaceName}</strong>.</p>
+      <p class="muted"><strong>Requested scopes:</strong> ${scope || defaultScopeString}</p>
       ${
         input.existingApproval
           ? `<div class="panel-card">
         <p style="margin:0;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#55635f">Existing approval on file</p>
-        <p class="muted" style="margin:8px 0 0">Approved ${input.existingApproval.approvedAt}. ${
-          input.existingApproval.lastUsedAt ? `Last token issued ${input.existingApproval.lastUsedAt}.` : 'No token has been exchanged from that approval yet.'
+        <p class="muted" style="margin:8px 0 0">Approved ${escapeHtml(input.existingApproval.approvedAt)}. ${
+          input.existingApproval.lastUsedAt ? `Last token issued ${escapeHtml(input.existingApproval.lastUsedAt)}.` : 'No token has been exchanged from that approval yet.'
         }</p>
-        <p class="muted" style="margin:8px 0 0"><strong>Previously approved scopes:</strong> ${input.existingApproval.scopes}</p>
+        <p class="muted" style="margin:8px 0 0"><strong>Previously approved scopes:</strong> ${escapeHtml(input.existingApproval.scopes)}</p>
       </div>`
           : ''
       }
@@ -157,14 +178,14 @@ function renderConsentPage(input: {
           : ''
       }
       <form method="post" action="/authorize" class="actions">
-        <input type="hidden" name="client_id" value="${input.clientId}" />
-        <input type="hidden" name="redirect_uri" value="${input.redirectUri}" />
-        <input type="hidden" name="scope" value="${input.scope}" />
-        <input type="hidden" name="state" value="${input.state ?? ''}" />
-        <input type="hidden" name="workspace_id" value="${input.workspaceId}" />
-        <input type="hidden" name="code_challenge" value="${input.codeChallenge ?? ''}" />
-        <input type="hidden" name="code_challenge_method" value="${input.codeChallengeMethod ?? ''}" />
-        <input type="hidden" name="source" value="${input.source ?? ''}" />
+        <input type="hidden" name="client_id" value="${clientId}" />
+        <input type="hidden" name="redirect_uri" value="${redirectUri}" />
+        <input type="hidden" name="scope" value="${scope}" />
+        <input type="hidden" name="state" value="${state}" />
+        <input type="hidden" name="workspace_id" value="${workspaceId}" />
+        <input type="hidden" name="code_challenge" value="${codeChallenge}" />
+        <input type="hidden" name="code_challenge_method" value="${codeChallengeMethod}" />
+        <input type="hidden" name="source" value="${source}" />
         <button class="primary" type="submit" name="decision" value="approve">Approve access</button>
         <button class="secondary" type="submit" name="decision" value="deny">Deny</button>
       </form>
@@ -183,6 +204,10 @@ export async function GET(request: NextRequest) {
   const codeChallengeMethod = url.searchParams.get('code_challenge_method');
   const requestedWorkspaceId = url.searchParams.get('workspace_id');
   const source = url.searchParams.get('source');
+
+  if (url.searchParams.get('response_type') !== 'code' || !hasValidPkce(codeChallenge, codeChallengeMethod)) {
+    return NextResponse.json({ error: 'invalid_request', error_description: 'Authorization code flow requires S256 PKCE.' }, { status: 400 });
+  }
 
   if (!clientId || !redirectUri) {
     return NextResponse.json({ error: 'invalid_request', error_description: 'Missing client_id or redirect_uri.' }, { status: 400 });
@@ -251,7 +276,7 @@ export async function POST(request: NextRequest) {
   const state = String(form.get('state') ?? '');
   const workspaceId = String(form.get('workspace_id') ?? '');
   const codeChallenge = String(form.get('code_challenge') ?? '');
-  const codeChallengeMethod = String(form.get('code_challenge_method') ?? 'S256');
+  const codeChallengeMethod = String(form.get('code_challenge_method') ?? '');
   const source = String(form.get('source') ?? '');
 
   const supabase = await createServerSupabaseClient();
@@ -264,6 +289,9 @@ export async function POST(request: NextRequest) {
   }
 
   if (!clientId || !redirectUri) {
+    return NextResponse.json({ error: 'invalid_request' }, { status: 400 });
+  }
+  if (!hasValidPkce(codeChallenge, codeChallengeMethod)) {
     return NextResponse.json({ error: 'invalid_request' }, { status: 400 });
   }
 

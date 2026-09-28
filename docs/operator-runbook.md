@@ -19,6 +19,8 @@ Private-beta release criteria and per-provider evidence are tracked in [private-
 - CI starts local Supabase, writes a throwaway `apps/web/.env.local` from its local status, and runs pgTAP, finance contracts, and MCP smoke checks. Provider contracts are mocked; they do not certify a real provider account.
 - For local checks without changing your `.env.local`, run `node scripts/local-supabase-env.mjs -- npm run dev` after Supabase starts. The launcher supplies short-lived local role JWTs; `--write-env` is reserved for disposable CI environments because it replaces the app env file.
 - The browser E2E suite runs with `pnpm --filter @plusmy/web e2e` after local Supabase and the web app are up on port 3009. It requires the seeded owner, Supabase Mailpit, and `E2E_MAILPIT_URL` in a disposable `apps/web/.env.local`; `node scripts/local-supabase-env.mjs --write-env` generates that file for CI. Back up and restore any existing ignored env file when running locally.
+- MCP smoke tokens resolve through the seeded local-only `plusmy-smoke-fixture` client and active owner approval. A signed JWT by itself is no longer sufficient: `/mcp` rechecks workspace membership, active approval, and approved scopes. Do not use the fixture as evidence for a named client or real provider.
+- MCP approval renewal must start in the client with a fresh S256 PKCE challenge; the operator page links to reconnect instructions rather than minting a code without a client-held verifier. Code and refresh-token exchanges are single-use. A narrowed or revoked approval invalidates broader access immediately at `/mcp` and blocks its refresh tokens.
 
 ## 2026-09-28 validation checkpoint
 - Corrected the initial bootstrap to install `supabase_vault` and create the `pgmq` schema before installing that extension; a fresh local PG17 stack applied all 16 migrations and the seed.
@@ -31,6 +33,7 @@ Private-beta release criteria and per-provider evidence are tracked in [private-
 - Admin/member role coverage is still partial; at that checkpoint, invite acceptance and the connection, context, MCP, and retention journeys remained unverified.
 - Invite acceptance now runs as one service-only SQL transaction: it row-locks the invite, matches the current user's database email, creates membership, and consumes the token. The browser suite verifies wrong-user denial, the invited user's `/join` flow, and replay rejection; pgTAP checks RPC privileges and membership/token updates. Successful acceptance uses a full redirect that removes the invite token from browser history, and shared navigation carries only the workspace parameter.
 - The context browser journey now creates workspace-shared assets, prompts, skills, and a binding, then verifies member write denials, personal prompt ownership/visibility, workspace isolation, and binding removal. Core service-role writes independently enforce shared owner/admin role or personal record ownership; members see only the personal ingest scope. The binding editor uses the live provider registry and tools from workspace connections. Connection lifecycle, MCP consent/tool execution, and audit retention remain open.
+- The current nine-test browser suite also covers the synthetic connection lifecycle, MCP consent/code/refresh/resource/scope/revocation flow, and audit export/retention with disposable rows. It still does not exercise a real provider tool, named MCP client, or staging deployment. pgTAP now has 46 assertions including service-only refresh rotation and replay/expiry checks.
 
 ## Provider and worker failure states
 
@@ -48,7 +51,7 @@ Private-beta release criteria and per-provider evidence are tracked in [private-
 | `stale` connection health | Connections page health filters | Token refresh schedule is overdue or the last validation is old | Inspect queued jobs and trigger a manual refresh if provider credentials are still valid. |
 | `failed` connection job | Audit and job lists | A processing attempt failed but still has retry budget left | Check the latest error and allow the worker retry window to continue. |
 | `dead_letter` connection job | Dashboard and connections operator alerts | Retry budget exhausted for a sync or refresh job | Fix the provider-side issue, inspect audit history, then queue a brand-new job after remediation. |
-| Revoked approval | MCP clients page and approval health reasons | Approval owner revoked access or workspace access was removed | Have a current workspace member reauthorize the client. |
+| Revoked approval | MCP clients page and approval health reasons | Approval owner revoked access or workspace access was removed | Have a current workspace member restart authorization from the MCP client with fresh PKCE. |
 | Scope drift | MCP approvals and connection health | Provider token scopes no longer satisfy MCP tool requirements | Reinstall the provider with the required scopes before retrying MCP calls. |
 
 ## Dead-letter response checklist

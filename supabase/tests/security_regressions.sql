@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(41);
+select plan(46);
 
 insert into auth.users (
   instance_id,
@@ -175,14 +175,13 @@ insert into app.oauth_refresh_tokens (
   scopes,
   expires_at
 )
-values (
-  'refresh-revoke',
-  'client-security-tests',
-  '11111111-1111-1111-1111-111111111111',
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-  '{"mcp:tools","mcp:resources"}',
-  now() + interval '30 days'
-)
+values
+  ('refresh-revoke', 'client-security-tests', '11111111-1111-1111-1111-111111111111',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '{"mcp:tools","mcp:resources"}', now() + interval '30 days'),
+  ('refresh-rotate', 'client-security-tests', '11111111-1111-1111-1111-111111111111',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '{"mcp:tools","mcp:resources"}', now() + interval '30 days'),
+  ('refresh-expired', 'client-security-tests', '11111111-1111-1111-1111-111111111111',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '{"mcp:tools","mcp:resources"}', now() - interval '1 minute')
 on conflict (token_hash) do nothing;
 
 insert into app.workspace_invites (workspace_id, email, role, invited_by, token_hash)
@@ -206,6 +205,12 @@ select ok(
 );
 
 select ok(
+  has_function_privilege('service_role', 'app.rotate_oauth_refresh_token(text, text, text, timestamptz)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'app.rotate_oauth_refresh_token(text, text, text, timestamptz)', 'EXECUTE'),
+  'only service_role can rotate OAuth refresh tokens'
+);
+
+select ok(
   has_function_privilege('service_role', 'app.revoke_oauth_client_approval(uuid, uuid, uuid, text)', 'EXECUTE'),
   'service_role can revoke OAuth client approvals through the definer helper'
 );
@@ -226,6 +231,35 @@ select ok(
 );
 
 set local role service_role;
+
+select is(
+  (select (app.rotate_oauth_refresh_token(
+    'refresh-rotate', 'refresh-rotated', 'client-security-tests', now() + interval '30 days'
+  )).token_hash),
+  'refresh-rotate',
+  'first refresh rotation consumes the prior token'
+);
+
+select ok(
+  exists (select 1 from app.oauth_refresh_tokens where token_hash = 'refresh-rotated' and revoked_at is null),
+  'refresh rotation persists the replacement token'
+);
+
+select is(
+  (select (app.rotate_oauth_refresh_token(
+    'refresh-rotate', 'refresh-replayed', 'client-security-tests', now() + interval '30 days'
+  )).token_hash),
+  null::text,
+  'refresh tokens cannot be rotated twice'
+);
+
+select is(
+  (select (app.rotate_oauth_refresh_token(
+    'refresh-expired', 'refresh-expired-replacement', 'client-security-tests', now() + interval '30 days'
+  )).token_hash),
+  null::text,
+  'expired refresh tokens cannot be rotated'
+);
 
 select is(
   (select count(*)::integer from app.accept_workspace_invite('security-invite-hash', '55555555-5555-5555-5555-555555555555')),
@@ -468,7 +502,8 @@ select is(
 );
 
 select is(
-  (select count(*)::integer from app.oauth_client_approvals where workspace_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  (select count(*)::integer from app.oauth_client_approvals
+    where workspace_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and client_id = 'client-security-tests'),
   1,
   'approval owners can read their own workspace approvals'
 );

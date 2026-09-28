@@ -299,6 +299,11 @@ function failure(id: string | number | null, code: number, message: string, data
 
 export async function handleMcpJsonRpcRequest(authContext: McpAuthContext, body: McpJsonRpcRequest): Promise<McpRequestResult> {
   try {
+    const requiredScope = body.method.startsWith('tools/') ? 'mcp:tools'
+      : body.method.startsWith('resources/') ? 'mcp:resources' : null;
+    if (requiredScope && !authContext.scopes.includes(requiredScope)) {
+      return { response: failure(body.id, -32003, `Missing required scope: ${requiredScope}.`) };
+    }
     switch (body.method) {
       case 'initialize':
         return { response: success(body.id, {

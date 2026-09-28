@@ -31,18 +31,19 @@ async function assertOAuthClientApprovalActive(input: {
   clientId: string;
   userId: string;
   workspaceId: string;
+  scopes: string[];
 }) {
   const supabase = createServiceRoleClient();
-  const { data } = await supabase
-    .schema('app')
-    .from('oauth_client_approvals')
-    .select('status,revoked_at')
-    .eq('client_id', input.clientId)
-    .eq('user_id', input.userId)
-    .eq('workspace_id', input.workspaceId)
-    .maybeSingle();
+  const [{ data, error }, { data: membership, error: membershipError }] = await Promise.all([
+    supabase.schema('app').from('oauth_client_approvals').select('status,revoked_at,scopes')
+      .eq('client_id', input.clientId).eq('user_id', input.userId)
+      .eq('workspace_id', input.workspaceId).maybeSingle(),
+    supabase.schema('app').from('workspace_members').select('workspace_id')
+      .eq('workspace_id', input.workspaceId).eq('user_id', input.userId).maybeSingle()
+  ]);
 
-  if (!data || data.status !== 'active' || data.revoked_at) {
+  if (error || membershipError || !membership || !data || data.status !== 'active' || data.revoked_at ||
+      !input.scopes.every((scope) => (data.scopes as string[]).includes(scope))) {
     throw new Error('OAuth client approval is no longer active.');
   }
 }
@@ -166,7 +167,7 @@ export async function createAuthorizationCode(input: {
 }) {
   const code = nanoid(48);
   const supabase = createServiceRoleClient();
-  await supabase.schema('app').from('oauth_authorization_codes').insert({
+  const { error } = await supabase.schema('app').from('oauth_authorization_codes').insert({
     code_hash: hashOpaqueToken(code),
     client_id: input.clientId,
     user_id: input.userId,
@@ -177,6 +178,7 @@ export async function createAuthorizationCode(input: {
     code_challenge_method: input.codeChallengeMethod,
     expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString()
   });
+  if (error) throw error;
   return code;
 }
 
@@ -244,17 +246,21 @@ export async function exchangeAuthorizationCode(input: {
   await assertOAuthClientApprovalActive({
     clientId: input.clientId,
     userId: String(codeRow.user_id),
-    workspaceId: String(codeRow.workspace_id)
+    workspaceId: String(codeRow.workspace_id),
+    scopes: (codeRow.scopes as string[]) ?? []
   });
-  if (codeRow.code_challenge && pkceChallenge(input.codeVerifier) !== codeRow.code_challenge) {
+  if (codeRow.code_challenge_method !== 'S256' || !codeRow.code_challenge || pkceChallenge(input.codeVerifier) !== codeRow.code_challenge) {
     throw new Error('PKCE verifier mismatch.');
   }
 
-  await supabase
-    .schema('app')
-    .from('oauth_authorization_codes')
-    .update({ consumed_at: new Date().toISOString() })
-    .eq('code_hash', hashOpaqueToken(input.code));
+  const { data: consumedCode, error: consumeError } = await supabase.schema('app').rpc('consume_oauth_authorization_code', {
+    p_code_hash: hashOpaqueToken(input.code),
+    p_client_id: input.clientId,
+    p_redirect_uri: input.redirectUri
+  });
+  if (consumeError) throw consumeError;
+  const consumedRow = Array.isArray(consumedCode) ? consumedCode[0] : consumedCode;
+  if (!consumedRow?.code_hash) throw new Error('Authorization code already consumed.');
 
   const tokenPair = await issueTokenPair({
     clientId: input.clientId,
@@ -296,25 +302,21 @@ export async function exchangeRefreshToken(input: {
   await assertOAuthClientApprovalActive({
     clientId: input.clientId,
     userId: String(tokenRow.user_id),
-    workspaceId: String(tokenRow.workspace_id)
+    workspaceId: String(tokenRow.workspace_id),
+    scopes: (tokenRow.scopes as string[]) ?? []
   });
 
   const replacement = nanoid(64);
   const replacementHash = hashOpaqueToken(replacement);
-  await supabase
-    .schema('app')
-    .from('oauth_refresh_tokens')
-    .update({ revoked_at: new Date().toISOString(), replaced_by_token_hash: replacementHash })
-    .eq('token_hash', refreshTokenHash);
-
-  await supabase.schema('app').from('oauth_refresh_tokens').insert({
-    token_hash: replacementHash,
-    client_id: tokenRow.client_id,
-    user_id: tokenRow.user_id,
-    workspace_id: tokenRow.workspace_id,
-    scopes: tokenRow.scopes,
-    expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+  const { data: rotated, error: rotationError } = await supabase.schema('app').rpc('rotate_oauth_refresh_token', {
+    p_old_hash: refreshTokenHash,
+    p_new_hash: replacementHash,
+    p_client_id: input.clientId,
+    p_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
   });
+  if (rotationError) throw rotationError;
+  const rotatedRow = Array.isArray(rotated) ? rotated[0] : rotated;
+  if (!rotatedRow?.token_hash) throw new Error('Refresh token revoked or already rotated.');
 
   const accessToken = await issueMcpAccessToken(
     {

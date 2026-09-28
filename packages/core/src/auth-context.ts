@@ -3,6 +3,7 @@ import { jwtVerify, SignJWT } from 'jose';
 import type { JWTPayload } from 'jose';
 import type { NextRequest } from 'next/server';
 import { getServerEnv } from '@plusmy/config';
+import { createServiceRoleClient } from '@plusmy/supabase';
 
 const encoder = new TextEncoder();
 
@@ -66,7 +67,22 @@ export async function verifyMcpAccessToken(token: string): Promise<McpAuthContex
 export async function resolveMcpAuthContextFromRequest(request: Request | NextRequest) {
   const header = request.headers.get('authorization');
   if (!header?.startsWith('Bearer ')) return null;
-  return await verifyMcpAccessToken(header.slice(7));
+  const context = await verifyMcpAccessToken(header.slice(7));
+  if (!context || !context.clientId || !context.userId || !context.workspaceId) return null;
+
+  const supabase = createServiceRoleClient();
+  const [{ data: membership, error: membershipError }, { data: approval, error: approvalError }] = await Promise.all([
+    supabase.schema('app').from('workspace_members').select('workspace_id')
+      .eq('workspace_id', context.workspaceId).eq('user_id', context.userId).maybeSingle(),
+    supabase.schema('app').from('oauth_client_approvals').select('status,revoked_at,scopes')
+      .eq('client_id', context.clientId).eq('workspace_id', context.workspaceId)
+      .eq('user_id', context.userId).maybeSingle()
+  ]);
+  if (membershipError || approvalError || !membership || !approval || approval.status !== 'active' || approval.revoked_at) {
+    return null;
+  }
+  if (!context.scopes.every((scope) => (approval.scopes as string[]).includes(scope))) return null;
+  return context;
 }
 
 export async function signProviderState(claims: ProviderStateClaims) {

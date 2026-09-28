@@ -114,4 +114,12 @@ values
   ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '44444444-4444-4444-4444-444444444444', 'owner')
 on conflict (workspace_id, user_id) do nothing;
 
+insert into app.oauth_clients (client_id, client_name, redirect_uris, created_by)
+values ('plusmy-smoke-fixture', 'Local MCP smoke fixture', array['http://localhost:3009/mcp-setup'], '11111111-1111-1111-1111-111111111111')
+on conflict (client_id) do nothing;
+
+insert into app.oauth_client_approvals (client_id, workspace_id, user_id, scopes, status)
+values ('plusmy-smoke-fixture', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '11111111-1111-1111-1111-111111111111', array['mcp:tools', 'mcp:resources'], 'active')
+on conflict (client_id, workspace_id, user_id) do nothing;
+
 commit;
