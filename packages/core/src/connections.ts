@@ -18,6 +18,12 @@ import { createServiceRoleClient } from '@plusmy/supabase';
 
 const REFRESH_SKEW_MS = 5 * 60 * 1000;
 
+export function canManageConnection(connection: ConnectionRecord, actorUserId: string, role: string | undefined) {
+  return connection.scope === 'personal'
+    ? connection.owner_user_id === actorUserId
+    : role === 'owner' || role === 'admin';
+}
+
 export interface AuditLogFilters {
   limit?: number;
   status?: string | null;
@@ -708,6 +714,7 @@ export async function refreshConnectionIfNeeded(connection: ConnectionRecord, cr
 export async function forceRefreshConnection(connectionId: string, options?: { scheduleNextJob?: boolean }) {
   const connection = await getConnectionById(connectionId);
   if (!connection) throw new Error('Connection not found.');
+  if (connection.status === 'revoked') throw new Error('Connection revoked.');
   const credentials = await resolveConnectionCredentials(connectionId);
   return await performRefresh(connection, credentials, options);
 }

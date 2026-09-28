@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import {
+  canManageConnection,
   getAuthorizedWorkspace,
   getConnectionById,
   listConnectionsForWorkspace,
@@ -20,10 +21,6 @@ const deleteConnectionSchema = z.object({
   workspace_id: z.string().uuid(),
   connection_id: z.string().uuid()
 });
-
-function canManageWorkspace(role: string | undefined) {
-  return role === 'owner' || role === 'admin';
-}
 
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -82,12 +79,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'connection_not_found' }, { status: 404 });
   }
 
-  const canManage =
-    connection.scope === 'workspace'
-      ? canManageWorkspace(membership?.role)
-      : canManageWorkspace(membership?.role) || connection.owner_user_id === user.id;
-
-  if (canManage === false) {
+  if (!canManageConnection(connection, user.id, membership?.role)) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

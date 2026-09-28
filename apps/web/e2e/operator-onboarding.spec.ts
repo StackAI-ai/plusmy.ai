@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
+import { SignJWT } from 'jose';
 
 const workspaceId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const isolatedWorkspaceId = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
@@ -24,6 +25,13 @@ function localServiceClient() {
   const key = readValue('SUPABASE_SERVICE_ROLE_KEY');
   if (!url || !key) throw new Error('Local Supabase service configuration is required for E2E cleanup.');
   return createClient(url, key, { auth: { persistSession: false } });
+}
+
+function localEnvValue(key: string) {
+  const envFile = readFileSync(resolve(process.cwd(), '.env.local'), 'utf8');
+  const value = envFile.split('\n').find((line) => line.startsWith(`${key}=`))?.slice(key.length + 1);
+  if (!value) throw new Error(`${key} is required for local E2E.`);
+  return value;
 }
 
 async function latestEmail(request: APIRequestContext, email: string) {
@@ -62,7 +70,100 @@ test('signed-out dashboard does not expose workspace state', async ({ page }) =>
   await expect(page.getByText('Local Beta Workspace')).toHaveCount(0);
 });
 
+test('connection ownership and callback state stay bound to the acting user', async ({ browser, page, request }) => {
+  const service = localServiceClient();
+  const suffix = Date.now().toString(36);
+  const { data: fixtures, error } = await service.schema('app').from('connections').insert([
+    {
+      connection_key: `e2e-personal-${suffix}`,
+      workspace_id: workspaceId,
+      owner_user_id: '33333333-3333-3333-3333-333333333333',
+      provider: 'hubspot', scope: 'personal', status: 'active', display_name: `E2E personal ${suffix}`
+    },
+    {
+      connection_key: `e2e-workspace-${suffix}`,
+      workspace_id: workspaceId,
+      provider: 'hubspot', scope: 'workspace', status: 'active', display_name: `E2E workspace ${suffix}`
+    }
+  ]).select('id, scope');
+  expect(error).toBeNull();
+  const personalId = fixtures?.find((row) => row.scope === 'personal')?.id;
+  const sharedId = fixtures?.find((row) => row.scope === 'workspace')?.id;
+  expect(personalId).toBeTruthy();
+  expect(sharedId).toBeTruthy();
+
+  const adminContext = await browser.newContext({ baseURL: 'http://localhost:3009' });
+  const memberContext = await browser.newContext({ baseURL: 'http://localhost:3009' });
+  try {
+    const adminPage = await adminContext.newPage();
+    await signIn(adminPage, request, adminEmail);
+    const memberPage = await memberContext.newPage();
+    await signIn(memberPage, request, memberEmail);
+    const adminApi = adminContext.request;
+    const memberApi = memberContext.request;
+
+    const adminListing = await adminApi.get(`/api/connections?workspace_id=${workspaceId}`);
+    expect((await adminListing.json()).connections).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: personalId })]));
+    const memberListing = await memberApi.get(`/api/connections?workspace_id=${workspaceId}`);
+    expect((await memberListing.json()).connections).toEqual(expect.arrayContaining([expect.objectContaining({ id: personalId })]));
+
+    for (const [path, method] of [
+      ['/api/connections', 'delete'], ['/api/connections/refresh', 'post'], ['/api/connections/sync', 'post']
+    ] as const) {
+      const body = { workspace_id: workspaceId, connection_id: personalId };
+      expect((await adminApi[method](path, { data: body })).status()).toBe(403);
+      expect((await memberApi[method](path, { data: { ...body, connection_id: sharedId } })).status()).toBe(403);
+    }
+    for (const path of ['/api/connections/refresh', '/api/connections/sync']) {
+      expect((await adminApi.post(path, {
+        data: '{invalid', headers: { 'content-type': 'application/json' }
+      })).status()).toBe(400);
+    }
+    const personalSync = await memberApi.post('/api/connections/sync', {
+      data: { workspace_id: workspaceId, connection_id: personalId }
+    });
+    expect(personalSync.status()).toBe(200);
+    const personalJobId = (await personalSync.json()).job_id;
+    expect((await adminApi.post('/api/connections/sync', {
+      data: { workspace_id: workspaceId, connection_id: sharedId }
+    })).status()).toBe(200);
+    const { data: queuedAudit } = await service.schema('app').from('audit_logs')
+      .select('actor_user_id').eq('resource_id', personalJobId).eq('action', 'connection_job.queued').single();
+    expect(queuedAudit?.actor_user_id).toBe('33333333-3333-3333-3333-333333333333');
+
+    const state = await new SignJWT({
+      provider: 'hubspot', userId: '33333333-3333-3333-3333-333333333333',
+      workspaceId, connectionScope: 'personal', redirectTo: '/connections'
+    }).setProtectedHeader({ alg: 'HS256', typ: 'JWT' }).setIssuedAt().setExpirationTime('10m')
+      .sign(new TextEncoder().encode(localEnvValue('MCP_JWT_SECRET')));
+    const callback = `/api/integrations/hubspot/callback?code=disposable&state=${encodeURIComponent(state)}`;
+    expect((await request.get(`http://localhost:3009${callback}`)).status()).toBe(401);
+    expect((await adminApi.get(callback)).status()).toBe(403);
+
+    expect((await memberApi.delete('/api/connections', {
+      data: { workspace_id: workspaceId, connection_id: personalId }
+    })).status()).toBe(200);
+    expect((await memberApi.post('/api/connections/sync', {
+      data: { workspace_id: workspaceId, connection_id: personalId }
+    })).status()).toBe(400);
+    expect((await memberApi.post('/api/connections/refresh', {
+      data: { workspace_id: workspaceId, connection_id: personalId }
+    })).status()).toBe(400);
+    expect((await adminApi.delete('/api/connections', {
+      data: { workspace_id: workspaceId, connection_id: sharedId }
+    })).status()).toBe(200);
+    const { data: revokedAudit } = await service.schema('app').from('audit_logs')
+      .select('actor_user_id').eq('resource_id', personalId).eq('action', 'connection.revoked').single();
+    expect(revokedAudit?.actor_user_id).toBe('33333333-3333-3333-3333-333333333333');
+  } finally {
+    await adminContext.close();
+    await memberContext.close();
+    await service.schema('app').from('connections').delete().in('id', [personalId, sharedId].filter(Boolean));
+  }
+});
+
 test('seeded owner signs in through Mailpit and reaches workspace operator pages', async ({ page, request }) => {
+  test.setTimeout(180_000);
   await signIn(page, request, ownerEmail);
   await expect(page.getByText('Local Beta Workspace').first()).toBeVisible();
 
@@ -101,7 +202,7 @@ test('seeded owner signs in through Mailpit and reaches workspace operator pages
     ['/audit', 'Audit and rate control'],
     ['/onboarding', 'Launch sequence']
   ]) {
-    await page.goto(`${path}?workspace=${workspaceId}`);
+    await page.goto(`${path}?workspace=${workspaceId}`, { waitUntil: 'domcontentloaded' });
     await expect(page.getByText(heading, { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Sign in required')).toHaveCount(0);
   }

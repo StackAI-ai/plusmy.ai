@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerSupabaseClient } from '@plusmy/supabase';
 import { getAuthorizedWorkspace, listUserWorkspaces, upsertInstalledConnection, verifyProviderState } from '@plusmy/core';
 import { getIntegration } from '@plusmy/integrations';
 import { safeAppRedirectUrl } from '../../../../_lib/safe-redirect';
@@ -63,6 +64,15 @@ export async function GET(
   const stateIsValid = decodedState != null && decodedState.provider === provider;
   if (stateIsValid === false) {
     return NextResponse.json({ error: 'invalid_state' }, { status: 400 });
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user == null) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (user.id !== decodedState.userId) {
+    return NextResponse.json({ error: 'invalid_state' }, { status: 403 });
   }
 
   const workspace = await getAuthorizedWorkspace(decodedState.userId, decodedState.workspaceId);
