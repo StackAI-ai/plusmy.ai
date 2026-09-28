@@ -39,7 +39,7 @@ Private-beta release criteria and per-provider evidence are tracked in [private-
 - For each staging or production Supabase project, deploy the Edge Function and configure `APP_URL` plus `WORKER_SHARED_SECRET` as Edge Function secrets. The web deployment must use the same high-entropy `WORKER_SHARED_SECRET`.
 - In that project's Supabase Vault, create `plusmy_worker_project_url` with its HTTPS Supabase project URL and `plusmy_worker_shared_secret` with that shared secret. Do not put either value in a migration, `cron.job.command`, an app table, or an issue comment. The cron dispatcher returns without making a request until both Vault entries exist.
 - Confirm a one-minute job entry in `cron.job`, successful executions in `cron.job_run_details`, HTTP responses in `net._http_response`, and a queued connection job moving to `succeeded`. A pg_cron success only proves dispatch SQL ran; inspect the HTTP response and job state before claiming worker acceptance.
-- Rotate the Edge, web, and Vault copies of the shared secret together. Pause the cron job while rotating if uninterrupted worker availability is required; restore it only after an authenticated invocation succeeds.
+- Rotate the Edge, web, and Vault copies of the shared secret together. To avoid failed dispatches during rotation, pause the cron job, accept a brief worker interruption, then resume it after an authenticated invocation succeeds.
 
 | Signal | Where it shows up | Typical cause | Operator action |
 | --- | --- | --- | --- |
