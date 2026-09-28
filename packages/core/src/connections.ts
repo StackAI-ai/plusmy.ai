@@ -16,6 +16,7 @@ import type {
 import { getIntegration } from '@plusmy/integrations';
 import { getServerEnv } from '@plusmy/config';
 import { createServiceRoleClient } from '@plusmy/supabase';
+import { sanitizeConnectionMetadata } from './connection-metadata';
 
 const REFRESH_SKEW_MS = 5 * 60 * 1000;
 
@@ -559,7 +560,11 @@ export async function upsertInstalledConnection(input: {
         reauth_required_reason: null,
         last_refreshed_at: new Date().toISOString(),
         last_validated_at: new Date().toISOString(),
-        metadata: input.metadata ?? {}
+        metadata: sanitizeConnectionMetadata(input.metadata, [
+          input.credentials.accessToken,
+          input.credentials.refreshToken,
+          input.credentials.apiKey
+        ])
       },
       { onConflict: 'connection_key' }
     )
@@ -860,7 +865,7 @@ async function runConnectionSyncJob(job: ConnectionJobRecord, connection: Connec
       })
     : null;
 
-  const metadata = {
+  const metadata = sanitizeConnectionMetadata({
     ...asJsonObject(connection.metadata),
     ...(result?.metadata ?? {}),
     sync: {
@@ -869,7 +874,7 @@ async function runConnectionSyncJob(job: ConnectionJobRecord, connection: Connec
       job_type: job.job_type,
       payload
     }
-  } satisfies Record<string, Json>;
+  }, [freshCredentials.accessToken, freshCredentials.refreshToken, freshCredentials.apiKey]);
 
   const update: Record<string, unknown> = {
     last_validated_at: new Date().toISOString(),

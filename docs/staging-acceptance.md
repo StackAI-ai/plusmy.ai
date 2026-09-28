@@ -20,6 +20,9 @@ Do not paste secrets, OAuth codes, or customer data into this file or Linear.
 - [ ] Verify auth redirect URLs, OAuth callback URLs, and each provider's
   requested scopes against the staging deployment. Keep production accounts
   and credentials out of staging.
+- [ ] Verify the provider metadata scrub migration is applied. Audit any
+  pre-migration installs for plaintext token-response fields and rotate
+  affected disposable grants; a cleaned row alone is not remediation.
 
 ## Scheduled-worker acceptance
 

@@ -53,7 +53,10 @@ async function syncConnection({ connection, credentials }: SyncJobHandlerInput) 
     displayName: workspaceName,
     externalAccountId: String(bot.workspace_id ?? owner.workspace_id ?? connection.external_account_id ?? 'notion-workspace'),
     externalAccountEmail: null,
-    metadata: data as Record<string, Json>
+    metadata: {
+      workspace_id: bot.workspace_id != null ? String(bot.workspace_id) : owner.workspace_id != null ? String(owner.workspace_id) : null,
+      workspace_name: workspaceName
+    }
   };
 }
 
@@ -226,7 +229,11 @@ export const notionIntegration: IntegrationDefinition = {
       externalAccountId: String(data.workspace_id ?? data.bot_id ?? 'notion-workspace'),
       displayName: String(data.workspace_name ?? 'Notion workspace'),
       externalAccountEmail: null,
-      metadata: data
+      metadata: {
+        workspace_id: data.workspace_id ?? null,
+        workspace_name: data.workspace_name ?? null,
+        bot_id: data.bot_id ?? null
+      }
     };
   },
   listTools(_connection: ConnectionRecord) {

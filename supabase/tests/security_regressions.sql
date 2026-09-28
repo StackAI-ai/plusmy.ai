@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(56);
+select plan(60);
 
 insert into auth.users (
   instance_id,
@@ -623,6 +623,42 @@ select is(
   (select count(*)::integer from app.claim_connection_job_alerts(null::uuid, 2)),
   0,
   'a null claim token cannot lease an alert'
+);
+
+reset role;
+
+select ok(
+  not has_function_privilege('authenticated', 'app.scrub_provider_metadata(jsonb)', 'EXECUTE')
+    and not has_function_privilege('anon', 'app.scrub_provider_metadata(jsonb)', 'EXECUTE'),
+  'browser roles cannot invoke the provider metadata scrub function'
+);
+
+select is(
+  app.scrub_provider_metadata('{"instanceUrl":"https://example.test","access_token":"secret","authed_user":{"accessToken":"nested-secret","id":"user-1"},"raw":{"refresh_token":"secret"},"items":[{"api_key":"secret","name":"safe"}]}'::jsonb),
+  '{"instanceUrl":"https://example.test","authed_user":{"id":"user-1"},"items":[{"name":"safe"}]}'::jsonb,
+  'metadata scrub removes nested credential keys and raw OAuth payloads'
+);
+
+set local role service_role;
+
+update app.connections
+set metadata = '{"instanceUrl":"https://example.test","refresh_token":"secret","owner":{"id":"safe","apiKey":"secret"}}'::jsonb
+where id = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+
+select is(
+  (select metadata from app.connections where id = 'cccccccc-cccc-cccc-cccc-cccccccccccc'),
+  '{"instanceUrl":"https://example.test","owner":{"id":"safe"}}'::jsonb,
+  'connection writes scrub credential metadata in the database'
+);
+
+update app.connection_sync_jobs
+set payload = '{"reason":"manual","authorization":"Bearer secret","nested":{"refresh_token":"secret"}}'::jsonb
+where id = 'abababab-abab-abab-abab-abababababab';
+
+select is(
+  (select payload from app.connection_sync_jobs where id = 'abababab-abab-abab-abab-abababababab'),
+  '{"reason":"manual","nested":{}}'::jsonb,
+  'connection job payload writes scrub nested credentials'
 );
 
 reset role;

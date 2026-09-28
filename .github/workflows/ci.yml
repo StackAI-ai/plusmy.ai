@@ -63,6 +63,9 @@ jobs:
       - name: Finance provider contracts
         run: pnpm finance:contracts
 
+      - name: Provider metadata credential-boundary contracts
+        run: pnpm exec tsx scripts/connection-metadata-contracts.ts
+
       - name: Doctor
         run: node scripts/doctor.mjs
 

@@ -46,6 +46,7 @@ Do not mark a row certified when an advertised operation is skipped, the provide
 - Staging uses separate Vercel/Supabase environments, real disposable provider tenants, a running scheduled connection worker, alerting, and a rehearsed rollback. No production provider writes are part of certification.
 - Four advertised MCP clients (OpenAI, Anthropic, Gemini, Cursor) pass connection and authorization checks against staging.
 - No open cross-workspace access, secret exposure, or data-loss defect remains. All 21 provider rows are certified before private-beta invitations.
+- Before invitations, review any pre-migration connection metadata in each deployed environment for token-response leakage; rotate affected provider grants and verify the metadata scrub migration and Vault-only replacement. Local contracts prove the new write boundary, not historical account remediation.
 
 The deployed evidence sequence and the current CLI access inventory are in
 [staging-acceptance.md](./staging-acceptance.md). Local worker responses and

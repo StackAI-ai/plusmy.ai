@@ -65,7 +65,11 @@ function resolveWorkspace(data: Record<string, unknown>): ResolvedProviderAccoun
     externalAccountId: String(team.id ?? data.bot_user_id ?? 'slack-workspace'),
     displayName: String(team.name ?? 'Slack workspace'),
     externalAccountEmail: null,
-    metadata: data
+    metadata: {
+      team_id: team.id ?? null,
+      team_name: team.name ?? null,
+      bot_user_id: data.bot_user_id ?? null
+    }
   };
 }
 

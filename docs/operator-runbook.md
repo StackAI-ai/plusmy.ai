@@ -38,6 +38,11 @@ Private-beta release criteria and per-provider evidence are tracked in [private-
 
 ## Provider and worker failure states
 
+### Provider credential metadata containment
+- OAuth provider tokens and API keys belong in Vault only. The connection write path strips sensitive metadata keys and exact credential values; database triggers also scrub `app.connections.metadata` and `app.connection_sync_jobs.payload`, and the forward migration cleans existing rows. Slack, Notion, and Zendesk account resolvers now return selected account identifiers instead of OAuth token responses.
+- Before private-beta invitations, inspect existing environments for any connection metadata that contained plaintext credential fields before the scrub migration. If found, treat the associated grants as exposed: rotate/revoke them with the provider, reconnect the disposable account, and verify the new credential is Vault-only. Removing a plaintext copy does not invalidate a previously readable token.
+- Do not paste the discovered values into logs, Linear, or incident notes. Record only affected connection IDs, provider, remediation state, and the evidence link in a restricted incident record.
+
 ### Scheduled connection worker
 - The `plusmy-connection-worker` pg_cron job dispatches once per minute through pg_net to the `token-refresh-worker` Edge Function. The Edge Function requires `x-plusmy-worker-secret` even though its platform JWT check is disabled for cron calls; it forwards authorized work to the Node connection-job route.
 - For each staging or production Supabase project, deploy the Edge Function and configure `APP_URL` plus `WORKER_SHARED_SECRET` as Edge Function secrets. The web deployment must use the same high-entropy `WORKER_SHARED_SECRET`.

@@ -138,9 +138,9 @@ async function resolveAccount(tokenSet: ProviderTokenSet): Promise<ResolvedProvi
     displayName: String((user as Record<string, unknown>).name ?? email ?? 'Zendesk user'),
     externalAccountEmail: email != null ? String(email) : null,
     metadata: {
-      ...(raw as Record<string, unknown>),
-      ...(data as Record<string, unknown>),
-      instanceUrl
+      instanceUrl,
+      user_id: user.id ?? null,
+      user_name: user.name ?? null
     }
   };
 }
