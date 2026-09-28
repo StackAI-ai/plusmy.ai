@@ -26,7 +26,9 @@ Private-beta release criteria and per-provider evidence are tracked in [private-
 - With a disposable local env file, strict MCP compatibility and stress checks pass against the seeded database. The local file was removed and the original ignored `.env.local` restored after testing.
 - Mocked finance contracts and all nine typecheck targets pass. Real provider account certification and authenticated browser journeys remain pending.
 - Added Chromium browser coverage for signed-out isolation and a seeded owner journey through a real Mailpit magic link, Supabase callback, workspace API, and six operator pages. Both E2E tests pass locally. The run exposed and fixed browser public-env inlining and nullable fields in the local Auth seed; CI now runs this browser journey and retains traces on failure.
-- This is not admin/member role coverage, a provider-account certification, or evidence of connection/MCP mutation paths. Those release gates remain open.
+- That initial journey was not admin/member role coverage, a provider-account certification, or evidence of connection/MCP mutation paths.
+- The next browser slice added seeded admin/member/outsider identities and a second isolated workspace. The four-test suite now verifies owner role changes, admin invite create/revoke with owner-protection denials, member mutation/audit/export denials, and cross-workspace API isolation. It also fixed `listWorkspaceMembers`: the prior PostgREST embed used a nonexistent direct profile relationship and silently returned an empty list on error. Member and profile reads are now explicit, with errors propagated.
+- Admin/member role coverage is still partial; accepting an invite, provider connection lifecycle, context binding mutations, MCP consent/tool execution, and audit retention remain unverified browser journeys.
 
 ## Provider and worker failure states
 

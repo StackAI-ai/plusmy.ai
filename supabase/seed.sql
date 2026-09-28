@@ -51,23 +51,67 @@ values
     '{"full_name":"Local Admin"}'::jsonb,
     now(),
     now()
+  ),
+  (
+    '00000000-0000-0000-0000-000000000000',
+    '33333333-3333-3333-3333-333333333333',
+    'authenticated',
+    'authenticated',
+    'member@plusmy.local',
+    '',
+    now(),
+    '',
+    '',
+    '',
+    '',
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{"full_name":"Local Member"}'::jsonb,
+    now(),
+    now()
+  ),
+  (
+    '00000000-0000-0000-0000-000000000000',
+    '44444444-4444-4444-4444-444444444444',
+    'authenticated',
+    'authenticated',
+    'outsider@plusmy.local',
+    '',
+    now(),
+    '',
+    '',
+    '',
+    '',
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{"full_name":"Local Outsider"}'::jsonb,
+    now(),
+    now()
   )
 on conflict (id) do nothing;
 
 insert into app.workspaces (id, name, slug, plan, created_by)
-values (
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-  'Local Beta Workspace',
-  'local-beta',
-  'starter',
-  '11111111-1111-1111-1111-111111111111'
-)
+values
+  (
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    'Local Beta Workspace',
+    'local-beta',
+    'starter',
+    '11111111-1111-1111-1111-111111111111'
+  ),
+  (
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    'Isolated Beta Workspace',
+    'isolated-beta',
+    'starter',
+    '44444444-4444-4444-4444-444444444444'
+  )
 on conflict (id) do nothing;
 
 insert into app.workspace_members (workspace_id, user_id, role)
 values
   ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '11111111-1111-1111-1111-111111111111', 'owner'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '22222222-2222-2222-2222-222222222222', 'admin')
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '22222222-2222-2222-2222-222222222222', 'admin'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '33333333-3333-3333-3333-333333333333', 'member'),
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '44444444-4444-4444-4444-444444444444', 'owner')
 on conflict (workspace_id, user_id) do nothing;
 
 commit;

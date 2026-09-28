@@ -8,16 +8,26 @@ function hashToken(value: string) {
 
 export async function listWorkspaceMembers(workspaceId: string) {
   const supabase = createServiceRoleClient();
-  const { data } = await supabase
+  const { data: members, error: membersError } = await supabase
     .schema('app')
     .from('workspace_members')
-    .select('id,role,user_id,created_at,profile:profiles(id,display_name,avatar_url)')
+    .select('id,role,user_id,created_at')
     .eq('workspace_id', workspaceId)
     .order('created_at', { ascending: true });
+  if (membersError) throw membersError;
+  if (!members?.length) return [];
 
-  return (data ?? []).map((entry) => ({
+  const { data: profiles, error: profilesError } = await supabase
+    .schema('app')
+    .from('profiles')
+    .select('id,display_name,avatar_url')
+    .in('id', members.map((member) => member.user_id));
+  if (profilesError) throw profilesError;
+
+  const profilesById = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
+  return members.map((entry) => ({
     ...entry,
-    profile: Array.isArray(entry.profile) ? entry.profile[0] ?? null : entry.profile
+    profile: profilesById.get(entry.user_id) ?? null
   }));
 }
 
