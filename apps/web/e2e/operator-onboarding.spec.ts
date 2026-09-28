@@ -165,3 +165,57 @@ test('workspace member cannot mutate membership or inspect admin-only data', asy
   expect((await api.get(`/api/workspace-members?workspace_id=${isolatedWorkspaceId}`)).status()).toBe(404);
   expect((await api.get(`/api/connections?workspace_id=${isolatedWorkspaceId}`)).status()).toBe(404);
 });
+
+test('invited user joins through the browser and the link cannot be replayed', async ({ page, request, browser }) => {
+  await signIn(page, request, ownerEmail);
+  const ownerApi = page.context().request;
+  const create = await ownerApi.post('/api/workspace-invites', {
+    data: { workspace_id: workspaceId, email: 'outsider@plusmy.local', role: 'member' }
+  });
+  expect(create.status()).toBe(201);
+  const { invite } = await create.json();
+  expect(invite.token_hash).toBeUndefined();
+
+  const invitedContext = await browser.newContext({ baseURL: 'http://localhost:3009' });
+  try {
+    const wrongUser = await ownerApi.post('/api/workspace-invites/accept', {
+      data: { token: invite.invite_token }
+    });
+    expect(wrongUser.status()).toBe(403);
+
+    const invitedPage = await invitedContext.newPage();
+    await signIn(invitedPage, request, 'outsider@plusmy.local');
+    await invitedPage.goto(`/join?token=${invite.invite_token}`);
+    for (const link of await invitedPage.getByRole('navigation').getByRole('link').all()) {
+      expect(await link.getAttribute('href')).not.toContain('token=');
+    }
+    await invitedPage.getByRole('button', { name: 'Accept invite' }).click();
+    await expect(invitedPage).toHaveURL(/\/workspaces/);
+
+    const invitedApi = invitedContext.request;
+    const workspaces = await invitedApi.get('/api/workspaces');
+    expect((await workspaces.json()).workspaces).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: workspaceId, role: 'member' }),
+      expect.objectContaining({ id: isolatedWorkspaceId, role: 'owner' })
+    ]));
+    const replay = await invitedApi.post('/api/workspace-invites/accept', {
+      data: { token: invite.invite_token }
+    });
+    expect(replay.status()).toBe(409);
+  } finally {
+    await invitedContext.close();
+    const membersResponse = await ownerApi.get(`/api/workspace-members?workspace_id=${workspaceId}`);
+    const { members } = await membersResponse.json();
+    const outsider = members.find((entry: { user_id: string }) => entry.user_id === '44444444-4444-4444-4444-444444444444');
+    if (outsider) {
+      const remove = await ownerApi.delete('/api/workspace-members', {
+        data: { workspace_id: workspaceId, member_id: outsider.id }
+      });
+      expect(remove.status()).toBe(200);
+    }
+    const revoke = await ownerApi.delete('/api/workspace-invites', {
+      data: { workspace_id: workspaceId, invite_id: invite.id }
+    });
+    expect(revoke.status()).toBe(200);
+  }
+});

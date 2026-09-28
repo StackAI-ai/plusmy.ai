@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(32);
+select plan(37);
 
 insert into auth.users (
   instance_id,
@@ -185,6 +185,16 @@ values (
 )
 on conflict (token_hash) do nothing;
 
+insert into app.workspace_invites (workspace_id, email, role, invited_by, token_hash)
+values (
+  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+  'member-b@example.com',
+  'member',
+  '11111111-1111-1111-1111-111111111111',
+  'security-invite-hash'
+)
+on conflict (token_hash) do nothing;
+
 select ok(
   has_function_privilege('service_role', 'app.consume_oauth_authorization_code(text, text, text)', 'EXECUTE'),
   'service_role can atomically consume authorization codes'
@@ -205,7 +215,45 @@ select ok(
   'authenticated callers cannot revoke OAuth client approvals directly'
 );
 
+select ok(
+  has_function_privilege('service_role', 'app.accept_workspace_invite(text, uuid)', 'EXECUTE'),
+  'service_role can atomically accept workspace invites'
+);
+
+select ok(
+  not has_function_privilege('authenticated', 'app.accept_workspace_invite(text, uuid)', 'EXECUTE'),
+  'authenticated callers cannot directly accept workspace invites'
+);
+
 set local role service_role;
+
+select is(
+  (select count(*)::integer from app.accept_workspace_invite('security-invite-hash', '55555555-5555-5555-5555-555555555555')),
+  1,
+  'a service-only invite acceptance returns one row'
+);
+
+select ok(
+  exists (
+    select 1 from app.workspace_members
+    where workspace_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+      and user_id = '55555555-5555-5555-5555-555555555555'
+      and role = 'member'
+  ),
+  'invite acceptance creates the authorized membership'
+);
+
+select ok(
+  exists (
+    select 1 from app.workspace_invites
+    where token_hash = 'security-invite-hash' and accepted_at is not null
+  ),
+  'invite acceptance consumes the token in the same transaction'
+);
+
+delete from app.workspace_members
+where workspace_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+  and user_id = '55555555-5555-5555-5555-555555555555';
 
 select is(
   (

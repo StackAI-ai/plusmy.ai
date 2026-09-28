@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
 
 function formatInviteError(message: string) {
@@ -25,7 +24,6 @@ function formatInviteError(message: string) {
 }
 
 export function AcceptInviteForm({ token }: { token: string }) {
-  const router = useRouter();
   const [status, setStatus] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -48,7 +46,7 @@ export function AcceptInviteForm({ token }: { token: string }) {
 
     setStatus('Invite accepted. Redirecting to workspaces…');
     setSubmitting(false);
-    router.push('/workspaces');
+    window.location.replace('/workspaces');
   }
 
   return (

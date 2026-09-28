@@ -6,6 +6,14 @@ function hashToken(value: string) {
   return createHash('sha256').update(value).digest('hex');
 }
 
+type AcceptedWorkspaceInvite = {
+  id: string;
+  workspace_id: string;
+  email: string;
+  role: 'owner' | 'admin' | 'member';
+  accepted_at: string;
+};
+
 export async function listWorkspaceMembers(workspaceId: string) {
   const supabase = createServiceRoleClient();
   const { data: members, error: membersError } = await supabase
@@ -79,66 +87,36 @@ export async function createWorkspaceInvite(input: {
   });
 
   return {
-    ...data,
+    id: data.id,
+    workspace_id: data.workspace_id,
+    email: data.email,
+    role: data.role,
+    expires_at: data.expires_at,
     invite_token: rawToken
   };
 }
 
-export async function acceptWorkspaceInvite(input: { token: string; userId: string; email?: string | null }) {
+export async function acceptWorkspaceInvite(input: { token: string; userId: string }) {
   const supabase = createServiceRoleClient();
   const tokenHash = hashToken(input.token);
-  const { data: invite } = await supabase
+  const { data: invite, error } = await supabase
     .schema('app')
-    .from('workspace_invites')
-    .select('*')
-    .eq('token_hash', tokenHash)
-    .maybeSingle();
-
-  if (!invite) throw new Error('Invite not found.');
-  if (invite.accepted_at) throw new Error('Invite already accepted.');
-  if (new Date(invite.expires_at).getTime() < Date.now()) throw new Error('Invite expired.');
-  if (input.email && invite.email.toLowerCase() !== input.email.toLowerCase()) {
-    throw new Error('Invite email does not match current user.');
-  }
-
-  const { data: existingMember } = await supabase
-    .schema('app')
-    .from('workspace_members')
-    .select('id,role')
-    .eq('workspace_id', invite.workspace_id)
-    .eq('user_id', input.userId)
-    .maybeSingle();
-
-  if (existingMember) {
-    throw new Error('You are already a member of this workspace.');
-  }
-
-  await supabase.schema('app').from('workspace_members').upsert(
-    {
-      workspace_id: invite.workspace_id,
-      user_id: input.userId,
-      role: invite.role
-    },
-    { onConflict: 'workspace_id,user_id' }
-  );
-
-  await supabase
-    .schema('app')
-    .from('workspace_invites')
-    .update({ accepted_at: new Date().toISOString() })
-    .eq('id', invite.id);
+    .rpc('accept_workspace_invite', { p_token_hash: tokenHash, p_user_id: input.userId })
+    .single();
+  if (error || !invite) throw error ?? new Error('Invite not found.');
+  const acceptedInvite = invite as AcceptedWorkspaceInvite;
 
   await logAuditEvent({
-    workspaceId: invite.workspace_id,
+    workspaceId: acceptedInvite.workspace_id,
     actorType: 'user',
     actorUserId: input.userId,
     action: 'workspace.invite_accepted',
     resourceType: 'workspace_invite',
-    resourceId: invite.id,
-    metadata: { email: invite.email, role: invite.role }
+    resourceId: acceptedInvite.id,
+    metadata: { email: acceptedInvite.email, role: acceptedInvite.role }
   });
 
-  return invite;
+  return acceptedInvite;
 }
 
 export async function removeWorkspaceMember(input: {

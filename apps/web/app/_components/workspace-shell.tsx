@@ -24,16 +24,8 @@ type WorkspaceOption = {
   slug: string;
 };
 
-function withWorkspace(href: string, workspaceId: string | null, currentSearch: URLSearchParams) {
-  const params = new URLSearchParams(currentSearch.toString());
-  if (workspaceId) {
-    params.set('workspace', workspaceId);
-  } else {
-    params.delete('workspace');
-  }
-
-  const query = params.toString();
-  return query ? `${href}?${query}` : href;
+function withWorkspace(href: string, workspaceId: string | null) {
+  return workspaceId ? `${href}?workspace=${encodeURIComponent(workspaceId)}` : href;
 }
 
 export function WorkspaceShell({
@@ -50,15 +42,7 @@ export function WorkspaceShell({
   const activeWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? workspaces[0] ?? null;
 
   function handleWorkspaceChange(nextWorkspaceId: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    if (nextWorkspaceId) {
-      params.set('workspace', nextWorkspaceId);
-    } else {
-      params.delete('workspace');
-    }
-
-    const query = params.toString();
-    router.push(query ? `${pathname}?${query}` : pathname);
+    router.push(withWorkspace(pathname, nextWorkspaceId));
   }
 
   return (
@@ -106,7 +90,7 @@ export function WorkspaceShell({
           return (
             <Link
               key={item.href}
-              href={withWorkspace(item.href, activeWorkspaceId, new URLSearchParams(searchParams.toString()))}
+              href={withWorkspace(item.href, activeWorkspaceId)}
               className={cn(
                 buttonVariants({ variant: active ? 'default' : 'ghost', size: 'sm' }),
                 'rounded-full px-4',
