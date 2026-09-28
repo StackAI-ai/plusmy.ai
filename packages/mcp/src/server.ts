@@ -15,8 +15,10 @@ import {
   readWorkspaceResourceWithContext,
   recordToolInvocation,
   resolveContextInjection,
+  resolveConnectionCredentials,
+  resolveProviderConnection,
   resolveProviderRuntimeContext,
-  resolveProviderExecutionContext,
+  refreshConnectionIfNeeded,
   type McpAuthContext
 } from '@plusmy/core';
 
@@ -125,7 +127,7 @@ export async function resolveAvailableTools(authContext: McpAuthContext) {
   const tools: McpToolDefinition[] = [];
   for (const integration of getIntegrations()) {
     try {
-      const { connection } = await resolveProviderExecutionContext(authContext.workspaceId, authContext.userId, integration.id);
+      const connection = await resolveProviderConnection(authContext.workspaceId, authContext.userId, integration.id);
       const providerTools = (await integration.listTools(connection)).filter((tool) =>
         hasRequiredToolScopes(tool, connection.granted_scopes)
       );
@@ -190,7 +192,7 @@ export async function executeToolCall(authContext: McpAuthContext, toolName: str
   }
 
   const startedAt = Date.now();
-  const { connection, credentials } = await resolveProviderExecutionContext(authContext.workspaceId, authContext.userId, provider);
+  const connection = await resolveProviderConnection(authContext.workspaceId, authContext.userId, provider);
   const availableTools = await integration.listTools(connection);
   const toolDefinition = availableTools.find((tool) => tool.name === toolName);
   if (!toolDefinition) {
@@ -216,6 +218,8 @@ export async function executeToolCall(authContext: McpAuthContext, toolName: str
     });
     throw new Error(`Tool ${toolName} is unavailable until ${provider} is reauthorized with: ${missingScopes.join(', ')}.`);
   }
+
+  const credentials = await refreshConnectionIfNeeded(connection, await resolveConnectionCredentials(connection.id));
 
   const runtimeContext = await resolveProviderRuntimeContext(authContext.workspaceId, authContext.userId, {
     provider,

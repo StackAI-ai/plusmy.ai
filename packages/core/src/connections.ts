@@ -951,11 +951,16 @@ export async function processDueConnectionJobs(input?: { limit?: number; workerI
   };
 }
 
-export async function resolveProviderExecutionContext(workspaceId: string, userId: string | null | undefined, provider: ProviderId) {
+export async function resolveProviderConnection(workspaceId: string, userId: string | null | undefined, provider: ProviderId) {
   const connection = await pickConnectionForProvider(workspaceId, userId, provider);
   if (!connection) {
     throw new Error(`No active ${provider} connection available for this workspace.`);
   }
+  return connection;
+}
+
+export async function resolveProviderExecutionContext(workspaceId: string, userId: string | null | undefined, provider: ProviderId) {
+  const connection = await resolveProviderConnection(workspaceId, userId, provider);
   const credentials = await resolveConnectionCredentials(connection.id);
   const freshCredentials = await refreshConnectionIfNeeded(connection, credentials);
   return { connection, credentials: freshCredentials };

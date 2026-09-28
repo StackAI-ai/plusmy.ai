@@ -73,6 +73,7 @@ test('MCP consent, PKCE exchange, scope narrowing, and revocation work end to en
   const clientId = (await registration.json()).client_id as string;
   let promptId: string | null = null;
   let approvalId: string | null = null;
+  let connectionId: string | null = null;
   try {
     await signIn(page, request);
     const ownerApi = page.context().request;
@@ -115,6 +116,43 @@ test('MCP consent, PKCE exchange, scope narrowing, and revocation work end to en
     expect(fullToken.scope).toBe('mcp:tools mcp:resources');
     expect((await mcpCall(request, fullToken.access_token, 'initialize', 1)).body.result.serverInfo.name).toBe('plusmy.ai');
     expect((await mcpCall(request, fullToken.access_token, 'tools/list', 2)).body.result.tools).toEqual([]);
+
+    const { data: connection, error: connectionError } = await service.schema('app').from('connections').insert({
+      connection_key: `e2e-mcp-scope-${Date.now()}-${randomBytes(4).toString('hex')}`,
+      workspace_id: workspaceId,
+      provider: 'hubspot',
+      scope: 'workspace',
+      status: 'active',
+      display_name: 'Disposable MCP scope fixture',
+      granted_scopes: []
+    }).select('id').single();
+    expect(connectionError).toBeNull();
+    connectionId = connection!.id;
+
+    expect((await mcpCall(request, fullToken.access_token, 'tools/list', 10)).body.result.tools).toEqual([]);
+    const blocked = await mcpCall(request, fullToken.access_token, 'tools/call', 11, {
+      name: 'hubspot.search_contacts', arguments: { query: 'disposable' }
+    });
+    expect(blocked.body.error.message).toContain('crm.objects.contacts.read');
+    const { data: scopeAudit } = await service.schema('app').from('audit_logs').select('metadata')
+      .eq('workspace_id', workspaceId).eq('actor_client_id', clientId)
+      .eq('resource_id', 'hubspot.search_contacts').eq('action', 'mcp.tool.scope_drift_blocked')
+      .order('created_at', { ascending: false }).limit(1).single();
+    expect(scopeAudit?.metadata).toMatchObject({ connection_id: connectionId, missing_scopes: ['crm.objects.contacts.read'] });
+
+    expect((await service.schema('app').from('connections').update({
+      granted_scopes: ['crm.objects.contacts.read']
+    }).eq('id', connectionId)).error).toBeNull();
+    const readTools = (await mcpCall(request, fullToken.access_token, 'tools/list', 12)).body.result.tools as { name: string }[];
+    expect(readTools.map((tool) => tool.name)).toContain('hubspot.search_contacts');
+    expect(readTools.map((tool) => tool.name)).not.toContain('hubspot.update_contact');
+
+    expect((await service.schema('app').from('connections').update({ status: 'revoked' }).eq('id', connectionId)).error).toBeNull();
+    expect((await mcpCall(request, fullToken.access_token, 'tools/list', 13)).body.result.tools).toEqual([]);
+    const revokedTool = await mcpCall(request, fullToken.access_token, 'tools/call', 14, {
+      name: 'hubspot.search_contacts', arguments: { query: 'disposable' }
+    });
+    expect(revokedTool.body.error.message).toContain('No active hubspot connection');
 
     const prompt = await ownerApi.post('/api/prompts', { data: {
       workspace_id: workspaceId, scope: 'workspace', name: `MCP E2E ${Date.now()}`,
@@ -177,6 +215,10 @@ test('MCP consent, PKCE exchange, scope narrowing, and revocation work end to en
     expect(audit?.filter((entry) => entry.action === 'oauth_client.approved')).toHaveLength(2);
     expect(audit?.filter((entry) => entry.action === 'oauth_client.approval_revoked')).toHaveLength(1);
   } finally {
+    if (connectionId) {
+      await service.schema('app').from('audit_logs').delete().eq('resource_id', 'hubspot.search_contacts').eq('actor_client_id', clientId);
+      await service.schema('app').from('connections').delete().eq('id', connectionId);
+    }
     if (promptId) {
       await service.schema('app').from('context_assets').delete().eq('source_uri', `plusmy://prompt/${promptId}`);
       await service.schema('app').from('prompt_templates').delete().eq('id', promptId);
