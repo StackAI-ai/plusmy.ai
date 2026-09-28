@@ -4,12 +4,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { resolveMcpSmokeToken } from './mcp-smoke-token.mjs';
 
 const baseUrl = new URL(process.env.MCP_COMPAT_BASE_URL ?? process.env.MCP_STRESS_BASE_URL ?? 'http://localhost:3009');
-const { token, source } = await resolveMcpSmokeToken(
-  process.env.MCP_STRESS_TOKEN ?? process.env.MCP_COMPAT_TOKEN ?? '',
-  { allowMissing: true }
-);
+const { token, source } = await resolveMcpSmokeToken(process.env.MCP_COMPAT_TOKEN ?? process.env.MCP_STRESS_TOKEN ?? '');
 const protocolVersion = '2025-03-26';
-const authorizeClientId = process.env.MCP_COMPAT_AUTHORIZE_CLIENT_ID ?? 'plusmy-smoke';
 const authorizeRedirectUri = process.env.MCP_COMPAT_AUTHORIZE_REDIRECT_URI ?? `${baseUrl}mcp-compat/callback`;
 
 function assert(condition, message) {
@@ -77,6 +73,22 @@ async function run() {
   );
   assert(protectedResource.body?.resource ?? protectedResource.body?.authorization_servers, 'Protected-resource discovery is malformed');
 
+  const registerResponse = await fetchJson('/register', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({
+      client_name: 'plusmy Compatibility Test',
+      redirect_uris: [authorizeRedirectUri],
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      token_endpoint_auth_method: 'none'
+    })
+  });
+  assert(registerResponse.response.status === 201, `Client registration failed: HTTP ${registerResponse.response.status}`);
+  const authorizeClientId = registerResponse.body?.client_id;
+  assert(typeof authorizeClientId === 'string', 'Register response missing client_id');
+  assert(Array.isArray(registerResponse.body?.redirect_uris), 'Register response missing redirect_uris');
+
   const verifier = randomBytes(64).toString('base64url');
   const challenge = createCodeChallenge(verifier);
   const authorizeUrl = new URL('/authorize', baseUrl);
@@ -89,31 +101,7 @@ async function run() {
   authorizeUrl.searchParams.set('state', randomBytes(8).toString('hex'));
 
   const authorizeResponse = await fetch(authorizeUrl, { redirect: 'manual' });
-  assert(
-    [302, 303, 400, 401, 403, 500].includes(authorizeResponse.status),
-    `Authorize endpoint returned unexpected status ${authorizeResponse.status}`
-  );
-
-  const registerResponse = await fetchJson('/register', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify({
-      client_name: 'plusmy Compatibility Test',
-      redirect_uris: [authorizeRedirectUri],
-      grant_types: ['authorization_code', 'refresh_token'],
-      response_types: ['code'],
-      token_endpoint_auth_method: 'none'
-    })
-  });
-  if (registerResponse.response.status === 201) {
-    assert(typeof registerResponse.body?.client_id === 'string', 'Register response missing client_id');
-    assert(Array.isArray(registerResponse.body?.redirect_uris), 'Register response missing redirect_uris');
-  } else {
-    assert(
-      [401, 403, 500].includes(registerResponse.response.status),
-      `Register endpoint returned unexpected status ${registerResponse.response.status}`
-    );
-  }
+  assert(authorizeResponse.status === 401, `Expected unauthenticated consent challenge, got HTTP ${authorizeResponse.status}`);
 
   const tokenResponse = await fetchJson('/token', {
     method: 'POST',
@@ -126,15 +114,7 @@ async function run() {
       client_id: authorizeClientId
     })
   });
-  assert(
-    tokenResponse.response.status >= 400,
-    `Token exchange is unexpectedly accepting a placeholder auth code with status ${tokenResponse.response.status}`
-  );
-
-  if (!token) {
-    console.log('Skipping /mcp transport checks: MCP_STRESS_TOKEN/MCP_COMPAT_TOKEN/MCP_JWT_SECRET not set.');
-    return;
-  }
+  assert(tokenResponse.response.status === 400, `Expected invalid authorization code rejection, got HTTP ${tokenResponse.response.status}`);
   if (source === 'fixture') {
     console.log('Using MCP smoke-test fixture token.');
   }

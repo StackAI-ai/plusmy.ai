@@ -12,6 +12,8 @@
 ## MCP smoke checks
 - `npm run mcp:compat` and `npm run mcp:stress` will auto-mint a short-lived MCP bearer token when `MCP_JWT_SECRET` is available (or present in `apps/web/.env.local`).
 - Set `MCP_STRESS_TOKEN` or `MCP_COMPAT_TOKEN` to override the fixture token for targeted debugging.
+- The compatibility check now requires a bearer token, successful dynamic client registration, an unauthenticated consent challenge for that registered client, invalid-code rejection, and authenticated MCP list responses. A skipped auth step is a failed check.
+- CI starts local Supabase, writes a throwaway `apps/web/.env.local` from its local status, and runs pgTAP, finance contracts, and MCP smoke checks. Provider contracts are mocked; they do not certify a real provider account.
 
 ## Provider and worker failure states
 

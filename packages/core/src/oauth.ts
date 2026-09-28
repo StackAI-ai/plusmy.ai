@@ -127,7 +127,7 @@ export async function registerDynamicClient(
   const rawSecret = authMethod === 'none' ? null : nanoid(48);
   const clientSecretHash = rawSecret ? hashOpaqueToken(rawSecret) : null;
 
-  await supabase.schema('app').from('oauth_clients').insert({
+  const { error } = await supabase.schema('app').from('oauth_clients').insert({
     client_id: clientId,
     client_name: input.client_name,
     client_type: authMethod === 'none' ? 'public' : 'confidential',
@@ -140,6 +140,7 @@ export async function registerDynamicClient(
     created_by: createdBy,
     metadata: input
   });
+  if (error) throw error;
 
   return {
     client_id: clientId,

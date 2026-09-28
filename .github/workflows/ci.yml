@@ -28,8 +28,29 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Start local Supabase
+        run: node_modules/supabase/bin/supabase start
+
+      - name: Configure local web environment
+        run: |
+          eval "$(node_modules/supabase/bin/supabase status -o env)"
+          {
+            echo "APP_URL=http://localhost:3009"
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "MCP_JWT_SECRET=$(openssl rand -hex 32)"
+            echo "WORKER_SHARED_SECRET=$(openssl rand -hex 32)"
+          } > apps/web/.env.local
+
       - name: Typecheck
         run: pnpm typecheck
+
+      - name: Auth redirect regression tests
+        run: pnpm exec tsx --test apps/web/tests/safe-redirect.test.ts
+
+      - name: Finance provider contracts
+        run: pnpm finance:contracts
 
       - name: Doctor
         run: node scripts/doctor.mjs
@@ -69,3 +90,7 @@ jobs:
           if [ -f /tmp/web-dev.pid ]; then
             kill "$(cat /tmp/web-dev.pid)" || true
           fi
+
+      - name: Stop local Supabase
+        if: always()
+        run: node_modules/supabase/bin/supabase stop
