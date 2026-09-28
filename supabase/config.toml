@@ -13,3 +13,7 @@ major_version = 17
 [studio]
 enabled = true
 port = 54323
+
+[auth]
+site_url = "http://localhost:3009"
+additional_redirect_urls = ["http://localhost:3009/**", "http://127.0.0.1:3009/**"]

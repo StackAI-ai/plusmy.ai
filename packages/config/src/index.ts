@@ -68,7 +68,11 @@ export function getServerEnv() {
 
 export function getPublicEnv() {
   if (!publicEnvCache) {
-    publicEnvCache = publicEnvSchema.parse(process.env);
+    publicEnvCache = publicEnvSchema.parse({
+      NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      APP_URL: process.env.APP_URL
+    });
   }
   return publicEnvCache;
 }

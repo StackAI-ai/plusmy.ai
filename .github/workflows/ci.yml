@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install Chromium headless shell
+        run: pnpm --filter @plusmy/web exec playwright install --with-deps --only-shell chromium
+
       - name: Start local Supabase
         run: node_modules/supabase/bin/supabase start -x realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,postgres-meta
 
@@ -74,6 +77,17 @@ jobs:
         env:
           MCP_STRESS_BASE_URL: http://127.0.0.1:3009
         run: pnpm mcp:stress
+
+      - name: Authenticated operator browser journey
+        run: pnpm --filter @plusmy/web e2e
+
+      - name: Save browser failure traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-traces
+          path: apps/web/test-results
+          if-no-files-found: ignore
 
       - name: Stop web app
         if: always()

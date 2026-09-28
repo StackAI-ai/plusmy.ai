@@ -12,7 +12,7 @@ function parseStatus(raw) {
     if (!match) continue;
     values[match[1]] = match[2].startsWith('"') ? JSON.parse(match[2]) : match[2];
   }
-  for (const name of ['API_URL', 'JWT_SECRET']) {
+  for (const name of ['API_URL', 'JWT_SECRET', 'MAILPIT_URL']) {
     if (!values[name]) throw new Error(`Local Supabase status is missing ${name}.`);
   }
   return values;
@@ -45,6 +45,7 @@ if (process.argv[2] === '--write-env') {
   ].map((name) => `${name}=${env[name]}`);
   contents.push(`MCP_JWT_SECRET=${randomBytes(32).toString('hex')}`);
   contents.push(`WORKER_SHARED_SECRET=${randomBytes(32).toString('hex')}`);
+  contents.push(`E2E_MAILPIT_URL=${status.MAILPIT_URL}`);
   writeFileSync(path, `${contents.join('\n')}\n`, { mode: 0o600 });
 } else if (process.argv[2] === '--' && process.argv.length > 3) {
   const child = spawn(process.argv[3], process.argv.slice(4), { env, stdio: 'inherit' });

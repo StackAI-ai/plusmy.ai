@@ -18,12 +18,15 @@ Private-beta release criteria and per-provider evidence are tracked in [private-
 - The compatibility check now requires a bearer token, successful dynamic client registration, an unauthenticated consent challenge for that registered client, invalid-code rejection, and authenticated MCP list responses. A skipped auth step is a failed check.
 - CI starts local Supabase, writes a throwaway `apps/web/.env.local` from its local status, and runs pgTAP, finance contracts, and MCP smoke checks. Provider contracts are mocked; they do not certify a real provider account.
 - For local checks without changing your `.env.local`, run `node scripts/local-supabase-env.mjs -- npm run dev` after Supabase starts. The launcher supplies short-lived local role JWTs; `--write-env` is reserved for disposable CI environments because it replaces the app env file.
+- The browser E2E suite runs with `pnpm --filter @plusmy/web e2e` after local Supabase and the web app are up on port 3009. It requires the seeded owner, Supabase Mailpit, and `E2E_MAILPIT_URL` in a disposable `apps/web/.env.local`; `node scripts/local-supabase-env.mjs --write-env` generates that file for CI. Back up and restore any existing ignored env file when running locally.
 
 ## 2026-09-28 validation checkpoint
 - Corrected the initial bootstrap to install `supabase_vault` and create the `pgmq` schema before installing that extension; a fresh local PG17 stack applied all 16 migrations and the seed.
 - Added a forward security migration for non-recursive workspace membership checks, service-only SQL functions, and the stale job-claim RPC overload. The 32 pgTAP security assertions pass.
 - With a disposable local env file, strict MCP compatibility and stress checks pass against the seeded database. The local file was removed and the original ignored `.env.local` restored after testing.
 - Mocked finance contracts and all nine typecheck targets pass. Real provider account certification and authenticated browser journeys remain pending.
+- Added Chromium browser coverage for signed-out isolation and a seeded owner journey through a real Mailpit magic link, Supabase callback, workspace API, and six operator pages. Both E2E tests pass locally. The run exposed and fixed browser public-env inlining and nullable fields in the local Auth seed; CI now runs this browser journey and retains traces on failure.
+- This is not admin/member role coverage, a provider-account certification, or evidence of connection/MCP mutation paths. Those release gates remain open.
 
 ## Provider and worker failure states
 
