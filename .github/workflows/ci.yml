@@ -31,6 +31,22 @@ jobs:
       - name: Install Chromium headless shell
         run: pnpm --filter @plusmy/web exec playwright install --with-deps --only-shell chromium
 
+      - name: Prefetch Supabase images from GHCR
+        run: |
+          # Keep these tags aligned with the CLI version pinned in pnpm-lock.yaml.
+          images=(
+            postgres:17.6.1.095
+            gotrue:v2.187.0
+            postgrest:v14.5
+            kong:2.8.1
+            mailpit:v1.22.3
+            pg_prove:3.36
+          )
+          for image in "${images[@]}"; do
+            docker pull "ghcr.io/supabase/$image"
+            docker tag "ghcr.io/supabase/$image" "public.ecr.aws/supabase/$image"
+          done
+
       - name: Start local Supabase
         run: node_modules/supabase/bin/supabase start -x realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,postgres-meta
 
