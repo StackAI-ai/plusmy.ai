@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@plusmy/supabase';
-import { createPromptTemplate, getAuthorizedWorkspace, listPromptTemplates, updatePromptTemplate } from '@plusmy/core';
+import { CONTEXT_WRITE_FORBIDDEN, createPromptTemplate, getAuthorizedWorkspace, listPromptTemplates, updatePromptTemplate } from '@plusmy/core';
 import { parseJsonBody, parseSearchParams, validationErrorResponse } from '../_lib/validation';
 
 export const runtime = 'nodejs';
@@ -76,16 +76,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'workspace_required' }, { status: 404 });
   }
 
-  const prompt = await createPromptTemplate({
-    workspaceId: workspace.id,
-    ownerUserId: (body.scope ?? 'workspace') === 'personal' ? user.id : null,
-    name: body.name,
-    description: body.description ?? null,
-    content: body.content,
-    metadata: body.metadata ?? {}
-  });
+  try {
+    const prompt = await createPromptTemplate({
+      workspaceId: workspace.id,
+      actorUserId: user.id,
+      ownerUserId: (body.scope ?? 'workspace') === 'personal' ? user.id : null,
+      name: body.name,
+      description: body.description ?? null,
+      content: body.content,
+      metadata: body.metadata ?? {}
+    });
 
-  return NextResponse.json({ prompt }, { status: 201 });
+    return NextResponse.json({ prompt }, { status: 201 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Prompt create failed.';
+    return NextResponse.json({ error: message }, { status: message === CONTEXT_WRITE_FORBIDDEN ? 403 : 400 });
+  }
 }
 
 export async function PATCH(request: NextRequest) {
@@ -124,7 +130,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ prompt });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Prompt update failed.';
-    const status = message === 'Prompt template not found.' ? 404 : 400;
+    const status = message === 'Prompt template not found.' ? 404 : message === CONTEXT_WRITE_FORBIDDEN ? 403 : 400;
     return NextResponse.json({ error: message }, { status });
   }
 }

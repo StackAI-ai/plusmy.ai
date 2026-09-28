@@ -22,16 +22,17 @@ import {
 type Mode = 'asset' | 'prompt' | 'skill';
 type ScopeMode = 'workspace' | 'personal';
 
-export function ContextIngestForm({ workspaceId }: { workspaceId: string }) {
+export function ContextIngestForm({ workspaceId, canManageWorkspace }: { workspaceId: string; canManageWorkspace: boolean }) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('asset');
-  const [scope, setScope] = useState<ScopeMode>('workspace');
+  const [scope, setScope] = useState<ScopeMode>(canManageWorkspace ? 'workspace' : 'personal');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [description, setDescription] = useState('');
   const [sourceUri, setSourceUri] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const effectiveScope = canManageWorkspace ? scope : 'personal';
 
   const endpoint = useMemo(() => {
     if (mode === 'prompt') return '/api/prompts';
@@ -48,7 +49,7 @@ export function ContextIngestForm({ workspaceId }: { workspaceId: string }) {
       mode === 'asset'
         ? {
             workspace_id: workspaceId,
-            scope,
+            scope: effectiveScope,
             type: 'document',
             title,
             content: body,
@@ -57,14 +58,14 @@ export function ContextIngestForm({ workspaceId }: { workspaceId: string }) {
         : mode === 'prompt'
           ? {
               workspace_id: workspaceId,
-              scope,
+              scope: effectiveScope,
               name: title,
               description,
               content: body
             }
           : {
               workspace_id: workspaceId,
-              scope,
+              scope: effectiveScope,
               name: title,
               description,
               instructions: body
@@ -87,7 +88,7 @@ export function ContextIngestForm({ workspaceId }: { workspaceId: string }) {
     setBody('');
     setDescription('');
     setSourceUri('');
-    setStatus(`${scope} ${mode} created.`);
+    setStatus(`${effectiveScope} ${mode} created.`);
     setSubmitting(false);
     router.refresh();
   }
@@ -115,12 +116,12 @@ export function ContextIngestForm({ workspaceId }: { workspaceId: string }) {
         <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-2">
           <Label htmlFor="context-scope">Visibility</Label>
-          <Select value={scope} onValueChange={(value) => setScope(value === 'personal' ? 'personal' : 'workspace')}>
+          <Select value={effectiveScope} onValueChange={(value) => setScope(value === 'personal' ? 'personal' : 'workspace')}>
             <SelectTrigger id="context-scope">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="workspace">Workspace shared</SelectItem>
+              {canManageWorkspace ? <SelectItem value="workspace">Workspace shared</SelectItem> : null}
               <SelectItem value="personal">Personal only</SelectItem>
             </SelectContent>
           </Select>

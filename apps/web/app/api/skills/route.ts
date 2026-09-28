@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@plusmy/supabase';
-import { createSkillDefinition, getAuthorizedWorkspace, listSkillDefinitions, updateSkillDefinition } from '@plusmy/core';
+import { CONTEXT_WRITE_FORBIDDEN, createSkillDefinition, getAuthorizedWorkspace, listSkillDefinitions, updateSkillDefinition } from '@plusmy/core';
 import { parseJsonBody, parseSearchParams, validationErrorResponse } from '../_lib/validation';
 
 export const runtime = 'nodejs';
@@ -76,16 +76,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'workspace_required' }, { status: 404 });
   }
 
-  const skill = await createSkillDefinition({
-    workspaceId: workspace.id,
-    ownerUserId: (body.scope ?? 'workspace') === 'personal' ? user.id : null,
-    name: body.name,
-    description: body.description ?? null,
-    instructions: body.instructions,
-    metadata: body.metadata ?? {}
-  });
+  try {
+    const skill = await createSkillDefinition({
+      workspaceId: workspace.id,
+      actorUserId: user.id,
+      ownerUserId: (body.scope ?? 'workspace') === 'personal' ? user.id : null,
+      name: body.name,
+      description: body.description ?? null,
+      instructions: body.instructions,
+      metadata: body.metadata ?? {}
+    });
 
-  return NextResponse.json({ skill }, { status: 201 });
+    return NextResponse.json({ skill }, { status: 201 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Skill create failed.';
+    return NextResponse.json({ error: message }, { status: message === CONTEXT_WRITE_FORBIDDEN ? 403 : 400 });
+  }
 }
 
 export async function PATCH(request: NextRequest) {
@@ -124,7 +130,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ skill });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Skill update failed.';
-    const status = message === 'Skill definition not found.' ? 404 : 400;
+    const status = message === 'Skill definition not found.' ? 404 : message === CONTEXT_WRITE_FORBIDDEN ? 403 : 400;
     return NextResponse.json({ error: message }, { status });
   }
 }

@@ -17,6 +17,22 @@ import { logAuditEvent } from './connections'
 import { chunkText, createEmbedding } from './embeddings'
 
 const allowedContextBindingTypes = new Set<ContextBindingType>(['workspace', 'provider', 'tool'])
+export const CONTEXT_WRITE_FORBIDDEN = 'Forbidden context write.'
+
+async function assertContextWriteAccess(workspaceId: string, actorUserId: string, ownerUserId: string | null) {
+  const supabase = createServiceRoleClient()
+  const { data: membership, error } = await supabase
+    .schema('app')
+    .from('workspace_members')
+    .select('role')
+    .eq('workspace_id', workspaceId)
+    .eq('user_id', actorUserId)
+    .maybeSingle()
+
+  if (error || !membership || (ownerUserId ? ownerUserId !== actorUserId : !['owner', 'admin'].includes(membership.role))) {
+    throw new Error(CONTEXT_WRITE_FORBIDDEN)
+  }
+}
 const contextBindingSelect = `
   id,
   workspace_id,
@@ -618,6 +634,7 @@ export async function listContextAssets(workspaceId: string, userId: string | nu
 
 export async function createContextAsset(input: {
   workspaceId: string
+  actorUserId: string
   ownerUserId: string | null
   type: ContextAssetType
   title: string
@@ -625,6 +642,7 @@ export async function createContextAsset(input: {
   sourceUri?: string | null
   metadata?: Record<string, unknown>
 }) {
+  await assertContextWriteAccess(input.workspaceId, input.actorUserId, input.ownerUserId)
   const supabase = createServiceRoleClient()
   const { data: asset, error } = await supabase
     .schema('app')
@@ -666,12 +684,14 @@ export async function listPromptTemplates(workspaceId: string, userId: string | 
 
 export async function createPromptTemplate(input: {
   workspaceId: string
+  actorUserId: string
   ownerUserId: string | null
   name: string
   description?: string | null
   content: string
   metadata?: Record<string, unknown>
 }) {
+  await assertContextWriteAccess(input.workspaceId, input.actorUserId, input.ownerUserId)
   const supabase = createServiceRoleClient()
   const { data, error } = await supabase
     .schema('app')
@@ -728,9 +748,7 @@ export async function updatePromptTemplate(input: {
     throw new Error('Prompt template not found.')
   }
 
-  if (existing.owner_user_id && existing.owner_user_id !== input.actorUserId) {
-    throw new Error('Prompt template not found.')
-  }
+  await assertContextWriteAccess(input.workspaceId, input.actorUserId, existing.owner_user_id)
 
   const { data, error } = await supabase
     .schema('app')
@@ -779,12 +797,14 @@ export async function listSkillDefinitions(workspaceId: string, userId: string |
 
 export async function createSkillDefinition(input: {
   workspaceId: string
+  actorUserId: string
   ownerUserId: string | null
   name: string
   description?: string | null
   instructions: string
   metadata?: Record<string, unknown>
 }) {
+  await assertContextWriteAccess(input.workspaceId, input.actorUserId, input.ownerUserId)
   const supabase = createServiceRoleClient()
   const { data, error } = await supabase
     .schema('app')
@@ -841,9 +861,7 @@ export async function updateSkillDefinition(input: {
     throw new Error('Skill definition not found.')
   }
 
-  if (existing.owner_user_id && existing.owner_user_id !== input.actorUserId) {
-    throw new Error('Skill definition not found.')
-  }
+  await assertContextWriteAccess(input.workspaceId, input.actorUserId, existing.owner_user_id)
 
   const { data, error } = await supabase
     .schema('app')

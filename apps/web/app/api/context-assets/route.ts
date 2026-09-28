@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@plusmy/supabase';
-import { createContextAsset, getAuthorizedWorkspace, listContextAssets } from '@plusmy/core';
+import { CONTEXT_WRITE_FORBIDDEN, createContextAsset, getAuthorizedWorkspace, listContextAssets } from '@plusmy/core';
 import { parseJsonBody, parseSearchParams, validationErrorResponse } from '../_lib/validation';
 
 export const runtime = 'nodejs';
@@ -68,15 +68,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'workspace_required' }, { status: 404 });
   }
 
-  const asset = await createContextAsset({
-    workspaceId: workspace.id,
-    ownerUserId: (body.scope ?? 'workspace') === 'personal' ? user.id : null,
-    type: body.type,
-    title: body.title,
-    content: body.content,
-    sourceUri: body.source_uri ? body.source_uri : null,
-    metadata: body.metadata ?? {}
-  });
+  try {
+    const asset = await createContextAsset({
+      workspaceId: workspace.id,
+      actorUserId: user.id,
+      ownerUserId: (body.scope ?? 'workspace') === 'personal' ? user.id : null,
+      type: body.type,
+      title: body.title,
+      content: body.content,
+      sourceUri: body.source_uri ? body.source_uri : null,
+      metadata: body.metadata ?? {}
+    });
 
-  return NextResponse.json({ asset }, { status: 201 });
+    return NextResponse.json({ asset }, { status: 201 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Context asset create failed.';
+    return NextResponse.json({ error: message }, { status: message === CONTEXT_WRITE_FORBIDDEN ? 403 : 400 });
+  }
 }

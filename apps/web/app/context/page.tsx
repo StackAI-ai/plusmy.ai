@@ -278,7 +278,7 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
           </div>
         </div>
         {workspace ? (
-          <ContextIngestForm workspaceId={workspace.id} />
+          <ContextIngestForm workspaceId={workspace.id} canManageWorkspace={canManageBindings} />
         ) : (
           <Card>
             <CardHeader>
