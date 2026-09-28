@@ -14,6 +14,9 @@ Do not paste secrets, OAuth codes, or customer data into this file or Linear.
   `WORKER_SHARED_SECRET`; configure `APP_URL` in the Edge Function and the
   `plusmy_worker_project_url` and `plusmy_worker_shared_secret` Vault entries.
   Follow [operator-runbook.md](./operator-runbook.md) for rotation and storage.
+- [ ] Configure a server-only `OPERATOR_ALERT_WEBHOOK_URL` on the web deployment
+  that reaches the named beta operator. Verify the receiver deduplicates by the
+  stable `x-plusmy-alert-id` job ID and does not expose its credential.
 - [ ] Verify auth redirect URLs, OAuth callback URLs, and each provider's
   requested scopes against the staging deployment. Keep production accounts
   and credentials out of staging.
@@ -30,8 +33,10 @@ Do not paste secrets, OAuth codes, or customer data into this file or Linear.
    timestamps. Verify the operation against the provider account, not only the
    job response.
 4. Induce a safe disposable failure, confirm retry/dead-letter visibility and
-   alert delivery to the named operator, then restore the connection. Record
-   alert destination and acknowledgement time without storing credentials.
+   alert delivery to the named operator, then restore the connection. Reject
+   one webhook request to prove retry; confirm `alerted_at` is set only after
+   successful delivery. Record alert destination and acknowledgement time
+   without storing credentials.
 
 ## Release gate
 

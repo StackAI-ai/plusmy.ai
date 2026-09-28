@@ -14,6 +14,7 @@ import type {
   ToolInvocationRecord
 } from '@plusmy/contracts';
 import { getIntegration } from '@plusmy/integrations';
+import { getServerEnv } from '@plusmy/config';
 import { createServiceRoleClient } from '@plusmy/supabase';
 
 const REFRESH_SKEW_MS = 5 * 60 * 1000;
@@ -744,16 +745,97 @@ async function finalizeConnectionJob(input: {
     .eq('id', input.jobId);
 }
 
-async function markConnectionJobAlerted(jobId: string) {
+export async function dispatchPendingConnectionJobAlerts() {
+  const { APP_URL, OPERATOR_ALERT_WEBHOOK_URL } = getServerEnv();
+  if (!OPERATOR_ALERT_WEBHOOK_URL) {
+    return { configured: false, claimed: 0, delivered: 0, failed: 0 };
+  }
+
+  const webhook = new URL(OPERATOR_ALERT_WEBHOOK_URL);
+  if (webhook.protocol !== 'https:' && !(webhook.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(webhook.hostname))) {
+    throw new Error('Operator alert webhook must use HTTPS outside local development.');
+  }
+
   const supabase = createServiceRoleClient();
-  await supabase
-    .schema('app')
-    .from('connection_sync_jobs')
-    .update({
-      alerted_at: new Date().toISOString()
-    })
-    .eq('id', jobId)
-    .is('alerted_at', null);
+  const claimId = randomUUID();
+  const { data, error } = await supabase.schema('app').rpc('claim_connection_job_alerts', {
+    p_claim_id: claimId,
+    p_limit: 3
+  });
+  if (error) throw error;
+
+  const jobs = (data ?? []) as ConnectionJobRecord[];
+  let delivered = 0;
+  let failed = 0;
+
+  for (const job of jobs) {
+    const connection = await getConnectionById(job.connection_id);
+    if (!connection) {
+      await supabase.schema('app').rpc('release_connection_job_alert', { p_job_id: job.id, p_claim_id: claimId });
+      continue;
+    }
+
+    let responseStatus: number | null = null;
+    try {
+      const auditUrl = APP_URL ? new URL('/audit', APP_URL) : null;
+      auditUrl?.searchParams.set('workspace', connection.workspace_id);
+      auditUrl?.searchParams.set('resource', 'connection_job');
+      auditUrl?.searchParams.set('resource_id', job.id);
+      const response = await fetch(webhook, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-plusmy-alert-id': job.id
+        },
+        body: JSON.stringify({
+          event: 'connection_job.dead_lettered',
+          workspace_id: connection.workspace_id,
+          connection_id: connection.id,
+          provider: connection.provider,
+          job_id: job.id,
+          job_type: job.job_type,
+          attempts: job.attempts,
+          dashboard_url: auditUrl?.toString() ?? null
+        }),
+        signal: AbortSignal.timeout(4000)
+      });
+      responseStatus = response.status;
+      if (!response.ok) throw new Error('Operator alert delivery failed.');
+
+      const { data: completed, error: completeError } = await supabase.schema('app').rpc('complete_connection_job_alert', {
+        p_job_id: job.id,
+        p_claim_id: claimId
+      });
+      if (completeError) throw completeError;
+      if (!completed) throw new Error('Operator alert claim expired before completion.');
+
+      delivered += 1;
+    } catch {
+      failed += 1;
+      await supabase.schema('app').rpc('release_connection_job_alert', { p_job_id: job.id, p_claim_id: claimId });
+      await logAuditEvent({
+        workspaceId: connection.workspace_id,
+        actorType: 'system',
+        action: 'connection_job.alert_failed',
+        resourceType: 'connection_job',
+        resourceId: job.id,
+        status: 'error',
+        metadata: { provider: connection.provider, connection_id: connection.id, http_status: responseStatus }
+      });
+      continue;
+    }
+
+    await logAuditEvent({
+      workspaceId: connection.workspace_id,
+      actorType: 'system',
+      action: 'connection_job.alert_delivered',
+      resourceType: 'connection_job',
+      resourceId: job.id,
+      metadata: { provider: connection.provider, connection_id: connection.id, http_status: responseStatus }
+    });
+  }
+
+  return { configured: true, claimed: jobs.length, delivered, failed };
 }
 
 async function runConnectionSyncJob(job: ConnectionJobRecord, connection: ConnectionRecord) {
@@ -932,9 +1014,6 @@ export async function processDueConnectionJobs(input?: { limit?: number; workerI
           error: message
         }
       });
-      if (finalStatus === 'dead_letter') {
-        await markConnectionJobAlerted(job.id);
-      }
       processed.push({
         id: job.id,
         status: finalStatus,
@@ -947,7 +1026,8 @@ export async function processDueConnectionJobs(input?: { limit?: number; workerI
   return {
     workerId,
     claimed: jobs.length,
-    processed
+    processed,
+    alerts: await dispatchPendingConnectionJobAlerts()
   };
 }
 

@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(46);
+select plan(56);
 
 insert into auth.users (
   instance_id,
@@ -556,6 +556,76 @@ select is(
   null::bigint,
   'worker dispatch fails closed when Vault is not configured'
 );
+
+select ok(
+  not has_function_privilege('authenticated', 'app.claim_connection_job_alerts(uuid, integer)', 'EXECUTE')
+    and not has_function_privilege('anon', 'app.claim_connection_job_alerts(uuid, integer)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'app.complete_connection_job_alert(uuid, uuid)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'app.release_connection_job_alert(uuid, uuid)', 'EXECUTE'),
+  'browser roles cannot claim, complete, or release operator alert deliveries'
+);
+
+insert into app.connection_sync_jobs (id, connection_id, job_type, status, dead_lettered_at)
+values
+  ('abababab-abab-abab-abab-abababababab', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 'sync_connection', 'dead_letter', now()),
+  ('bcbcbcbc-bcbc-bcbc-bcbc-bcbcbcbcbcbc', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 'token_refresh', 'dead_letter', now());
+
+set local role service_role;
+
+select is(
+  (select count(*)::integer from app.claim_connection_job_alerts('11111111-1111-1111-1111-111111111111', 1)),
+  1,
+  'service role claims one pending dead-letter alert'
+);
+
+select is(
+  (select count(*)::integer from app.claim_connection_job_alerts('22222222-2222-2222-2222-222222222222', 2)),
+  1,
+  'a second claim skips leased alerts'
+);
+
+select is(
+  app.complete_connection_job_alert('abababab-abab-abab-abab-abababababab', '22222222-2222-2222-2222-222222222222'),
+  false,
+  'a different claim cannot complete a delivered alert'
+);
+
+select is(
+  app.complete_connection_job_alert('abababab-abab-abab-abab-abababababab', '11111111-1111-1111-1111-111111111111'),
+  true,
+  'the claiming worker can mark successful delivery'
+);
+
+select ok(
+  (select alerted_at is not null from app.connection_sync_jobs where id = 'abababab-abab-abab-abab-abababababab'),
+  'alerted_at records confirmed delivery only'
+);
+
+select is(
+  app.release_connection_job_alert('bcbcbcbc-bcbc-bcbc-bcbc-bcbcbcbcbcbc', '22222222-2222-2222-2222-222222222222'),
+  true,
+  'failed delivery releases its claim for retry'
+);
+
+select is(
+  (select count(*)::integer from app.claim_connection_job_alerts('33333333-3333-3333-3333-333333333333', 2)),
+  1,
+  'released alerts are claimable again without redelivering completed alerts'
+);
+
+select is(
+  (select count(*)::integer from app.claim_connection_job_alerts('44444444-4444-4444-4444-444444444444', 2)),
+  0,
+  'leased alerts cannot be claimed twice'
+);
+
+select is(
+  (select count(*)::integer from app.claim_connection_job_alerts(null::uuid, 2)),
+  0,
+  'a null claim token cannot lease an alert'
+);
+
+reset role;
 
 select * from finish();
 rollback;

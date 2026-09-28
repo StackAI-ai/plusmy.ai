@@ -68,6 +68,9 @@ jobs:
       - name: Supabase pgTAP regression suite
         run: node_modules/supabase/bin/supabase test db supabase/tests/security_regressions.sql --local
 
+      - name: Worker alert delivery contracts
+        run: node scripts/local-supabase-env.mjs -- pnpm exec tsx scripts/worker-alert-contracts.ts
+
       - name: Edge worker authentication smoke check
         run: |
           node_modules/supabase/bin/supabase functions serve token-refresh-worker --no-verify-jwt --env-file apps/web/.env.local > /tmp/edge-worker.log 2>&1 &

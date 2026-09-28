@@ -75,6 +75,8 @@ export interface ConnectionJobRecord {
   completed_at: string | null;
   dead_lettered_at: string | null;
   alerted_at: string | null;
+  alert_claim_id: string | null;
+  alert_claimed_at: string | null;
   created_at: string;
   updated_at: string;
 }
