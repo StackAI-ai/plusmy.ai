@@ -29,19 +29,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Start local Supabase
-        run: node_modules/supabase/bin/supabase start
+        run: node_modules/supabase/bin/supabase start -x realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,postgres-meta
 
       - name: Configure local web environment
-        run: |
-          eval "$(node_modules/supabase/bin/supabase status -o env)"
-          {
-            echo "APP_URL=http://localhost:3009"
-            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
-            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
-            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
-            echo "MCP_JWT_SECRET=$(openssl rand -hex 32)"
-            echo "WORKER_SHARED_SECRET=$(openssl rand -hex 32)"
-          } > apps/web/.env.local
+        run: node scripts/local-supabase-env.mjs --write-env
 
       - name: Typecheck
         run: pnpm typecheck
