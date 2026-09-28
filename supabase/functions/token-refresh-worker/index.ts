@@ -1,6 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 
 Deno.serve(async (request) => {
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed.' }), { status: 405 });
+  }
+
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   const appUrl = Deno.env.get('APP_URL');
@@ -10,11 +14,19 @@ Deno.serve(async (request) => {
     return new Response(JSON.stringify({ error: 'Missing function environment.' }), { status: 500 });
   }
 
+  if (request.headers.get('x-plusmy-worker-secret') !== workerSharedSecret) {
+    return new Response(JSON.stringify({ error: 'Forbidden.' }), { status: 403 });
+  }
+
   const supabase = createClient(supabaseUrl, serviceRoleKey);
-  const payload = await request.json().catch(() => ({}));
-  const connectionId = payload?.connection_id as string | undefined;
-  const jobType = payload?.job_type as string | undefined;
-  const limit = Number(payload?.limit ?? 5);
+  const parsedPayload = await request.json().catch(() => null);
+  const payload = parsedPayload && typeof parsedPayload === 'object' && !Array.isArray(parsedPayload)
+    ? parsedPayload as Record<string, unknown>
+    : {};
+  const connectionId = typeof payload.connection_id === 'string' ? payload.connection_id : undefined;
+  const jobType = typeof payload.job_type === 'string' ? payload.job_type : undefined;
+  const requestedLimit = Number(payload.limit ?? 5);
+  const limit = Number.isFinite(requestedLimit) ? Math.min(20, Math.max(1, Math.trunc(requestedLimit))) : 5;
 
   const { data: connection } = connectionId
     ? await supabase.schema('app').from('connections').select('workspace_id').eq('id', connectionId).maybeSingle()
@@ -30,7 +42,7 @@ Deno.serve(async (request) => {
       connectionId,
       jobType,
       limit,
-      payload: payload?.payload ?? (payload?.reason ? { reason: payload.reason } : undefined)
+      payload: payload.payload ?? (payload.reason ? { reason: payload.reason } : undefined)
     })
   });
 

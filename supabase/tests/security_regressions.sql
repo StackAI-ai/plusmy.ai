@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(37);
+select plan(41);
 
 insert into auth.users (
   instance_id,
@@ -498,6 +498,29 @@ select is(
 );
 
 reset role;
+
+select ok(
+  exists (select 1 from pg_extension where extname = 'pg_net'),
+  'scheduled worker has pg_net available'
+);
+
+select is(
+  (select count(*)::integer from cron.job where jobname = 'plusmy-connection-worker' and schedule = '* * * * *'),
+  1,
+  'connection worker is scheduled every minute'
+);
+
+select ok(
+  not has_function_privilege('authenticated', 'app.invoke_connection_worker()', 'EXECUTE')
+    and not has_function_privilege('anon', 'app.invoke_connection_worker()', 'EXECUTE'),
+  'browser roles cannot invoke the scheduled worker dispatcher'
+);
+
+select is(
+  (select app.invoke_connection_worker()),
+  null::bigint,
+  'worker dispatch fails closed when Vault is not configured'
+);
 
 select * from finish();
 rollback;

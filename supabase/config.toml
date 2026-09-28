@@ -17,3 +17,6 @@ port = 54323
 [auth]
 site_url = "http://localhost:3009"
 additional_redirect_urls = ["http://localhost:3009/**", "http://127.0.0.1:3009/**"]
+
+[functions.token-refresh-worker]
+verify_jwt = false

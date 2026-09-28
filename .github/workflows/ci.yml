@@ -52,6 +52,22 @@ jobs:
       - name: Supabase pgTAP regression suite
         run: node_modules/supabase/bin/supabase test db supabase/tests/security_regressions.sql --local
 
+      - name: Edge worker authentication smoke check
+        run: |
+          node_modules/supabase/bin/supabase functions serve token-refresh-worker --no-verify-jwt --env-file apps/web/.env.local > /tmp/edge-worker.log 2>&1 &
+          worker_pid=$!
+          trap 'kill "$worker_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            status=$(curl -sS -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:54321/functions/v1/token-refresh-worker -H 'content-type: application/json' -d '{"limit":1}' || true)
+            if [ "$status" = 403 ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/edge-worker.log
+          echo "Edge worker did not reject an unauthenticated request."
+          exit 1
+
       - name: Start web app for MCP smoke checks
         run: |
           pnpm --filter @plusmy/web dev > /tmp/web-dev.log 2>&1 &
