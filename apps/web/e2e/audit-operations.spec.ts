@@ -105,13 +105,14 @@ test('owner and admin can export and retain workspace audit data; member cannot'
     expect(oldInvocationId).toBeTruthy();
     expect(recentInvocationId).toBeTruthy();
 
-    const actorPages = await Promise.all([owner, admin, member].map(async (actor) => {
+    const actorPages = [] as Page[];
+    for (const actor of [owner, admin, member]) {
       const context = await browser.newContext({ baseURL });
       contexts.push(context);
       const page = await context.newPage();
       await signIn(page, request, actor.email);
-      return page;
-    }));
+      actorPages.push(page);
+    }
     const [ownerPage, adminPage, memberPage] = actorPages;
     const ownerApi = ownerPage.context().request;
     const adminApi = adminPage.context().request;
