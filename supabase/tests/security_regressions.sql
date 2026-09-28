@@ -33,7 +33,7 @@ values
   ),
   (
     '00000000-0000-0000-0000-000000000000',
-    '33333333-3333-3333-3333-333333333333',
+    '55555555-5555-5555-5555-555555555555',
     'authenticated',
     'authenticated',
     'member-b@example.com',
@@ -49,13 +49,13 @@ on conflict (id) do nothing;
 insert into app.workspaces (id, name, slug, created_by)
 values
   ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Workspace A', 'workspace-a', '11111111-1111-1111-1111-111111111111'),
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'Workspace B', 'workspace-b', '33333333-3333-3333-3333-333333333333')
+  ('99999999-9999-9999-9999-999999999999', 'Workspace B', 'workspace-b', '55555555-5555-5555-5555-555555555555')
 on conflict (id) do nothing;
 
 insert into app.workspace_members (workspace_id, user_id, role)
 values
   ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '11111111-1111-1111-1111-111111111111', 'owner'),
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '33333333-3333-3333-3333-333333333333', 'owner')
+  ('99999999-9999-9999-9999-999999999999', '55555555-5555-5555-5555-555555555555', 'owner')
 on conflict (workspace_id, user_id) do nothing;
 
 insert into app.oauth_clients (client_id, client_name, redirect_uris, created_by)
@@ -402,7 +402,7 @@ select is(
 );
 
 select is(
-  (select count(*)::integer from app.workspaces where id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'),
+  (select count(*)::integer from app.workspaces where id = '99999999-9999-9999-9999-999999999999'),
   0,
   'workspace members cannot read other workspaces'
 );
@@ -429,7 +429,7 @@ reset role;
 
 set local role authenticated;
 select set_config('request.jwt.claim.role', 'authenticated', true);
-select set_config('request.jwt.claim.sub', '33333333-3333-3333-3333-333333333333', true);
+select set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
 
 select is(
   (select count(*)::integer from app.connections where workspace_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
