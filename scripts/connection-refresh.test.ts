@@ -20,6 +20,9 @@ test('provider refreshes are fenced against concurrent lifecycle changes', async
   let calls: string[] = [];
   let expired = false;
   let loseCommitAck = false;
+  let loseBeginAck = false;
+  let releaseFailures = 0;
+  let beforeRelease: (() => void) | undefined;
   let beforeAcquire: (() => void) | undefined;
   let installBody: Record<string, any> | undefined;
   let retainedRefreshToken = false;
@@ -39,6 +42,9 @@ test('provider refreshes are fenced against concurrent lifecycle changes', async
     calls = [];
     expired = false;
     loseCommitAck = false;
+    loseBeginAck = false;
+    releaseFailures = 0;
+    beforeRelease = undefined;
     beforeAcquire = undefined;
     installBody = undefined;
     retainedRefreshToken = false;
@@ -65,7 +71,7 @@ test('provider refreshes are fenced against concurrent lifecycle changes', async
     }
     if (url.pathname === '/rest/v1/connection_credentials' && request.method === 'GET') return Response.json([credentialRow]);
     if (url.pathname === '/rest/v1/rpc/resolve_secret') return Response.json(secrets[body.p_secret_id] ?? null);
-    if (url.pathname === '/rest/v1/rpc/begin_connection_refresh') {
+    if (url.pathname === '/rest/v1/rpc/begin_connection_refresh' || url.pathname === '/rest/v1/rpc/begin_connection_job_refresh') {
       beforeAcquire?.();
       if (expired && connection.refresh_lock_id && connection.status === 'active') {
         Object.assign(connection, { status: 'reauth_required', refresh_lock_id: null });
@@ -73,6 +79,7 @@ test('provider refreshes are fenced against concurrent lifecycle changes', async
       const acquired = connection.status === 'active' && !connection.refresh_lock_id;
       if (!acquired) return Response.json(null);
       connection.refresh_lock_id = body.p_lock_id;
+      if (loseBeginAck) return Response.json({ message: 'simulated lost begin acknowledgement' }, { status: 500 });
       return Response.json({
         connection,
         credentials: {
@@ -85,6 +92,11 @@ test('provider refreshes are fenced against concurrent lifecycle changes', async
       });
     }
     if (url.pathname === '/rest/v1/rpc/release_connection_refresh_lock') {
+      beforeRelease?.();
+      if (releaseFailures > 0) {
+        releaseFailures -= 1;
+        return Response.json({ message: 'simulated release failure' }, { status: 500 });
+      }
       if (connection.refresh_lock_id === body.p_lock_id) connection.refresh_lock_id = null;
       return Response.json(null);
     }
@@ -222,6 +234,78 @@ test('provider refreshes are fenced against concurrent lifecycle changes', async
       integration.refreshTokens = async () => { throw new Error('must not refresh'); };
       await assert.rejects(core.forceRefreshConnection('test-connection'), /already in progress/);
       assert.ok(!calls.includes('GET /rest/v1/connection_credentials'));
+    });
+
+    await t.test('a lost begin acknowledgement releases only its unused lease', async () => {
+      reset();
+      loseBeginAck = true;
+      integration.refreshTokens = async () => { throw new Error('must not refresh'); };
+      await assert.rejects(core.forceRefreshConnection('test-connection'));
+      assert.equal(connection.status, 'active');
+      assert.equal(connection.refresh_lock_id, null);
+      assert.equal(calls.filter((call) => call === 'POST /rest/v1/rpc/release_connection_refresh_lock').length, 1);
+      assert.ok(!calls.includes('POST /rest/v1/rpc/commit_connection_refresh'));
+      loseBeginAck = false;
+      integration.refreshTokens = async () => result;
+      await core.forceRefreshConnection('test-connection', { scheduleNextJob: false });
+      assert.equal(secrets['refresh-id'], 'refreshed-refresh');
+    });
+
+    await t.test('a lost begin acknowledgement cannot release a newer lease', async () => {
+      reset();
+      loseBeginAck = true;
+      beforeRelease = () => { connection.refresh_lock_id = 'newer-lease'; };
+      await assert.rejects(core.forceRefreshConnection('test-connection'));
+      assert.equal(connection.refresh_lock_id, 'newer-lease');
+    });
+
+    await t.test('a lost begin acknowledgement retries a transient release failure', async () => {
+      reset();
+      loseBeginAck = true;
+      releaseFailures = 1;
+      integration.refreshTokens = async () => { throw new Error('must not refresh'); };
+      await assert.rejects(core.forceRefreshConnection('test-connection'));
+      assert.equal(connection.refresh_lock_id, null);
+      assert.equal(calls.filter((call) => call === 'POST /rest/v1/rpc/release_connection_refresh_lock').length, 2);
+      assert.ok(!calls.includes('POST /rest/v1/rpc/commit_connection_refresh'));
+    });
+
+    await t.test('a job-scoped lost begin acknowledgement releases its unused lease', async () => {
+      reset();
+      loseBeginAck = true;
+      integration.refreshTokens = async () => { throw new Error('must not refresh'); };
+      await assert.rejects(core.refreshConnectionIfNeeded(connection as any, {
+        accessToken: 'stale', refreshToken: 'stale-refresh', expiresAt: '2000-01-01T00:00:00Z'
+      }, { id: 'job', claim_id: 'claim' } as any));
+      assert.equal(connection.refresh_lock_id, null);
+      assert.ok(calls.includes('POST /rest/v1/rpc/begin_connection_job_refresh'));
+      assert.ok(calls.includes('POST /rest/v1/rpc/release_connection_refresh_lock'));
+      assert.ok(!calls.includes('POST /rest/v1/rpc/commit_connection_job_refresh'));
+    });
+
+    await t.test('a transient unused lease release failure is retried', async () => {
+      reset();
+      releaseFailures = 1;
+      beforeAcquire = () => { credentialRow.expires_at = '2999-01-01T00:00:00Z'; };
+      integration.refreshTokens = async () => { throw new Error('must not refresh'); };
+      const fresh = await core.refreshConnectionIfNeeded(connection as any, {
+        accessToken: 'stale', refreshToken: 'stale-refresh', expiresAt: '2000-01-01T00:00:00Z'
+      });
+      assert.equal(fresh.accessToken, 'old-access');
+      assert.equal(connection.refresh_lock_id, null);
+      assert.equal(calls.filter((call) => call === 'POST /rest/v1/rpc/release_connection_refresh_lock').length, 2);
+    });
+
+    await t.test('persistent unused lease release failure does not report success', async () => {
+      reset();
+      releaseFailures = 2;
+      beforeAcquire = () => { credentialRow.expires_at = '2999-01-01T00:00:00Z'; };
+      integration.refreshTokens = async () => { throw new Error('must not refresh'); };
+      await assert.rejects(core.refreshConnectionIfNeeded(connection as any, {
+        accessToken: 'stale', refreshToken: 'stale-refresh', expiresAt: '2000-01-01T00:00:00Z'
+      }), /could not be safely released/);
+      assert.ok(connection.refresh_lock_id);
+      assert.equal(calls.filter((call) => call === 'POST /rest/v1/rpc/release_connection_refresh_lock').length, 2);
     });
 
     await t.test('credentials are reloaded after acquiring the lock', async () => {

@@ -64,6 +64,14 @@ async function signIn(page: Page, request: APIRequestContext, email: string) {
   await expect(page).toHaveURL(/\/dashboard/);
 }
 
+async function queuedJobCount(page: Page) {
+  const summary = page.getByText(/up to 80 recent jobs/);
+  await expect(summary).toBeVisible();
+  const match = (await summary.innerText()).match(/(\d+) queued/);
+  expect(match).not.toBeNull();
+  return Number(match![1]);
+}
+
 test('signed-out dashboard does not expose workspace state', async ({ page }) => {
   await page.goto('/dashboard');
   await expect(page.getByText('Sign in required')).toBeVisible();
@@ -71,6 +79,7 @@ test('signed-out dashboard does not expose workspace state', async ({ page }) =>
 });
 
 test('connection ownership and callback state stay bound to the acting user', async ({ browser, page, request }) => {
+  test.setTimeout(180_000);
   const service = localServiceClient();
   const suffix = Date.now().toString(36);
   const { data: fixtures, error } = await service.schema('app').from('connections').insert([
@@ -103,9 +112,11 @@ test('connection ownership and callback state stay bound to the acting user', as
     const memberApi = memberContext.request;
 
     const adminListing = await adminApi.get(`/api/connections?workspace_id=${workspaceId}`);
-    expect((await adminListing.json()).connections).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: personalId })]));
+    const adminConnections = (await adminListing.json()).connections;
+    expect(adminConnections).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: personalId })]));
     const memberListing = await memberApi.get(`/api/connections?workspace_id=${workspaceId}`);
-    expect((await memberListing.json()).connections).toEqual(expect.arrayContaining([expect.objectContaining({ id: personalId })]));
+    const memberConnections = (await memberListing.json()).connections;
+    expect(memberConnections).toEqual(expect.arrayContaining([expect.objectContaining({ id: personalId })]));
 
     for (const [path, method] of [
       ['/api/connections', 'delete'], ['/api/connections/refresh', 'post'], ['/api/connections/sync', 'post']
@@ -119,6 +130,15 @@ test('connection ownership and callback state stay bound to the acting user', as
         data: '{invalid', headers: { 'content-type': 'application/json' }
       })).status()).toBe(400);
     }
+    const { count: existingJobs, error: jobsError } = await service.schema('app').from('connection_sync_jobs')
+      .select('id', { count: 'exact', head: true });
+    expect(jobsError).toBeNull();
+    expect(existingJobs).not.toBeNull();
+    expect(existingJobs!).toBeLessThan(78);
+    await adminPage.goto(`/dashboard?workspace=${workspaceId}`);
+    await memberPage.goto(`/dashboard?workspace=${workspaceId}`);
+    const adminBefore = await queuedJobCount(adminPage);
+    const memberBefore = await queuedJobCount(memberPage);
     const personalSync = await memberApi.post('/api/connections/sync', {
       data: { workspace_id: workspaceId, connection_id: personalId }
     });
@@ -127,6 +147,14 @@ test('connection ownership and callback state stay bound to the acting user', as
     expect((await adminApi.post('/api/connections/sync', {
       data: { workspace_id: workspaceId, connection_id: sharedId }
     })).status()).toBe(200);
+    await adminPage.reload();
+    await memberPage.reload();
+    expect(await queuedJobCount(adminPage)).toBe(adminBefore + 1);
+    expect(await queuedJobCount(memberPage)).toBe(memberBefore + 2);
+    for (const [actorPage, visibleConnections] of [[adminPage, adminConnections], [memberPage, memberConnections]] as const) {
+      const active = visibleConnections.filter((connection: { status: string }) => connection.status === 'active').length;
+      await expect(actorPage.getByTestId('connections-summary')).toHaveText(`${active}/${visibleConnections.length}`);
+    }
     const { data: queuedAudit } = await service.schema('app').from('audit_logs')
       .select('actor_user_id').eq('resource_id', personalJobId).eq('action', 'connection_job.queued').single();
     expect(queuedAudit?.actor_user_id).toBe('33333333-3333-3333-3333-333333333333');
@@ -166,6 +194,7 @@ test('seeded owner signs in through Mailpit and reaches workspace operator pages
   test.setTimeout(180_000);
   await signIn(page, request, ownerEmail);
   await expect(page.getByText('Local Beta Workspace').first()).toBeVisible();
+  await expect(page.getByText(/up to 80 recent jobs/)).toBeVisible();
 
   const response = await page.context().request.get('/api/workspaces');
   expect(response.ok()).toBe(true);

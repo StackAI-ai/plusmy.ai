@@ -261,6 +261,12 @@ async function resolveSecret(secretId: string | null | undefined) {
   return (data as string | null) ?? null;
 }
 
+function isVisibleConnection(connection: Pick<ConnectionRecord, 'scope' | 'owner_user_id'>, userId?: string | null) {
+  return connection.scope === 'workspace' ||
+    (connection.scope === 'personal' && Boolean(userId) && typeof connection.owner_user_id === 'string' &&
+      connection.owner_user_id.toLowerCase() === userId?.toLowerCase());
+}
+
 export async function listConnectionsForWorkspace(workspaceId: string, userId?: string | null) {
   const supabase = createServiceRoleClient();
   const { data } = await supabase
@@ -271,7 +277,7 @@ export async function listConnectionsForWorkspace(workspaceId: string, userId?: 
     .order('created_at', { ascending: false });
 
   const rows = (data ?? []) as ConnectionRecord[];
-  return rows.filter((row) => row.scope === 'workspace' || row.owner_user_id === userId);
+  return rows.filter((row) => isVisibleConnection(row, userId));
 }
 
 function buildFallbackConnectionHealth(connection: ConnectionRecord): ProviderHealthSnapshot {
@@ -334,13 +340,28 @@ export async function getConnectionById(connectionId: string) {
   return (data as ConnectionRecord | null) ?? null;
 }
 
-export async function listConnectionJobs(workspaceId: string, optionsOrLimit: number | ConnectionJobFilters = 25) {
+export async function listConnectionJobs(workspaceId: string, actorUserId: string, optionsOrLimit: number | ConnectionJobFilters = 25) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorUserId)) {
+    throw new Error('A valid actor is required to load connection job status.');
+  }
+  const actorId = actorUserId.toLowerCase();
   const supabase = createServiceRoleClient();
   const options = typeof optionsOrLimit === 'number' ? { limit: optionsOrLimit } : optionsOrLimit;
   const limit = normalizeLimit(options.limit, 25);
 
-  const { data: connections } = await supabase.schema('app').from('connections').select('id').eq('workspace_id', workspaceId);
-  const connectionIds = (connections ?? []).map((connection) => String(connection.id ?? ''));
+  const { data: membership, error: membershipError } = await supabase.schema('app').from('workspace_members')
+    .select('user_id').eq('workspace_id', workspaceId).eq('user_id', actorId).maybeSingle();
+  if (membershipError) throw membershipError;
+  if (!membership) return [] as ConnectionJobRecord[];
+  const { data: connections, error: connectionError, count } = await supabase.schema('app').from('connections')
+    .select('id,scope,owner_user_id', { count: 'exact' }).eq('workspace_id', workspaceId)
+    .or(`scope.eq.workspace,and(scope.eq.personal,owner_user_id.eq.${actorId})`);
+  if (connectionError || count === null || count !== (connections?.length ?? 0)) {
+    throw new Error('Unable to load complete connection visibility for job status.');
+  }
+  const connectionIds = (connections ?? [])
+    .filter((connection) => isVisibleConnection(connection as Pick<ConnectionRecord, 'scope' | 'owner_user_id'>, actorId))
+    .map((connection) => connection.id);
   if (connectionIds.length === 0) return [] as ConnectionJobRecord[];
 
   let query = supabase
@@ -363,7 +384,8 @@ export async function listConnectionJobs(workspaceId: string, optionsOrLimit: nu
     query = query.eq('connection_id', options.connectionId);
   }
 
-  const { data } = await query;
+  const { data, error } = await query;
+  if (error) throw new Error('Unable to load connection job status.');
   return (data ?? []) as ConnectionJobRecord[];
 }
 
@@ -621,12 +643,22 @@ export async function upsertInstalledConnection(input: {
 async function acquireRefreshLock(connectionId: string, job?: ConnectionJobRecord) {
   const supabase = createServiceRoleClient();
   const lockId = randomUUID();
-  const { data, error } = await supabase.schema('app').rpc(job ? 'begin_connection_job_refresh' : 'begin_connection_refresh', {
-    ...(job ? { p_job_id: job.id, p_claim_id: job.claim_id } : { p_connection_id: connectionId }),
-    p_lock_id: lockId,
-    p_ttl_seconds: 30
-  });
-  if (error) throw error;
+  let data;
+  try {
+    const result = await supabase.schema('app').rpc(job ? 'begin_connection_job_refresh' : 'begin_connection_refresh', {
+      ...(job ? { p_job_id: job.id, p_claim_id: job.claim_id } : { p_connection_id: connectionId }),
+      p_lock_id: lockId,
+      p_ttl_seconds: 30
+    });
+    if (result.error) throw result.error;
+    data = result.data;
+  } catch (error) {
+    // The begin may have committed before its response was lost. No provider
+    // request has started, so only this invocation's lease can be released.
+    await releaseRefreshLock(connectionId, lockId);
+    throw error;
+  }
+  if (data && (!data.connection || !data.credentials)) await releaseRefreshLock(connectionId, lockId);
   return data?.connection && data?.credentials
     ? { lockId, connection: data.connection as ConnectionRecord, credentials: data.credentials as ResolvedConnectionCredentials }
     : null;
@@ -634,10 +666,18 @@ async function acquireRefreshLock(connectionId: string, job?: ConnectionJobRecor
 
 async function releaseRefreshLock(connectionId: string, lockId: string) {
   const supabase = createServiceRoleClient();
-  await supabase.schema('app').rpc('release_connection_refresh_lock', {
-    p_connection_id: connectionId,
-    p_lock_id: lockId
-  });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const { error } = await supabase.schema('app').rpc('release_connection_refresh_lock', {
+        p_connection_id: connectionId,
+        p_lock_id: lockId
+      });
+      if (!error) return;
+    } catch {
+      // A release is idempotent and matches only this lock ID.
+    }
+  }
+  throw new Error('Connection refresh lock could not be safely released. Retry or reconnect.');
 }
 
 async function performRefresh(

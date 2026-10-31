@@ -59,7 +59,10 @@ test('job fences on disposable PostgreSQL, including real row-lock interleavings
     started = true;
     const initial = migration('20260321090000_initial_schema.sql');
     const tables = initial.slice(initial.indexOf('create table if not exists app.connections ('), initial.indexOf('create table if not exists app.context_assets ('));
-    sql(`create role anon; create role authenticated; create role service_role;
+    const membership = initial.slice(initial.indexOf('create or replace function app.current_user_id()'), initial.indexOf('create or replace function app.store_secret('));
+    const policies = initial.slice(initial.indexOf('create policy "connections_select_members"'), initial.indexOf('create policy "context_assets_select_members"'));
+    const releaseLock = initial.slice(initial.indexOf('create or replace function app.release_connection_refresh_lock('), initial.indexOf('create or replace function app.enqueue_token_refresh('));
+    sql(`create role anon; create role authenticated; create role service_role bypassrls;
       create schema app; create schema auth; create schema vault;
       create type app.connection_scope as enum ('workspace', 'personal');
       create type app.workspace_role as enum ('owner', 'admin', 'member');
@@ -70,19 +73,40 @@ test('job fences on disposable PostgreSQL, including real row-lock interleavings
         unique(workspace_id, user_id));
       create table app.providers(id text primary key, display_name text);
       ${tables}
+      create function auth.uid() returns uuid language sql stable as $$
+        select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+      ${membership}
+      alter function app.is_workspace_member(uuid) security definer;
+      alter function app.is_workspace_member(uuid) set search_path = '';
+      alter function app.has_workspace_role(uuid, app.workspace_role[]) security definer;
+      alter function app.has_workspace_role(uuid, app.workspace_role[]) set search_path = '';
+      alter table app.connections enable row level security;
+      alter table app.connection_grants enable row level security;
+      alter table app.connection_credentials enable row level security;
+      alter table app.connection_sync_jobs enable row level security;
+      ${policies}
+      grant usage on schema app, auth to authenticated, service_role;
+      grant select, insert, update, delete on app.connections, app.connection_grants to authenticated;
+      grant select on app.connection_credentials, app.connection_sync_jobs to authenticated;
       create table vault.test_secrets(id uuid primary key default gen_random_uuid(), value text);
       create function app.put_secret(p_value text, p_id uuid, p_name text, p_description text) returns uuid language plpgsql as $$
       declare v_id uuid := coalesce(p_id, gen_random_uuid()); begin
         insert into vault.test_secrets values (v_id, p_value) on conflict (id) do update set value = excluded.value;
         return v_id; end; $$;
       create function app.resolve_secret(p_secret_id uuid) returns text language sql as $$ select value from vault.test_secrets where id = p_secret_id $$;
+      ${releaseLock}
+      revoke all on function app.put_secret(text,uuid,text,text), app.resolve_secret(uuid), app.release_connection_refresh_lock(uuid,uuid) from public, anon, authenticated;
+      grant execute on function app.put_secret(text,uuid,text,text), app.resolve_secret(uuid), app.release_connection_refresh_lock(uuid,uuid) to service_role;
       ${migration('20260321143000_connection_job_workers.sql')}
       ${migration('20260321183000_connection_job_dead_letter.sql')}
       ${migration('20260321202000_connection_job_stale_recovery.sql')}
       drop function app.claim_connection_sync_jobs(text, integer);
       ${migration('20260928050000_connection_job_alert_delivery.sql')}
       ${migration('20260928060000_scrub_connection_metadata.sql')}
-      ${migration('20260928070000_fence_connection_refresh.sql')}`);
+      ${migration('20260928070000_fence_connection_refresh.sql')}
+      revoke all on function app.acquire_connection_refresh_lock(uuid,uuid,integer) from public, anon, authenticated;
+      grant execute on function app.acquire_connection_refresh_lock(uuid,uuid,integer) to service_role;
+      grant all privileges on all tables in schema app to service_role;`);
 
     // Exercise an upgrade with both legacy queued and processing jobs present.
     sql(`insert into app.workspaces values ('ad000000-0000-0000-0000-000000000001','Upgrade','upgrade');
@@ -103,6 +127,27 @@ test('job fences on disposable PostgreSQL, including real row-lock interleavings
       const suite = readFileSync(resolve('supabase/tests/connection_jobs.sql'), 'utf8');
       const assertions = suite.split('-- assertions:start')[1]?.split('-- assertions:end')[0];
       assert.ok(assertions, 'database test block is present');
+      sql(`begin; ${assertions} rollback;`);
+    });
+    // Reproduce the original SQL boundary before applying the forward migration.
+    await t.test('legacy authenticated admin can take over a personal connection', () => {
+      assert.equal(sql(`begin;
+        insert into auth.users values ('ae000000-0000-0000-0000-000000000011'), ('ae000000-0000-0000-0000-000000000012');
+        insert into app.workspace_members values ('ad000000-0000-0000-0000-000000000001','ae000000-0000-0000-0000-000000000011','admin');
+        insert into app.connections (connection_key, workspace_id, owner_user_id, provider, scope, status, display_name)
+        values ('legacy-takeover','ad000000-0000-0000-0000-000000000001','ae000000-0000-0000-0000-000000000012','upgrade','personal','revoked','Victim');
+        set local role authenticated;
+        select set_config('request.jwt.claim.sub','ae000000-0000-0000-0000-000000000011',true);
+        update app.connections set owner_user_id = auth.uid(), status = 'active' where connection_key='legacy-takeover';
+        update app.connections set status = 'active' where connection_key='legacy-takeover';
+        select owner_user_id = auth.uid() and status = 'active' from app.connections where connection_key='legacy-takeover';
+        rollback;`).split('\n').at(-1), 't');
+    });
+    sql(`begin; ${migration('20260928090000_connection_write_boundary.sql')} commit;`);
+    await t.test('SQL connection access assertions under real authenticated/service roles', () => {
+      const suite = readFileSync(resolve('supabase/tests/connection_access.sql'), 'utf8');
+      const assertions = suite.split('-- assertions:start')[1]?.split('-- assertions:end')[0];
+      assert.ok(assertions, 'access test block is present');
       sql(`begin; ${assertions} rollback;`);
     });
 
