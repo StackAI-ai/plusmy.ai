@@ -53,6 +53,7 @@
 - 2026-10-31 source-only dependency checkpoint: update the web/core/Supabase Next.js lockfile from 15.5.14 to 15.5.28. The production-scoped audit drops from 165 advisories (5 critical) to 137 (2 critical); the two remaining critical findings follow mobile tooling paths and still need separate compatibility and reachability analysis. Exact-head build, CI, and independent review remain required; no deployment is implied.
 
 ## Next execution slice (2026-03-23)
+- 2026-10-31 planning checkpoint: see [E2E_IMPLEMENTATION_PLAN.md](./E2E_IMPLEMENTATION_PLAN.md) for the page inventory, ordered private-beta implementation and certification gates, and [PRIVATE_BETA_ISSUE_CHECKLIST.md](./PRIVATE_BETA_ISSUE_CHECKLIST.md) for actionable source-work status. Drafts are not deployed or certified.
 - 2026-10-31 release inventory: use [PRIVATE_BETA_ISSUE_CHECKLIST.md](./PRIVATE_BETA_ISSUE_CHECKLIST.md) for the cross-PR issue, evidence, ownership, and remaining-acceptance checklist. Draft branches remain source-only until their separate release gates are satisfied.
 - 2026-03-22 completion notes added: harden logged-in gating for setup surfaces, and keep the shared shell and onboarding surfaces focused on business tools instead of infrastructure details.
 - Prioritize the oldest remaining open Linear work first, then work the newly created platform follow-ups in order of product value and implementation readiness.
