@@ -61,8 +61,8 @@ private-beta certification.
    365), storage (Dropbox, Box), knowledge (Notion, Confluence), engineering
    (GitHub), then collaboration (Slack). For each provider test install,
    callback, identity, scopes, Vault storage, sync/refresh/reconnect/revoke,
-   every advertised write and at least one read, denied scopes, tenant isolation
-   and corresponding audit. Record versions, test tenant, exact deployment and
+   every advertised read and write, denied scopes, tenant isolation and
+   corresponding audit. Record versions, test tenant, exact deployment and
    evidence; never use production writes as certification.
 5. **Certify MCP clients.** For OpenAI, Anthropic, Gemini and Cursor, record
    exact client/version and staging deployment; exercise discovery, registration
