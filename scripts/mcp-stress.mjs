@@ -27,7 +27,8 @@ async function postJson(path, body) {
     method: 'POST',
     headers: {
       authorization: `Bearer ${token}`,
-      'content-type': 'application/json'
+      'content-type': 'application/json',
+      accept: 'application/json, text/event-stream'
     },
     body: JSON.stringify(body)
   });
@@ -41,10 +42,13 @@ async function postJson(path, body) {
 }
 
 async function runBatch(label) {
-  const initialize = await postJson('/mcp', createRequest(`${label}-init`, 'initialize', { protocolVersion }));
+  const initialize = await postJson('/mcp', createRequest(`${label}-init`, 'initialize', {
+    protocolVersion, capabilities: {}, clientInfo: { name: 'plusmy-stress', version: '1.0.0' }
+  }));
   if (!initialize?.result?.serverInfo?.name) {
     throw new Error('initialize response missing serverInfo');
   }
+  await postJson('/mcp', { jsonrpc: '2.0', method: 'notifications/initialized' });
 
   const requests = Array.from({ length: requestBatchSize }, (_, index) => {
     const method = index % 2 === 0 ? 'tools/list' : 'resources/list';

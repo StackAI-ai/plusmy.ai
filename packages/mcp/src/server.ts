@@ -310,6 +310,14 @@ export async function handleMcpJsonRpcRequest(authContext: McpAuthContext, body:
     }
     switch (body.method) {
       case 'initialize':
+        if (
+          typeof body.params?.protocolVersion !== 'string' ||
+          !body.params.capabilities || typeof body.params.capabilities !== 'object' || Array.isArray(body.params.capabilities) ||
+          !body.params.clientInfo || typeof body.params.clientInfo !== 'object' || Array.isArray(body.params.clientInfo) ||
+          typeof body.params.clientInfo.name !== 'string' || typeof body.params.clientInfo.version !== 'string'
+        ) {
+          return { response: failure(body.id, -32602, 'Invalid initialization parameters.') };
+        }
         return { response: success(body.id, {
           protocolVersion: '2025-03-26',
           serverInfo: { name: 'plusmy.ai', version: '0.1.0' },

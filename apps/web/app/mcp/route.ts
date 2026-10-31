@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
-import type { McpJsonRpcRequest } from '@plusmy/contracts';
-import { handleMcpJsonRpcRequest } from '@plusmy/mcp';
+import { handleMcpHttpPayload, handleMcpJsonRpcRequest } from '@plusmy/mcp';
 import { resolveMcpAuthContextFromRequest } from '@plusmy/core';
 
 export const runtime = 'nodejs';
 
-const mcpJsonRpcRequestSchema = z.object({
-  jsonrpc: z.literal('2.0'),
-  id: z.union([z.string(), z.number(), z.null()]),
-  method: z.string().min(1),
-  params: z.record(z.string(), z.unknown()).optional()
-});
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Authorization, Content-Type, MCP-Protocol-Version',
+  'Access-Control-Expose-Headers': 'WWW-Authenticate'
+};
 
 function withRateLimitHeaders(headers: HeadersInit, rateLimit?: { limit: number; remaining: number; resetAt: number; resetAfterSeconds: number }) {
   if (!rateLimit) {
@@ -35,6 +32,7 @@ function unauthorized(origin: string) {
     {
       status: 401,
       headers: {
+        ...corsHeaders,
         'WWW-Authenticate': `Bearer realm="plusmy.ai", resource_metadata="${origin}/.well-known/oauth-protected-resource"`
       }
     }
@@ -45,19 +43,16 @@ export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
     headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Authorization, Content-Type, MCP-Protocol-Version'
+      ...corsHeaders,
+      'Access-Control-Allow-Methods': 'POST, OPTIONS'
     }
   });
 }
 
-export async function GET(request: NextRequest) {
-  const origin = new URL(request.url).origin;
-  return NextResponse.json({
-    name: 'plusmy.ai MCP endpoint',
-    resourceMetadata: `${origin}/.well-known/oauth-protected-resource`,
-    authorizationMetadata: `${origin}/.well-known/oauth-authorization-server`
+export async function GET() {
+  return new NextResponse(null, {
+    status: 405,
+    headers: { ...corsHeaders, Allow: 'POST, OPTIONS' }
   });
 }
 
@@ -66,36 +61,24 @@ export async function POST(request: NextRequest) {
   const authContext = await resolveMcpAuthContextFromRequest(request);
   if (!authContext) return unauthorized(origin);
 
-  const body = mcpJsonRpcRequestSchema.safeParse(await request.json().catch(() => null));
-  if (!body.success) {
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch {
     return NextResponse.json(
       {
         jsonrpc: '2.0',
         id: null,
-        error: {
-          code: -32600,
-          message: 'Invalid JSON-RPC request.',
-          data: body.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message }))
-        }
+        error: { code: -32700, message: 'Invalid JSON.' }
       },
-      {
-        status: 400,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Authorization, Content-Type, MCP-Protocol-Version'
-        }
-      }
+      { status: 400, headers: corsHeaders }
     );
   }
 
-  const result = await handleMcpJsonRpcRequest(authContext, body.data as McpJsonRpcRequest);
-  return NextResponse.json(result.response, {
-    headers: withRateLimitHeaders(
-      {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Authorization, Content-Type, MCP-Protocol-Version'
-      },
-      result.rateLimit
-    )
+  const result = await handleMcpHttpPayload(payload, (body) => handleMcpJsonRpcRequest(authContext, body));
+  if (result.status === 202) return new NextResponse(null, { status: 202, headers: corsHeaders });
+  return NextResponse.json(result.body, {
+    status: result.status,
+    headers: withRateLimitHeaders(corsHeaders, result.rateLimit)
   });
 }

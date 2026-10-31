@@ -97,3 +97,7 @@
 - Google v1 means Drive/Docs search and read, not broad Gmail or admin scopes; Slack v1 includes read channels/history and post message; Notion v1 includes search, read, and create page.
 - Embeddings start with a 1536-dimension provider behind an adapter interface so the storage contract stays stable while the embedding vendor can change later.
 - `plusmy.ai` is the MCP OAuth authorization server for client access, while third-party provider OAuth remains separate and is mediated by the integration adapters.
+
+## 2026-10-30 Execution Checkpoint
+- The MCP HTTP endpoint accepts authenticated initialization notifications and bounded JSON-RPC batches, validates initialization parameters, and declines unsupported server-sent-event GETs with HTTP 405. A standard MCP TypeScript SDK client connects and reads a workspace prompt in a mock-backed route contract; the Supabase-backed browser journey is configured to exercise the same client through the running app.
+- The integration branch is `dev`; implementation pull requests target `dev`, with a separate reviewed promotion to `main`. Named MCP clients, real provider certifications, staging worker/alert acceptance, historical-grant review, and the MCP Origin policy remain open release gates.

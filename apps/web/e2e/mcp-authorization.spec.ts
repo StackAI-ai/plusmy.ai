@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 const workspaceId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const ownerEmail = 'owner@plusmy.local';
@@ -114,7 +116,32 @@ test('MCP consent, PKCE exchange, scope narrowing, and revocation work end to en
     expect(raced.map((response) => response.status()).sort()).toEqual([200, 400]);
     const fullToken = await raced.find((response) => response.status() === 200)!.json();
     expect(fullToken.scope).toBe('mcp:tools mcp:resources');
-    expect((await mcpCall(request, fullToken.access_token, 'initialize', 1)).body.result.serverInfo.name).toBe('plusmy.ai');
+    expect((await mcpCall(request, fullToken.access_token, 'initialize', 1, {
+      protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'e2e-client', version: '1.0.0' }
+    })).body.result.serverInfo.name).toBe('plusmy.ai');
+    const notification = { jsonrpc: '2.0', method: 'notifications/initialized' };
+    expect((await request.post('/mcp', { data: notification })).status()).toBe(401);
+    const initialized = await request.post('/mcp', {
+      headers: { authorization: `Bearer ${fullToken.access_token}` }, data: notification
+    });
+    expect(initialized.status()).toBe(202);
+    expect(await initialized.text()).toBe('');
+    expect((await request.get('/mcp', {
+      headers: { authorization: `Bearer ${fullToken.access_token}`, accept: 'text/event-stream' }
+    })).status()).toBe(405);
+    const batch = await request.post('/mcp', {
+      headers: { authorization: `Bearer ${fullToken.access_token}` },
+      data: [
+        { jsonrpc: '2.0', id: 20, method: 'ping' },
+        notification,
+        { jsonrpc: '2.0', id: 21, method: 'resources/list' }
+      ]
+    });
+    expect(batch.status()).toBe(200);
+    expect(await batch.json()).toEqual([
+      { jsonrpc: '2.0', id: 20, result: {} },
+      expect.objectContaining({ jsonrpc: '2.0', id: 21, result: expect.objectContaining({ resources: expect.any(Array) }) })
+    ]);
     expect((await mcpCall(request, fullToken.access_token, 'tools/list', 2)).body.result.tools).toEqual([]);
 
     const { data: connection, error: connectionError } = await service.schema('app').from('connections').insert({
@@ -165,6 +192,19 @@ test('MCP consent, PKCE exchange, scope narrowing, and revocation work end to en
     expect(resources).toEqual(expect.arrayContaining([expect.objectContaining({ uri: resourceUri })]));
     const read = await mcpCall(request, fullToken.access_token, 'resources/read', 4, { uri: resourceUri });
     expect(read.body.result.contents[0].text).toContain('Disposable authorization evidence.');
+
+    const sdk = new Client({ name: 'plusmy-e2e-client', version: '1.0.0' }, { capabilities: {} });
+    try {
+      await sdk.connect(new StreamableHTTPClientTransport(new URL('http://localhost:3009/mcp'), {
+        requestInit: { headers: { authorization: `Bearer ${fullToken.access_token}` } }
+      }));
+      expect((await sdk.listResources()).resources).toEqual(expect.arrayContaining([expect.objectContaining({ uri: resourceUri })]));
+      expect((await sdk.readResource({ uri: resourceUri })).contents).toEqual(expect.arrayContaining([
+        expect.objectContaining({ text: 'Disposable authorization evidence.' })
+      ]));
+    } finally {
+      await sdk.close();
+    }
 
     const refresh = () => request.post('/token', { form: {
       grant_type: 'refresh_token', refresh_token: fullToken.refresh_token, client_id: clientId

@@ -43,7 +43,7 @@ function requestWithAuth(method, path, body) {
     method,
     headers: {
       'content-type': 'application/json',
-      accept: 'application/json',
+      accept: 'application/json, text/event-stream',
       authorization: token ? `Bearer ${token}` : ''
     },
     body: body ? JSON.stringify(body) : undefined
@@ -119,9 +119,26 @@ async function run() {
     console.log('Using MCP smoke-test fixture token.');
   }
 
-  const initialize = await requestWithAuth('POST', '/mcp', createRequest('compat-init', 'initialize', { protocolVersion }));
+  const initialize = await requestWithAuth('POST', '/mcp', createRequest('compat-init', 'initialize', {
+    protocolVersion, capabilities: {}, clientInfo: { name: 'plusmy-compat', version: '1.0.0' }
+  }));
   assert(initialize.response.ok, `/mcp initialize failed: HTTP ${initialize.response.status}`);
   assert(initialize.body?.result?.serverInfo?.name, 'MCP initialize response missing serverInfo');
+
+  const initialized = await requestWithAuth('POST', '/mcp', { jsonrpc: '2.0', method: 'notifications/initialized' });
+  assert(initialized.response.status === 202 && initialized.body === null, 'MCP initialized notification was not accepted');
+
+  const stream = await fetchJson('/mcp', { headers: { accept: 'text/event-stream', authorization: `Bearer ${token}` } });
+  assert(stream.response.status === 405, `Expected unsupported MCP event stream to return 405, got ${stream.response.status}`);
+
+  const batch = await requestWithAuth('POST', '/mcp', [
+    createRequest('compat-ping', 'ping'),
+    { jsonrpc: '2.0', method: 'notifications/initialized' },
+    createRequest('compat-resources-batch', 'resources/list')
+  ]);
+  assert(batch.response.ok && Array.isArray(batch.body) && batch.body.length === 2, 'MCP mixed batch response is malformed');
+  assert(batch.body.some((entry) => entry.id === 'compat-ping' && entry.result), 'MCP batch ping response is missing');
+  assert(batch.body.some((entry) => entry.id === 'compat-resources-batch' && Array.isArray(entry.result?.resources)), 'MCP batch resources response is missing');
 
   const toolsResponse = await requestWithAuth('POST', '/mcp', createRequest('compat-tools', 'tools/list'));
   assert(toolsResponse.response.ok, `/mcp tools/list failed: HTTP ${toolsResponse.response.status}`);
