@@ -41,6 +41,7 @@ jobs:
             kong:2.8.1
             mailpit:v1.22.3
             realtime:v2.78.10
+            storage-api:v1.41.8
             pg_prove:3.36
           )
           for image in "${images[@]}"; do
