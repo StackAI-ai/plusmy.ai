@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(37);
+select plan(60);
 
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
 values
@@ -20,6 +20,7 @@ values
   ('91000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000001', 'owner'),
   ('91000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000002', 'member'),
   ('91000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000003', 'admin'),
+  ('91000000-0000-4000-8000-000000000002', '90000000-0000-4000-8000-000000000003', 'admin'),
   ('91000000-0000-4000-8000-000000000002', '90000000-0000-4000-8000-000000000004', 'owner');
 
 insert into app.context_assets (id, workspace_id, owner_user_id, type, title, content)
@@ -61,6 +62,8 @@ select ok(not has_function_privilege('anon', 'app.match_context_chunks(uuid,uuid
           'anonymous callers cannot invoke search');
 select ok(has_function_privilege('service_role', 'app.match_context_chunks(uuid,uuid,extensions.vector,integer,jsonb)', 'execute'),
           'the trusted service can invoke actor-scoped search');
+select ok(not has_function_privilege('authenticated', 'app.context_vector_index_health()', 'execute'), 'authenticated callers cannot read global vector health');
+select ok(has_function_privilege('service_role', 'app.context_vector_index_health()', 'execute'), 'the trusted service can read vector index health');
 select is((select confdeltype::text from pg_constraint where conrelid = 'app.context_assets'::regclass and conname = 'context_assets_owner_user_id_fkey'), 'r', 'asset owner deletion is restricted');
 select is((select confdeltype::text from pg_constraint where conrelid = 'app.prompt_templates'::regclass and conname = 'prompt_templates_owner_user_id_fkey'), 'r', 'prompt owner deletion is restricted');
 select is((select confdeltype::text from pg_constraint where conrelid = 'app.skill_definitions'::regclass and conname = 'skill_definitions_owner_user_id_fkey'), 'r', 'skill owner deletion is restricted');
@@ -104,6 +107,39 @@ select is((select count(*)::integer from app.context_assets where workspace_id =
 select is((select count(*)::integer from app.context_asset_chunks where workspace_id = '91000000-0000-4000-8000-000000000001'), 1, 'admin reads only shared chunks');
 select is((select count(*)::integer from app.prompt_templates where workspace_id = '91000000-0000-4000-8000-000000000001'), 1, 'admin reads only shared prompts');
 select is((select count(*)::integer from app.skill_definitions where workspace_id = '91000000-0000-4000-8000-000000000001'), 1, 'admin reads only shared skills');
+select is((select count(*)::integer from app.context_asset_chunks where id = '93000000-0000-4000-8000-000000000005'), 0, 'a member of both workspaces cannot read a chunk with a mismatched parent workspace');
+select throws_ok(
+  $$insert into app.context_assets (workspace_id, owner_user_id, type, title, content) values ('91000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000001', 'document', 'forbidden', 'forbidden')$$,
+  '42501', null, 'admin cannot insert another user private asset'
+);
+select throws_ok(
+  $$insert into app.prompt_templates (workspace_id, owner_user_id, name, slug, content) values ('91000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000001', 'forbidden', 'forbidden-prompt', 'forbidden')$$,
+  '42501', null, 'admin cannot insert another user private prompt'
+);
+select throws_ok(
+  $$insert into app.skill_definitions (workspace_id, owner_user_id, name, slug, instructions) values ('91000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000001', 'forbidden', 'forbidden-skill', 'forbidden')$$,
+  '42501', null, 'admin cannot insert another user private skill'
+);
+select throws_ok(
+  $$insert into app.context_asset_chunks (workspace_id, asset_id, chunk_index, content) values ('91000000-0000-4000-8000-000000000001', '92000000-0000-4000-8000-000000000002', 1, 'forbidden')$$,
+  '42501', null, 'admin cannot insert a chunk under another user private asset'
+);
+select throws_ok(
+  $$update app.context_asset_chunks set workspace_id = '91000000-0000-4000-8000-000000000002' where id = '93000000-0000-4000-8000-000000000001'$$,
+  '42501', null, 'admin of both workspaces cannot move a chunk away from its parent workspace'
+);
+select throws_ok(
+  $$update app.context_assets set owner_user_id = '90000000-0000-4000-8000-000000000003' where id = '92000000-0000-4000-8000-000000000001'$$,
+  '23514', null, 'shared asset ownership cannot be changed directly'
+);
+select throws_ok(
+  $$update app.prompt_templates set owner_user_id = '90000000-0000-4000-8000-000000000003' where id = '94000000-0000-4000-8000-000000000001'$$,
+  '23514', null, 'shared prompt ownership cannot be changed directly'
+);
+select throws_ok(
+  $$update app.skill_definitions set owner_user_id = '90000000-0000-4000-8000-000000000003' where id = '95000000-0000-4000-8000-000000000001'$$,
+  '23514', null, 'shared skill ownership cannot be changed directly'
+);
 with changed as (
   update app.context_assets set content = 'not allowed' where id = '92000000-0000-4000-8000-000000000002' returning id
 )
@@ -112,6 +148,24 @@ with changed as (
   update app.context_assets set content = 'updated shared asset' where id = '92000000-0000-4000-8000-000000000001' returning id
 )
 select is((select count(*)::integer from changed), 1, 'admin can still update shared assets');
+with changed as (
+  delete from app.context_assets where id = '92000000-0000-4000-8000-000000000002' returning id
+)
+select is((select count(*)::integer from changed), 0, 'admin cannot delete another user private asset');
+with changed as (
+  delete from app.prompt_templates where id = '94000000-0000-4000-8000-000000000002' returning id
+)
+select is((select count(*)::integer from changed), 0, 'admin cannot delete another user private prompt');
+with changed as (
+  delete from app.skill_definitions where id = '95000000-0000-4000-8000-000000000002' returning id
+)
+select is((select count(*)::integer from changed), 0, 'admin cannot delete another user private skill');
+
+select set_config('request.jwt.claim.sub', '90000000-0000-4000-8000-000000000001', true);
+select throws_ok(
+  $$update app.prompt_templates set owner_user_id = null where id = '94000000-0000-4000-8000-000000000002'$$,
+  '23514', null, 'a private prompt cannot be made shared through a direct update'
+);
 
 select set_config('request.jwt.claim.sub', '90000000-0000-4000-8000-000000000004', true);
 select is((select count(*)::integer from app.context_assets where workspace_id = '91000000-0000-4000-8000-000000000001'), 0, 'outsider cannot read assets from another workspace');
@@ -121,6 +175,38 @@ select is((select count(*)::integer from app.skill_definitions where workspace_i
 
 reset role;
 set local role service_role;
+select lives_ok(
+  $$insert into app.prompt_templates (workspace_id, owner_user_id, name, slug, content) values ('91000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000002', 'Member duplicate', 'owner', 'private')$$,
+  'different prompt owners may use the same private slug'
+);
+select lives_ok(
+  $$insert into app.prompt_templates (workspace_id, owner_user_id, name, slug, content) values ('91000000-0000-4000-8000-000000000001', null, 'Shared duplicate', 'owner', 'shared')$$,
+  'a shared prompt may use the same slug as a private prompt'
+);
+select throws_ok(
+  $$insert into app.prompt_templates (workspace_id, owner_user_id, name, slug, content) values ('91000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000002', 'Duplicate', 'owner', 'private')$$,
+  '23505', null, 'prompt slugs remain unique within a personal scope'
+);
+select throws_ok(
+  $$insert into app.prompt_templates (workspace_id, owner_user_id, name, slug, content) values ('91000000-0000-4000-8000-000000000001', null, 'Duplicate', 'owner', 'shared')$$,
+  '23505', null, 'prompt slugs remain unique within the shared scope'
+);
+select lives_ok(
+  $$insert into app.skill_definitions (workspace_id, owner_user_id, name, slug, instructions) values ('91000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000002', 'Member duplicate', 'owner', 'private')$$,
+  'different skill owners may use the same private slug'
+);
+select lives_ok(
+  $$insert into app.skill_definitions (workspace_id, owner_user_id, name, slug, instructions) values ('91000000-0000-4000-8000-000000000001', null, 'Shared duplicate', 'owner', 'shared')$$,
+  'a shared skill may use the same slug as a private skill'
+);
+select throws_ok(
+  $$insert into app.skill_definitions (workspace_id, owner_user_id, name, slug, instructions) values ('91000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000002', 'Duplicate', 'owner', 'private')$$,
+  '23505', null, 'skill slugs remain unique within a personal scope'
+);
+select throws_ok(
+  $$insert into app.skill_definitions (workspace_id, owner_user_id, name, slug, instructions) values ('91000000-0000-4000-8000-000000000001', null, 'Duplicate', 'owner', 'shared')$$,
+  '23505', null, 'skill slugs remain unique within the shared scope'
+);
 select is((select count(*)::integer from app.match_context_chunks('91000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000001', ('[1,' || repeat('0,', 1534) || '0]')::extensions.vector)), 2, 'search returns shared and owner personal chunks');
 select is((select count(*)::integer from app.match_context_chunks('91000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000002', ('[1,' || repeat('0,', 1534) || '0]')::extensions.vector)), 2, 'search returns shared and member personal chunks');
 select is((select string_agg(chunk_id::text, ',' order by chunk_id) from app.match_context_chunks('91000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000001', ('[1,' || repeat('0,', 1534) || '0]')::extensions.vector)), '93000000-0000-4000-8000-000000000001,93000000-0000-4000-8000-000000000002', 'search returns precisely the shared and owner chunks');

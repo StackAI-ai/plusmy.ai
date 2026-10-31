@@ -66,8 +66,7 @@ function summarizeRuntimeContext(runtimeContext: Awaited<ReturnType<typeof resol
 function summarizeContextInjection(contextInjection: ContextInjectionResult) {
   return {
     query: contextInjection.query,
-    matchCount: contextInjection.matches.length,
-    assetTitles: contextInjection.matches.map((match) => match.title)
+    matchCount: contextInjection.matches.length
   };
 }
 

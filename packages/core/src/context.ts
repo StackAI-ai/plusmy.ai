@@ -1298,20 +1298,27 @@ export async function matchContextChunks(workspaceId: string, userId: string, qu
   }))
 }
 
-export async function getContextEmbeddingHealth(workspaceId: string): Promise<ContextEmbeddingHealth> {
+export async function getContextEmbeddingHealth(workspaceId: string, userId: string): Promise<ContextEmbeddingHealth> {
+  if (!userId) throw new Error('Workspace membership is required.')
   const supabase = createServiceRoleClient()
-  const [{ count: totalAssets }, { data: assets }, { data: chunks }, { data: indexHealth }] = await Promise.all([
-    supabase.schema('app').from('context_assets').select('id', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
-    supabase.schema('app').from('context_assets').select('id,metadata').eq('workspace_id', workspaceId),
-    supabase.schema('app').from('context_asset_chunks').select('metadata,created_at').eq('workspace_id', workspaceId),
+  const { data: membership, error: membershipError } = await supabase.schema('app').from('workspace_members')
+    .select('user_id').eq('workspace_id', workspaceId).eq('user_id', userId).maybeSingle()
+  if (membershipError || !membership) throw new Error('Workspace membership is required.')
+
+  const [{ data: assets, error: assetsError }, { data: chunks, error: chunksError }, { data: indexHealth, error: indexError }] = await Promise.all([
+    supabase.schema('app').from('context_assets').select('id,owner_user_id,metadata').eq('workspace_id', workspaceId),
+    supabase.schema('app').from('context_asset_chunks').select('asset_id,metadata,created_at').eq('workspace_id', workspaceId),
     supabase.schema('app').rpc('context_vector_index_health')
   ])
+  if (assetsError || chunksError || indexError) throw assetsError ?? chunksError ?? indexError
 
-  const assetRows = dataOrEmptyArray(assets)
-  const chunkRows = dataOrEmptyArray(chunks)
+  const assetRows = dataOrEmptyArray(assets).filter((asset) => !asset.owner_user_id || asset.owner_user_id === userId)
+  const visibleAssetIds = new Set(assetRows.map((asset) => asset.id))
+  const chunkRows = dataOrEmptyArray(chunks).filter((chunk) => visibleAssetIds.has(chunk.asset_id))
   const systemManagedAssets = assetRows.filter((asset) => isSystemManagedContextAsset(asset.metadata)).length
-  const embeddedChunks = chunkRows.filter((chunk) => asContextAssetMetadata(chunk.metadata).embedded === true).length
-  const createdTimestamps = chunkRows
+  const embeddedRows = chunkRows.filter((chunk) => asContextAssetMetadata(chunk.metadata).embedded === true)
+  const embeddedChunks = embeddedRows.length
+  const createdTimestamps = embeddedRows
     .map((chunk) => {
       const metadata = asContextAssetMetadata(chunk.metadata)
       return typeof metadata.embedded_at === 'string' ? metadata.embedded_at : chunk.created_at
@@ -1330,24 +1337,15 @@ export async function getContextEmbeddingHealth(workspaceId: string): Promise<Co
       'index_present' in vectorIndexHealth &&
       vectorIndexHealth.index_present === true
   )
-  const indexStatus =
-    vectorIndexHealth && typeof vectorIndexHealth === 'object' && 'index_status' in vectorIndexHealth && typeof vectorIndexHealth.index_status === 'string'
-      ? (vectorIndexHealth.index_status as ContextEmbeddingHealth['embeddingIndexStatus'])
-      : indexPresent
-        ? 'healthy'
-        : 'missing'
-  const indexRecommendation =
-    vectorIndexHealth &&
-    typeof vectorIndexHealth === 'object' &&
-    'recommendation' in vectorIndexHealth &&
-    typeof vectorIndexHealth.recommendation === 'string'
-      ? vectorIndexHealth.recommendation
-      : indexPresent
-        ? null
-        : 'Create or rebuild the pgvector ivfflat index before relying on semantic search.'
+  const indexStatus = !indexPresent ? 'missing' : embeddedChunks > 0 ? 'healthy' : 'stale'
+  const indexRecommendation = !indexPresent
+    ? 'Create or rebuild the pgvector ivfflat index before relying on semantic search.'
+    : embeddedChunks > 0
+      ? null
+      : 'Embed a visible context asset before relying on semantic search.'
 
   return {
-    totalAssets: totalAssets ?? 0,
+    totalAssets: assetRows.length,
     visibleAssets: assetRows.length - systemManagedAssets,
     systemManagedAssets,
     totalChunks: chunkRows.length,
