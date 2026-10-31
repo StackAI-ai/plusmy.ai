@@ -41,6 +41,7 @@ jobs:
             kong:2.8.1
             mailpit:v1.22.3
             realtime:v2.78.10
+            storage-api:v1.41.8
             pg_prove:3.36
             storage-api:v1.41.8
             edge-runtime:v1.71.0
@@ -77,6 +78,9 @@ jobs:
       - name: Connection job claim fencing contracts
         run: pnpm exec tsx --test scripts/connection-jobs.test.ts
 
+      - name: Connection job personal visibility contracts
+        run: pnpm exec tsx --test scripts/connection-job-visibility.test.ts
+
       - name: Doctor
         run: node scripts/doctor.mjs
 
@@ -88,6 +92,9 @@ jobs:
 
       - name: Connection job fencing database regressions
         run: node_modules/supabase/bin/supabase test db supabase/tests/connection_jobs.sql --local
+
+      - name: Connection access boundary database regressions
+        run: node_modules/supabase/bin/supabase test db supabase/tests/connection_access.sql --local
 
       - name: Worker alert delivery contracts
         run: node scripts/local-supabase-env.mjs -- pnpm exec tsx scripts/worker-alert-contracts.ts
