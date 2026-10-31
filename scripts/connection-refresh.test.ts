@@ -5,6 +5,8 @@ Object.assign(process.env, {
   NEXT_PUBLIC_SUPABASE_URL: 'http://supabase.invalid',
   NEXT_PUBLIC_SUPABASE_ANON_KEY: 'fake-anon',
   SUPABASE_SERVICE_ROLE_KEY: 'fake-service',
+  GITHUB_CLIENT_ID: 'fake-client-id',
+  GITHUB_CLIENT_SECRET: 'fake-client-secret',
   MCP_JWT_SECRET: 'fake-mcp-secret-at-least-thirty-two-bytes',
   WORKER_SHARED_SECRET: 'fake-worker-secret-at-least-thirty-two-bytes',
   OPENAI_API_KEY: ''
@@ -42,6 +44,10 @@ test('provider refreshes are fenced against concurrent lifecycle changes', async
   globalThis.fetch = async (input, init) => {
     const request = new Request(input, init);
     const url = new URL(request.url);
+    if (url.href === 'https://github.com/login/oauth/access_token') {
+      calls.push('POST fake-github-token');
+      return Response.json({ access_token: 'non-expiring-fake-token' });
+    }
     if (url.origin !== 'http://supabase.invalid') throw new Error('Unexpected external request');
     calls.push(`${request.method} ${url.pathname}`);
     const body = request.method === 'GET' ? {} : await request.json().catch(() => ({})) as Record<string, any>;
@@ -201,6 +207,22 @@ test('provider refreshes are fenced against concurrent lifecycle changes', async
       });
       assert.equal(fresh.accessToken, 'already-refreshed');
       assert.equal(connection.refresh_lock_id, null);
+    });
+
+    await t.test('a GitHub token without refresh credentials retains existing behavior near its synthetic expiry', async () => {
+      reset();
+      const tokens = await integration.exchangeAuthorizationCode({ code: 'fake-code', redirectUri: 'http://localhost/callback' });
+      assert.equal(tokens.refreshToken, null);
+      assert.ok(tokens.expiresAt);
+      const realNow = Date.now;
+      Date.now = () => realNow() + 56 * 60 * 1000;
+      try {
+        const credentials = await core.refreshConnectionIfNeeded(connection as any, tokens);
+        assert.equal(credentials.accessToken, 'non-expiring-fake-token');
+        assert.ok(!calls.includes('POST /rest/v1/rpc/begin_connection_refresh'));
+      } finally {
+        Date.now = realNow;
+      }
     });
 
     await t.test('an expired lease rejects late results and requires reconnect', async () => {

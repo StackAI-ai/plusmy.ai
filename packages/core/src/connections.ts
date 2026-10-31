@@ -673,7 +673,7 @@ export async function refreshConnectionIfNeeded(connection: ConnectionRecord, cr
   if (!credentials.accessToken || !credentials.expiresAt) return credentials;
   const expiresAt = new Date(credentials.expiresAt).getTime();
   if (expiresAt - Date.now() > REFRESH_SKEW_MS) return credentials;
-  if (!credentials.refreshToken) throw new Error('Connection token has expired or is near expiry and cannot be refreshed.');
+  if (!credentials.refreshToken) return credentials;
   return await performRefresh(connection);
 }
 
