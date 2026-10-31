@@ -613,6 +613,7 @@ async function performRefresh(
       refreshToken: credentials.refreshToken,
       metadata: asJsonObject(lockedConnection.metadata)
     });
+    if (!refreshed.accessToken) throw new Error('Provider returned no access token.');
     const supabase = createServiceRoleClient();
     const { data, error } = await supabase.schema('app').rpc('commit_connection_refresh', {
       p_connection_id: connection.id,

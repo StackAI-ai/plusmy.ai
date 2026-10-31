@@ -102,6 +102,9 @@ as $$
 declare
   v_updated integer;
 begin
+  if p_lock_id is null then
+    raise exception 'Refresh lock ID is required.' using errcode = '22004';
+  end if;
   -- An expired lease may represent a provider request that rotated its token.
   -- Never issue another refresh with that possibly-consumed credential.
   update app.connections set status = 'reauth_required',
@@ -162,6 +165,9 @@ as $$
 declare
   v_connection app.connections%rowtype;
 begin
+  if p_lock_id is null then
+    return 'fenced';
+  end if;
   select * into v_connection from app.connections where id = p_connection_id for update;
   if not found or v_connection.status <> 'active' or v_connection.refresh_lock_id is distinct from p_lock_id then
     return 'fenced';
@@ -171,6 +177,12 @@ begin
       reauth_required_reason = 'A previous token refresh did not finish safely. Reconnect this account.',
       refresh_lock_id = null, refresh_lock_expires_at = null where id = p_connection_id;
     return 'expired';
+  end if;
+  if nullif(p_access_token, '') is null then
+    update app.connections set status = 'reauth_required',
+      reauth_required_reason = 'Token refresh did not finish safely. Reconnect this account.',
+      refresh_lock_id = null, refresh_lock_expires_at = null where id = p_connection_id;
+    return 'invalid';
   end if;
 
   perform app.write_connection_credentials(p_connection_id, v_connection.provider, p_access_token,

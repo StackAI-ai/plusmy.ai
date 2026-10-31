@@ -19,6 +19,10 @@ select ok((app.install_connection_credentials('refresh-fencing-test', 'ab000000-
   'refresh-test', 'workspace', 'Refresh test', 'account', null, array['read'], null, '{}'::jsonb,
   'initial-access', 'initial-refresh', null, 'Bearer')->'connection'->>'status') = 'active', 'initial install succeeds');
 select is((select app.resolve_secret(refresh_token_secret_id) from app.connection_credentials where connection_id = 'ab000000-0000-0000-0000-000000000002'), 'initial-refresh', 'install stores the refresh token in Vault');
+select throws_ok($test$select app.acquire_connection_refresh_lock('ab000000-0000-0000-0000-000000000002', null, 30)$test$,
+  '22004', null, 'null refresh lease IDs are rejected');
+select is(app.commit_connection_refresh('ab000000-0000-0000-0000-000000000002', null,
+  'unfenced-access', 'unfenced-refresh', null, 'Bearer', null, array['write']), 'fenced', 'null lease cannot commit without ownership');
 
 select is(app.begin_connection_refresh('ab000000-0000-0000-0000-000000000002', 'ab000000-0000-0000-0000-000000000010', 30)->'credentials'->>'refreshToken', 'initial-refresh', 'first refresh atomically acquires a lease and credential snapshot');
 select ok(not app.acquire_connection_refresh_lock('ab000000-0000-0000-0000-000000000002', 'ab000000-0000-0000-0000-000000000011', 30), 'a competing refresh cannot acquire the lease');
@@ -47,6 +51,15 @@ select is(app.commit_connection_refresh('ab000000-0000-0000-0000-000000000002', 
   'valid-access', 'valid-refresh', null, 'Bearer', null, array['write']), 'committed', 'valid refresh commits');
 select is((select app.resolve_secret(refresh_token_secret_id) from app.connection_credentials where connection_id = 'ab000000-0000-0000-0000-000000000002'), 'valid-refresh', 'valid refresh updates Vault');
 select is((select scope from app.connection_grants where connection_id = 'ab000000-0000-0000-0000-000000000002'), 'write', 'valid refresh updates grants');
+
+select ok(app.acquire_connection_refresh_lock('ab000000-0000-0000-0000-000000000002', 'ab000000-0000-0000-0000-000000000016', 30), 'lease acquired for malformed response');
+select is(app.commit_connection_refresh('ab000000-0000-0000-0000-000000000002', 'ab000000-0000-0000-0000-000000000016',
+  '', 'uncertain-refresh', null, 'Bearer', null, array['write']), 'invalid', 'missing access token fails closed');
+select is((select status::text from app.connections where id = 'ab000000-0000-0000-0000-000000000002'), 'reauth_required', 'malformed response requires reconnect');
+select is((select app.resolve_secret(refresh_token_secret_id) from app.connection_credentials where connection_id = 'ab000000-0000-0000-0000-000000000002'), 'valid-refresh', 'malformed response does not replace Vault credentials');
+select ok((app.install_connection_credentials('refresh-fencing-test', 'ab000000-0000-0000-0000-000000000001', null,
+  'refresh-test', 'workspace', 'Refresh test', 'account', null, array['write'], null, '{}'::jsonb,
+  'valid-access', 'valid-refresh', null, 'Bearer')->'connection'->>'status') = 'active', 'explicit reconnect recovers a malformed response');
 
 select ok(app.acquire_connection_refresh_lock('ab000000-0000-0000-0000-000000000002', 'ab000000-0000-0000-0000-000000000014', 30), 'lease acquired for rollback check');
 select throws_ok($test$select app.commit_connection_refresh('ab000000-0000-0000-0000-000000000002', 'ab000000-0000-0000-0000-000000000014',

@@ -17,6 +17,7 @@ test('provider refreshes are fenced against concurrent lifecycle changes', async
   const secrets: Record<string, string> = {};
   let calls: string[] = [];
   let expired = false;
+  let loseCommitAck = false;
   let beforeAcquire: (() => void) | undefined;
 
   function reset() {
@@ -33,6 +34,7 @@ test('provider refreshes are fenced against concurrent lifecycle changes', async
     Object.assign(secrets, { 'access-id': 'old-access', 'refresh-id': 'old-refresh' });
     calls = [];
     expired = false;
+    loseCommitAck = false;
     beforeAcquire = undefined;
   }
   reset();
@@ -90,6 +92,7 @@ test('provider refreshes are fenced against concurrent lifecycle changes', async
       Object.assign(secrets, { 'access-id': body.p_access_token, 'refresh-id': body.p_refresh_token });
       Object.assign(connection, { refresh_lock_id: null, expires_at: body.p_expires_at });
       Object.assign(credentialRow, { expires_at: body.p_expires_at, version: credentialRow.version + 1 });
+      if (loseCommitAck) return Response.json({ message: 'simulated lost acknowledgement' }, { status: 500 });
       return Response.json('committed');
     }
     if (url.pathname === '/rest/v1/rpc/install_connection_credentials') {
@@ -166,6 +169,18 @@ test('provider refreshes are fenced against concurrent lifecycle changes', async
       assert.equal(secrets['refresh-id'], 'reconnected-refresh');
     });
 
+    await t.test('a late refresh failure cannot overwrite an explicit reconnect', async () => {
+      reset();
+      const barrier = blockedRefresh();
+      const refreshing = core.forceRefreshConnection('test-connection');
+      await barrier.started;
+      await install();
+      barrier.fail();
+      await assert.rejects(refreshing, /did not finish safely/);
+      assert.equal(connection.status, 'active');
+      assert.equal(secrets['refresh-id'], 'reconnected-refresh');
+    });
+
     await t.test('lock contention fails rather than returning stale credentials', async () => {
       reset();
       connection.refresh_lock_id = 'someone-else';
@@ -199,6 +214,43 @@ test('provider refreshes are fenced against concurrent lifecycle changes', async
       assert.equal(connection.status, 'reauth_required');
       assert.equal(secrets['refresh-id'], 'old-refresh');
       await assert.rejects(core.forceRefreshConnection('test-connection'), /not active/);
+    });
+
+    await t.test('an expired in-flight lease cannot be stolen for a second refresh', async () => {
+      reset();
+      const barrier = blockedRefresh();
+      const refreshing = core.forceRefreshConnection('test-connection');
+      await barrier.started;
+      expired = true;
+      await assert.rejects(core.forceRefreshConnection('test-connection'), /already in progress/);
+      barrier.finish();
+      await assert.rejects(refreshing, /did not finish safely/);
+      assert.equal(connection.status, 'reauth_required');
+      assert.equal(secrets['refresh-id'], 'old-refresh');
+    });
+
+    await t.test('a malformed provider response cannot preserve stale credentials as fresh', async () => {
+      reset();
+      integration.refreshTokens = async () => ({ ...result, accessToken: '', refreshToken: 'rotated-but-uncertain' });
+      await assert.rejects(core.forceRefreshConnection('test-connection'), /did not finish safely/);
+      assert.equal(connection.status, 'reauth_required');
+      assert.equal(secrets['refresh-id'], 'old-refresh');
+      assert.ok(!calls.includes('POST /rest/v1/rpc/commit_connection_refresh'));
+    });
+
+    await t.test('a lost commit acknowledgement does not revert a committed rotation', async () => {
+      reset();
+      loseCommitAck = true;
+      integration.refreshTokens = async () => ({ ...result, expiresAt: '2999-01-01T00:00:00Z' });
+      await assert.rejects(core.forceRefreshConnection('test-connection', { scheduleNextJob: false }), /did not finish safely/);
+      assert.equal(connection.status, 'active');
+      assert.equal(secrets['refresh-id'], 'refreshed-refresh');
+      loseCommitAck = false;
+      integration.refreshTokens = async () => { throw new Error('must not refresh again'); };
+      const fresh = await core.refreshConnectionIfNeeded(connection as any, {
+        accessToken: 'stale', refreshToken: 'stale-refresh', expiresAt: '2000-01-01T00:00:00Z'
+      });
+      assert.equal(fresh.accessToken, 'refreshed-access');
     });
   } finally {
     integration.refreshTokens = originalRefresh;
