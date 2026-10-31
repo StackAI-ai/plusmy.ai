@@ -75,7 +75,7 @@ set search_path = ''
 as $$
 begin
   if new.binding_type not in ('workspace', 'provider', 'tool')
-     or btrim(new.target_key) = ''
+     or new.target_key ~ '^[[:space:]]*$'
      or (new.prompt_template_id is null and new.skill_definition_id is null)
      or (new.prompt_template_id is not null and not exists (
        select 1 from app.prompt_templates prompt
@@ -102,7 +102,7 @@ revoke all on function app.validate_context_binding_resources() from public, ano
 create policy "context_bindings_shared_resources"
 on app.context_bindings as restrictive for all to authenticated
 using (
-  binding_type in ('workspace', 'provider', 'tool') and btrim(target_key) <> ''
+  binding_type in ('workspace', 'provider', 'tool') and target_key !~ '^[[:space:]]*$'
   and (prompt_template_id is not null or skill_definition_id is not null)
   and (prompt_template_id is null or exists (
     select 1 from app.prompt_templates prompt
@@ -116,7 +116,7 @@ using (
   ))
 )
 with check (
-  binding_type in ('workspace', 'provider', 'tool') and btrim(target_key) <> ''
+  binding_type in ('workspace', 'provider', 'tool') and target_key !~ '^[[:space:]]*$'
   and (prompt_template_id is not null or skill_definition_id is not null)
   and (prompt_template_id is null or exists (
     select 1 from app.prompt_templates prompt
