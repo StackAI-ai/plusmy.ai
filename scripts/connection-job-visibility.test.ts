@@ -39,6 +39,7 @@ test('dashboard job reads are limited to a workspace member\'s visible connectio
     }
     if (url.pathname === '/rest/v1/connections') {
       connectionReads += 1;
+      assert.equal(url.searchParams.get('workspace_id'), 'eq.workspace');
       if (failConnectionRead) return Response.json({ message: 'temporary failure' }, { status: 503 });
       requestedConnectionFilter = url.searchParams.get('or') ?? '';
       const actor = requestedConnectionFilter.match(/owner_user_id\.eq\.([0-9a-f-]+)/i)?.[1];
@@ -73,6 +74,13 @@ test('dashboard job reads are limited to a workspace member\'s visible connectio
       await listConnectionJobs('workspace', admin, 80);
       assert.match(requestedJobIds, /shared/);
       assert.doesNotMatch(requestedJobIds, /own|other/);
+    });
+    await t.test('uppercase actor UUIDs still include the actor\'s own jobs', async () => {
+      requestedJobIds = '';
+      await listConnectionJobs('workspace', member.toUpperCase(), 80);
+      assert.match(requestedJobIds, /own/);
+      const connections = await listConnectionsForWorkspace('workspace', member.toUpperCase());
+      assert.deepEqual(connections.map((connection) => connection.id), ['shared', 'own']);
     });
     await t.test('a nonmember cannot trigger a connection or job read', async () => {
       requestedJobIds = '';

@@ -14,6 +14,8 @@ import { buildAuditHref } from '../_lib/audit-href'
 import { buildConnectionsHref } from '../connections/filters'
 import { JobSummary } from './job-summary'
 
+const JOB_SUMMARY_LIMIT = 80
+
 function healthTone(hasIssue: boolean) {
   return hasIssue ? 'brass' : 'moss'
 }
@@ -47,7 +49,10 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
     ? await Promise.all([
         getWorkspaceOverview(activeWorkspace.id, user.id),
         listConnectionsForWorkspace(activeWorkspace.id, user.id),
-        listConnectionJobs(activeWorkspace.id, user.id, 80).catch(() => null),
+        listConnectionJobs(activeWorkspace.id, user.id, JOB_SUMMARY_LIMIT).catch(() => {
+          console.error('Unable to load connection job status.')
+          return null
+        }),
         listOAuthClientApprovals({
           workspaceId: activeWorkspace.id,
           userId: user.id,
@@ -147,7 +152,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
             <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Connections</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-4xl font-semibold text-foreground">
+            <p data-testid="connections-summary" className="text-4xl font-semibold text-foreground">
               {activeConnections}/{connections.length}
             </p>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -203,7 +208,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
             <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Sync jobs</CardTitle>
           </CardHeader>
           <CardContent>
-            <JobSummary unavailable={jobsUnavailable} processing={processingConnectionJobs} queued={queuedConnectionJobs} deadLetter={deadLetterConnectionJobs} />
+            <JobSummary unavailable={jobsUnavailable} processing={processingConnectionJobs} queued={queuedConnectionJobs} deadLetter={deadLetterConnectionJobs} limit={JOB_SUMMARY_LIMIT} />
           </CardContent>
         </Card>
       </section>
@@ -225,12 +230,12 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
             {jobsUnavailable ? 'Sync job status unavailable' : (
               <>
                 <LinkBadge href={failedJobsAuditHref} tone={healthTone(failedConnectionJobs > 0)}>
-                  {failedConnectionJobs} failed sync jobs
+                  {failedConnectionJobs} failed sync jobs in the recent sample
                 </LinkBadge>
                 <LinkBadge href={deadLetterJobsAuditHref} tone={healthTone(deadLetterConnectionJobs > 0)}>
-                  {deadLetterConnectionJobs} dead-letter jobs
+                  {deadLetterConnectionJobs} dead-letter jobs in the recent sample
                 </LinkBadge>
-                {processingConnectionJobs > 0 ? `${processingConnectionJobs} jobs running now` : 'No jobs currently processing'}
+                {processingConnectionJobs > 0 ? `${processingConnectionJobs} jobs processing in the recent sample` : 'No jobs processing in the recent sample'}
               </>
             )}
           </li>

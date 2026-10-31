@@ -263,7 +263,8 @@ async function resolveSecret(secretId: string | null | undefined) {
 
 function isVisibleConnection(connection: Pick<ConnectionRecord, 'scope' | 'owner_user_id'>, userId?: string | null) {
   return connection.scope === 'workspace' ||
-    (connection.scope === 'personal' && Boolean(userId) && connection.owner_user_id === userId);
+    (connection.scope === 'personal' && Boolean(userId) && typeof connection.owner_user_id === 'string' &&
+      connection.owner_user_id.toLowerCase() === userId?.toLowerCase());
 }
 
 export async function listConnectionsForWorkspace(workspaceId: string, userId?: string | null) {
@@ -343,22 +344,23 @@ export async function listConnectionJobs(workspaceId: string, actorUserId: strin
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorUserId)) {
     throw new Error('A valid actor is required to load connection job status.');
   }
+  const actorId = actorUserId.toLowerCase();
   const supabase = createServiceRoleClient();
   const options = typeof optionsOrLimit === 'number' ? { limit: optionsOrLimit } : optionsOrLimit;
   const limit = normalizeLimit(options.limit, 25);
 
   const { data: membership, error: membershipError } = await supabase.schema('app').from('workspace_members')
-    .select('user_id').eq('workspace_id', workspaceId).eq('user_id', actorUserId).maybeSingle();
+    .select('user_id').eq('workspace_id', workspaceId).eq('user_id', actorId).maybeSingle();
   if (membershipError) throw membershipError;
   if (!membership) return [] as ConnectionJobRecord[];
   const { data: connections, error: connectionError, count } = await supabase.schema('app').from('connections')
     .select('id,scope,owner_user_id', { count: 'exact' }).eq('workspace_id', workspaceId)
-    .or(`scope.eq.workspace,and(scope.eq.personal,owner_user_id.eq.${actorUserId})`);
+    .or(`scope.eq.workspace,and(scope.eq.personal,owner_user_id.eq.${actorId})`);
   if (connectionError || count === null || count !== (connections?.length ?? 0)) {
     throw new Error('Unable to load complete connection visibility for job status.');
   }
   const connectionIds = (connections ?? [])
-    .filter((connection) => isVisibleConnection(connection as Pick<ConnectionRecord, 'scope' | 'owner_user_id'>, actorUserId))
+    .filter((connection) => isVisibleConnection(connection as Pick<ConnectionRecord, 'scope' | 'owner_user_id'>, actorId))
     .map((connection) => connection.id);
   if (connectionIds.length === 0) return [] as ConnectionJobRecord[];
 
