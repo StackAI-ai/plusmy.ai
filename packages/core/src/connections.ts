@@ -334,13 +334,18 @@ export async function getConnectionById(connectionId: string) {
   return (data as ConnectionRecord | null) ?? null;
 }
 
-export async function listConnectionJobs(workspaceId: string, optionsOrLimit: number | ConnectionJobFilters = 25) {
+export async function listConnectionJobs(workspaceId: string, actorUserId: string, optionsOrLimit: number | ConnectionJobFilters = 25) {
+  if (!actorUserId) return [] as ConnectionJobRecord[];
   const supabase = createServiceRoleClient();
   const options = typeof optionsOrLimit === 'number' ? { limit: optionsOrLimit } : optionsOrLimit;
   const limit = normalizeLimit(options.limit, 25);
 
-  const { data: connections } = await supabase.schema('app').from('connections').select('id').eq('workspace_id', workspaceId);
-  const connectionIds = (connections ?? []).map((connection) => String(connection.id ?? ''));
+  const { data: membership, error: membershipError } = await supabase.schema('app').from('workspace_members')
+    .select('user_id').eq('workspace_id', workspaceId).eq('user_id', actorUserId).maybeSingle();
+  if (membershipError) throw membershipError;
+  if (!membership) return [] as ConnectionJobRecord[];
+  const connections = await listConnectionsForWorkspace(workspaceId, actorUserId);
+  const connectionIds = connections.map((connection) => connection.id);
   if (connectionIds.length === 0) return [] as ConnectionJobRecord[];
 
   let query = supabase

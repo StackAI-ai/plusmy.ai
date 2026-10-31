@@ -46,7 +46,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
     ? await Promise.all([
         getWorkspaceOverview(activeWorkspace.id, user.id),
         listConnectionsForWorkspace(activeWorkspace.id, user.id),
-        listConnectionJobs(activeWorkspace.id, 80),
+        listConnectionJobs(activeWorkspace.id, user.id, 80),
         listOAuthClientApprovals({
           workspaceId: activeWorkspace.id,
           userId: user.id,
