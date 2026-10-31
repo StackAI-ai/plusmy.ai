@@ -62,6 +62,9 @@ export function AcceptInviteForm({ token }: { token: string }) {
         <Button type="button" disabled={submitting} onClick={handleAccept}>
           {submitting ? 'Accepting…' : 'Accept invite'}
         </Button>
+        <p className="text-sm text-muted-foreground">
+          Need to sign in? <a href="/login" referrerPolicy="no-referrer" className="underline">Open sign-in</a>, then reopen this invitation link.
+        </p>
         {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
       </CardContent>
     </Card>

@@ -3,6 +3,7 @@ import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitl
 import { createServerSupabaseClient } from '@plusmy/supabase';
 import { getAuthorizedWorkspace, listUserWorkspaces } from '@plusmy/core';
 import { getSearchParam, type AppSearchParams } from '../../_lib/search-params';
+import { buildLoginHref } from '../../_lib/signin-return';
 import { redirect } from 'next/navigation';
 import { getAppOrigin } from '../../_lib/origin';
 import { CopyButton } from '../../_components/copy-button';
@@ -19,7 +20,7 @@ export default async function McpQuickstartPage({ searchParams }: { searchParams
     data: { user }
   } = await supabase.auth.getUser();
   if (!user) {
-    redirect('/login');
+    redirect(buildLoginHref('/mcp-setup/quickstart', await getSearchParam(searchParams, 'workspace')));
   }
 
   const requestedWorkspaceId = await getSearchParam(searchParams, 'workspace');

@@ -91,6 +91,11 @@ jobs:
           echo "Edge worker did not reject an unauthenticated request."
           exit 1
 
+      - name: Production web build
+        run: |
+          pnpm --filter @plusmy/web build
+          rm -r apps/web/.next
+
       - name: Start web app for MCP smoke checks
         run: |
           pnpm --filter @plusmy/web dev > /tmp/web-dev.log 2>&1 &

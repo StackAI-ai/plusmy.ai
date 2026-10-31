@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Badge, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, buttonVariants, cn } from '@plusmy/ui';
 import { Activity, Bot, BookText, Cable, LayoutDashboard, Layers3, Rocket, Users, Waypoints } from 'lucide-react';
+import { buildLoginHref } from '../_lib/signin-return';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -30,14 +31,17 @@ function withWorkspace(href: string, workspaceId: string | null) {
 
 export function WorkspaceShell({
   userEmail,
-  workspaces
+  workspaces,
+  children
 }: {
   userEmail: string | null;
   workspaces: WorkspaceOption[];
+  children: React.ReactNode;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const signedOutLogin = !userEmail && pathname === '/login';
   const activeWorkspaceId = searchParams.get('workspace') ?? workspaces[0]?.id ?? null;
   const activeWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? workspaces[0] ?? null;
 
@@ -47,62 +51,76 @@ export function WorkspaceShell({
 
   return (
     <>
-      <div className="mb-5 flex flex-col gap-4 rounded-[28px] border border-border/60 bg-card/70 p-4 shadow-panel backdrop-blur-xl lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-1 flex-col gap-3 lg:flex-row lg:items-center">
-          {activeWorkspace ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="moss">{activeWorkspace.name}</Badge>
-              <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{activeWorkspace.role}</span>
-              <span className="font-mono text-xs text-muted-foreground">{activeWorkspace.slug}</span>
-            </div>
-          ) : (
-            <span className="text-sm text-muted-foreground">No active workspace</span>
-          )}
-          {workspaces.length ? (
-            <div className="w-full max-w-sm">
-              <Select value={activeWorkspace?.id} onValueChange={handleWorkspaceChange}>
-                <SelectTrigger aria-label="Select workspace" className="bg-background/70">
-                  <SelectValue placeholder="Select workspace" />
-                </SelectTrigger>
-                <SelectContent>
-                  {workspaces.map((workspace) => (
-                    <SelectItem key={workspace.id} value={workspace.id}>
-                      {workspace.name} ({workspace.role})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {userEmail ? <span className="font-mono text-xs text-muted-foreground sm:text-sm">{userEmail}</span> : null}
-          <Button asChild variant="outline" size="sm">
-            <Link href={userEmail ? '/logout' : '/login'}>{userEmail ? 'Logout' : 'Login'}</Link>
-          </Button>
-        </div>
-      </div>
-      <nav className="mb-8 flex flex-wrap gap-2">
-        {navItems.map((item) => {
-          const active = pathname === item.href;
-          const Icon = item.icon;
-
-          return (
-            <Link
-              key={item.href}
-              href={withWorkspace(item.href, activeWorkspaceId)}
-              className={cn(
-                buttonVariants({ variant: active ? 'default' : 'ghost', size: 'sm' }),
-                'rounded-full px-4',
-                !active && 'border border-border/60 bg-card/55'
+      {!signedOutLogin ? (
+        <>
+          <div className="mb-5 flex flex-col gap-4 rounded-[28px] border border-border/60 bg-card/70 p-4 shadow-panel backdrop-blur-xl lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-1 flex-col gap-3 lg:flex-row lg:items-center">
+              {activeWorkspace ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="moss">{activeWorkspace.name}</Badge>
+                  <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{activeWorkspace.role}</span>
+                  <span className="font-mono text-xs text-muted-foreground">{activeWorkspace.slug}</span>
+                </div>
+              ) : (
+                <span className="text-sm text-muted-foreground">No active workspace</span>
               )}
-            >
-              <Icon className="h-4 w-4" />
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
+              {workspaces.length ? (
+                <div className="w-full max-w-sm">
+                  <Select value={activeWorkspace?.id} onValueChange={handleWorkspaceChange}>
+                    <SelectTrigger aria-label="Select workspace" className="bg-background/70">
+                      <SelectValue placeholder="Select workspace" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {workspaces.map((workspace) => (
+                        <SelectItem key={workspace.id} value={workspace.id}>
+                          {workspace.name} ({workspace.role})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              {userEmail ? <span className="font-mono text-xs text-muted-foreground sm:text-sm">{userEmail}</span> : null}
+              <Button asChild variant="outline" size="sm">
+                <Link href={userEmail ? '/logout' : buildLoginHref(pathname, searchParams.get('workspace'))}>
+                  {userEmail ? 'Logout' : 'Login'}
+                </Link>
+              </Button>
+            </div>
+          </div>
+          <nav aria-label="Primary navigation" className="mb-8 flex flex-wrap gap-2">
+            {navItems.map((item) => {
+              const active = pathname === item.href;
+              const Icon = item.icon;
+
+              return (
+                <Link
+                  key={item.href}
+                  href={withWorkspace(item.href, activeWorkspaceId)}
+                  className={cn(
+                    buttonVariants({ variant: active ? 'default' : 'ghost', size: 'sm' }),
+                    'rounded-full px-4',
+                    !active && 'border border-border/60 bg-card/55'
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+        </>
+      ) : null}
+      <main
+        className={cn(
+          'flex-1 pb-8',
+          signedOutLogin && '[&>div>section:first-child]:sr-only md:[&>div>section:first-child]:not-sr-only'
+        )}
+      >
+        {children}
+      </main>
     </>
   );
 }
