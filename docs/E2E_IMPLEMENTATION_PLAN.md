@@ -5,6 +5,11 @@ catalog, release-gate documents, draft diffs, and the test evidence recorded in
 those drafts. It is not an assertion that current production or staging matches
 any draft, nor that a provider account or named MCP client has been certified.
 The original working checkout has unrelated local changes; preserve them.
+On 2026-10-31, `https://plusmy.ai` timed out in the in-app browser and could not
+be loaded by the browsing service. A local DNS query returned A record
+`192.64.119.240`, but a separate HTTPS connection attempt also timed out. These
+are environment-specific observations, not proof of a global outage or its
+cause; visual review and authorized hosting/ingress investigation remain open.
 
 The goal is a web-first private beta where an invited workspace can safely
 connect its business tools, authorize an AI client, use each advertised
@@ -25,6 +30,15 @@ relabeling of mock tests as certification. Mobile remains a scaffold.
 | MCP setup, quickstart, clients, consent | Client onboarding, approvals, OAuth and Streamable HTTP | Each named client completes real discovery, consent, PKCE/token lifecycle, scoped tools/resources, reconnect and revocation on staging. Origin policy is explicitly approved. |
 | Audit | Invocation/audit views, export and retention | Owner/admin/member isolation, pagination, complete attribution, redaction, export, retention and failure recovery are verified with safe test data. |
 | APIs and background workers | App routes, Vault-backed secrets, queued refresh/sync, schedules and alerts | Mutations enforce tenant/role checks; workers fence stale claims; failures retry or dead-letter observably; staging schedule, alert and rollback work. |
+
+A limited signed-out browser check used a local development server with fake
+Supabase configuration and no running backend. `/connections` and `/platforms`
+redirected to `/login` without a return path; `/context` showed an inline sign-in
+message. At 390x844, the login form was below the initial viewport because the
+header and navigation consumed most of the screen. Align sign-in recovery and
+make the primary login action discoverable on small screens. Preserve invite
+tokens safely rather than placing sensitive return URLs into third-party logs or
+referrers. These observations do not establish deployed or authenticated UX.
 
 The existing automated browser journeys and provider mocks are useful
 regressions, but they do not establish real provider writes, named-client
