@@ -621,12 +621,22 @@ export async function upsertInstalledConnection(input: {
 async function acquireRefreshLock(connectionId: string, job?: ConnectionJobRecord) {
   const supabase = createServiceRoleClient();
   const lockId = randomUUID();
-  const { data, error } = await supabase.schema('app').rpc(job ? 'begin_connection_job_refresh' : 'begin_connection_refresh', {
-    ...(job ? { p_job_id: job.id, p_claim_id: job.claim_id } : { p_connection_id: connectionId }),
-    p_lock_id: lockId,
-    p_ttl_seconds: 30
-  });
-  if (error) throw error;
+  let data;
+  try {
+    const result = await supabase.schema('app').rpc(job ? 'begin_connection_job_refresh' : 'begin_connection_refresh', {
+      ...(job ? { p_job_id: job.id, p_claim_id: job.claim_id } : { p_connection_id: connectionId }),
+      p_lock_id: lockId,
+      p_ttl_seconds: 30
+    });
+    if (result.error) throw result.error;
+    data = result.data;
+  } catch (error) {
+    // The begin may have committed before its response was lost. No provider
+    // request has started, so only this invocation's lease can be released.
+    await releaseRefreshLock(connectionId, lockId);
+    throw error;
+  }
+  if (data && (!data.connection || !data.credentials)) await releaseRefreshLock(connectionId, lockId);
   return data?.connection && data?.credentials
     ? { lockId, connection: data.connection as ConnectionRecord, credentials: data.credentials as ResolvedConnectionCredentials }
     : null;
@@ -634,10 +644,18 @@ async function acquireRefreshLock(connectionId: string, job?: ConnectionJobRecor
 
 async function releaseRefreshLock(connectionId: string, lockId: string) {
   const supabase = createServiceRoleClient();
-  await supabase.schema('app').rpc('release_connection_refresh_lock', {
-    p_connection_id: connectionId,
-    p_lock_id: lockId
-  });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const { error } = await supabase.schema('app').rpc('release_connection_refresh_lock', {
+        p_connection_id: connectionId,
+        p_lock_id: lockId
+      });
+      if (!error) return;
+    } catch {
+      // A release is idempotent and matches only this lock ID.
+    }
+  }
+  throw new Error('Connection refresh lock could not be safely released. Retry or reconnect.');
 }
 
 async function performRefresh(
