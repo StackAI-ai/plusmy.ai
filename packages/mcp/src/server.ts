@@ -227,6 +227,7 @@ export async function executeToolCall(authContext: McpAuthContext, toolName: str
   });
   const contextInjection = await resolveContextInjection(
     authContext.workspaceId,
+    authContext.userId,
     [toolName, toolDefinition?.title ?? null, toolDefinition?.description ?? null, JSON.stringify(input)],
     3
   );

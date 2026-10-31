@@ -1228,6 +1228,7 @@ export async function readWorkspaceResourceWithContext(workspaceId: string, user
 
   const contextInjection = await resolveContextInjection(
     workspaceId,
+    userId,
     [resource.name, resource.description ?? null, resource.text, resource.uri],
     3
   )
@@ -1260,25 +1261,27 @@ export async function resolveProviderRuntimeContext(
   }
 }
 
-export async function resolveContextInjection(workspaceId: string, parts: Array<string | null | undefined>, limit = 3): Promise<ContextInjectionResult> {
+export async function resolveContextInjection(workspaceId: string, userId: string | null | undefined, parts: Array<string | null | undefined>, limit = 3): Promise<ContextInjectionResult> {
   const query = buildContextQuery(parts)
-  if (!query) {
-    return { query: '', matches: [] }
+  if (!query || !userId) {
+    return { query, matches: [] }
   }
 
   return {
     query,
-    matches: await matchContextChunks(workspaceId, query, limit)
+    matches: await matchContextChunks(workspaceId, userId, query, limit)
   }
 }
 
-export async function matchContextChunks(workspaceId: string, query: string, limit = 8): Promise<ContextChunkMatch[]> {
+export async function matchContextChunks(workspaceId: string, userId: string, query: string, limit = 8): Promise<ContextChunkMatch[]> {
+  if (!userId) return []
   const embedding = await createEmbedding(query)
   if (!embedding) return []
 
   const supabase = createServiceRoleClient()
   const { data, error } = await supabase.schema('app').rpc('match_context_chunks', {
     p_workspace_id: workspaceId,
+    p_actor_user_id: userId,
     p_query_embedding: embedding,
     p_limit: limit,
     p_filters: {}
