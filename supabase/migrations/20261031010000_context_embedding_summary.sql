@@ -9,7 +9,7 @@ begin
   if jsonb_typeof(p_metadata -> 'embedded_at') = 'string' then
     begin
       return (p_metadata ->> 'embedded_at')::timestamptz;
-    exception when invalid_datetime_format or datetime_field_overflow then
+    exception when data_exception then
       null;
     end;
   end if;

@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(18);
+select plan(21);
 
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
 values
@@ -44,6 +44,9 @@ select ok(not has_function_privilege('anon', 'app.context_embedding_summary(uuid
 select ok(not has_function_privilege('authenticated', 'app.context_embedding_summary(uuid,uuid)', 'execute'), 'authenticated users cannot select an actor');
 select ok(has_function_privilege('service_role', 'app.context_embedding_summary(uuid,uuid)', 'execute'), 'trusted service can request a summary');
 select ok(not has_function_privilege('authenticated', 'app.context_embedded_at(jsonb,timestamptz)', 'execute'), 'timestamp helper is not exposed');
+select is(app.context_embedded_at('{"embedded_at":"2026-01-01T00:00:00+99:00"}', '2025-01-01T00:00:00Z'), '2025-01-01T00:00:00Z'::timestamptz, 'out-of-range timezone falls back to creation time');
+select is(app.context_embedded_at('{"embedded_at":"2026-02-30T00:00:00Z"}', '2025-01-01T00:00:00Z'), '2025-01-01T00:00:00Z'::timestamptz, 'out-of-range date falls back to creation time');
+select is(app.context_embedded_at('{"embedded_at":42}', '2025-01-01T00:00:00Z'), '2025-01-01T00:00:00Z'::timestamptz, 'non-string date falls back to creation time');
 
 select is((select total_assets::integer from app.context_embedding_summary('a2000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000001')), 1206, 'owner sees all shared assets plus own asset above the row cap');
 select is((select system_managed_assets::integer from app.context_embedding_summary('a2000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000001')), 1, 'owner sees only their managed asset');
