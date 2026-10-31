@@ -8,7 +8,7 @@ For each provider, record the test tenant and date, commit and deployment, actor
 
 1. OAuth install/callback, account identity, granted scopes, Vault-only credentials, and connection health.
 2. Scheduled and forced refresh, sync, reconnect after revoked credentials, and connection revocation.
-3. One advertised read capability and every advertised write capability against approved disposable data; verify permission denial and scope-drift behavior.
+3. Every advertised read and write capability against approved disposable data; verify permission denial and scope-drift behavior.
 4. MCP tool visibility and execution under the right workspace and role, with matching audit records and no cross-workspace access.
 
 Do not mark a row certified when an advertised operation is skipped, the provider test account is unavailable, or an error is masked by a mock. Add provider-specific limitations and remediation to the evidence link before sign-off.
