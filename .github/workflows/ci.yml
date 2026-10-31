@@ -83,6 +83,9 @@ jobs:
       - name: Context isolation pgTAP suite
         run: node_modules/supabase/bin/supabase test db supabase/tests/context_isolation.sql --local
 
+      - name: Context embedding summary pgTAP suite
+        run: node_modules/supabase/bin/supabase test db supabase/tests/context_embedding_summary.sql --local
+
       - name: Worker alert delivery contracts
         run: node scripts/local-supabase-env.mjs -- pnpm exec tsx scripts/worker-alert-contracts.ts
 

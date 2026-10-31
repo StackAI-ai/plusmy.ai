@@ -52,6 +52,7 @@
 - 2026-03-23 execution checkpoint: added a reusable `tsx`-driven provider contract harness plus `finance:contracts`, covered QuickBooks, Xero, Airtable, and Zoom install/refresh/sync/tool/health flows, and fixed a QuickBooks invoice parsing bug surfaced by the new contract script.
 
 ## Next execution slice (2026-03-23)
+- 2026-10-31 source-only context health candidate: calculate actor-visible asset/chunk totals in a service-only database summary with membership and ownership checks in one SQL statement, avoiding the PostgREST row cap before filtering. Degrade the health card to an explicit unavailable state if that summary cannot be loaded. This does not paginate the separate asset/prompt/skill listings, approve a migration, or certify a staging rollout; deploy the additive migration before relying on the new server code and retain the existing privacy rollout gates.
 - 2026-03-22 completion notes added: harden logged-in gating for setup surfaces, and keep the shared shell and onboarding surfaces focused on business tools instead of infrastructure details.
 - Prioritize the oldest remaining open Linear work first, then work the newly created platform follow-ups in order of product value and implementation readiness.
 - The provider-expansion phase is now complete for the current catalog; the next slice is validation hardening, context/runtime quality, AI-client onboarding polish, and route-level reliability for the live business-tool surface.
