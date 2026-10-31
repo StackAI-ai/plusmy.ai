@@ -21,16 +21,19 @@ whose `.default` is undefined. A blind override breaks both streaming npm
 template extraction and the JavaScript fallback used by `utils/tar.js`.
 
 `patches/@expo__cli@0.22.28.patch` wraps only those two tar namespaces in
-`{ default: require("tar") }`. It does not alter the shared interop helper,
-extraction options, filtering, callbacks, checksums, native-tar selection, or
-other dependencies. The patch hash is enforced by the pnpm lockfile. Cacache's
+`{ default: require("tar") }` and enables strict warning handling in those
+JavaScript extractors. It does not alter the shared interop helper, filtering,
+callbacks, checksums, native-tar selection, or other dependencies. The patch hash
+is enforced by the pnpm lockfile. Cacache's
 published `lib/` does not import tar; its dependency edge still needs replacing
 to remove the vulnerable installed package. Supabase's installer already uses
 a named ESM `extract` import.
 
-No product-flow change is intended. `BUILD_PLAN.md` records the temporary
-dependency architecture; retest and remove this shim when upgrading the owning
-Expo CLI.
+Tar 7 can reject a contained symlink chain that tar 6 extracted. Strict mode
+makes that incompatibility an extraction error instead of silently reporting a
+partial success. This is a deliberate compatibility change, not full tar 6
+parity. `BUILD_PLAN.md` records the temporary dependency architecture; retest
+and remove this shim when upgrading the owning Expo CLI.
 
 ## Verification
 
@@ -50,6 +53,8 @@ operator's Expo home is not used. Coverage includes:
 - The local tarball wrapper, selected members, filter, custom strip, and SHA-256.
 - The real JS fallback after a missing native executable, without a spawn mock.
 - Invalid input, traversal/hardlink containment with an outside sentinel.
+- Contained symlink chains in the streaming and JavaScript fallback paths must
+  either extract completely or report failure rather than silent success.
 - A bounded 8 MiB high-ratio gzip rejected by the new parser's default guard.
 - A tiny GNU long-path archive with 12,000 segments and member selection.
 - Cacache buffer/stream reads and writes, bad-integrity rejection, verification,
@@ -61,8 +66,9 @@ Supabase services are started. Tests require no external service.
 
 Observed locally on 2026-10-31:
 
-- Native arm64 Node 22.22.2: 10 tests passed, no failures or skips.
-- Native arm64 Node 25.9.0: 10 tests passed, no failures or skips.
+- The strict-warning candidate passed 13 tests on native arm64 Node 22.22.2
+  and Node 25.9.0, including both JavaScript symlink-chain paths and separate
+  traversal and hardlink fixtures.
 - `guard.py run -- pnpm typecheck` from `apps/mobile`: exit 0.
 - Baseline six legitimate consumer tests passed before installing overrides.
 - Baseline containment test found the forbidden hardlink; candidate rejects it.
@@ -105,6 +111,10 @@ registry evidence and may change.
 
 Known unchanged boundaries and verification gaps:
 
+- Strict extraction can fail after writing earlier archive entries. The caller
+  must treat the output as incomplete and clean it up; atomic staging and cleanup
+  are not established by this candidate. Real-world archives, including valid
+  symlink chains, need compatibility testing before release.
 - Supabase's `scripts/postinstall.js` gunzips before calling tar. Tar's new
   compressed-input ratio check cannot measure compression on that already
   decompressed stream. The actual checksum-verified installer passed, but this

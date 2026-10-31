@@ -133,17 +133,59 @@ test("actual Expo streaming extraction rejects invalid archives", async () => {
   }));
 });
 
-test("actual Expo extraction refuses traversal and hardlink escape without touching the sentinel", async () => {
-  const cwd = join(temporary, "containment");
-  const sentinel = join(temporary, "sentinel.txt");
-  await writeFile(sentinel, "unchanged\n");
-  const malicious = tarball([
-    member("../sentinel.txt", "overwritten\n"),
-    member("escape", "", "1", "../sentinel.txt"),
+for (const [name, entry] of [
+  ["traversal", member("../sentinel.txt", "overwritten\n")],
+  ["hardlink", member("escape", "", "1", "../sentinel.txt")],
+]) {
+  test(`actual Expo extraction refuses ${name} escape without touching the sentinel`, async () => {
+    const cwd = join(temporary, `containment-${name}`);
+    const sentinel = join(temporary, "sentinel.txt");
+    await writeFile(sentinel, "unchanged\n");
+    await assert.rejects(expoNpm.extractNpmTarballAsync(Readable.from([tarball([entry])]), { cwd, strip: 0 }), /contains '\.\.'/);
+    assert.equal(await readFile(sentinel, "utf8"), "unchanged\n");
+    await absent(join(cwd, "escape"));
+  });
+}
+
+test("contained symlink chains are extracted or reported as failures, never silently omitted", async () => {
+  const cwd = join(temporary, "contained-symlinks");
+  const links = tarball([
+    member("package/payload", "contained\n"),
+    member("package/alias", "", "2", "payload"),
+    member("package/alias2", "", "2", "alias"),
   ]);
-  await expoNpm.extractNpmTarballAsync(Readable.from([malicious]), { cwd, strip: 0 });
-  assert.equal(await readFile(sentinel, "utf8"), "unchanged\n");
-  await absent(join(cwd, "escape"));
+  let extractionFailed = false;
+  try {
+    await expoNpm.extractNpmTarballAsync(Readable.from([links]), { cwd });
+  } catch (error) {
+    assert.match(error.message, /Cannot extract through symbolic link/);
+    extractionFailed = true;
+  }
+  if (!extractionFailed) assert.equal(await readFile(join(cwd, "alias2"), "utf8"), "contained\n");
+});
+
+test("the Expo JS fallback does not silently omit contained symlink chains", async () => {
+  const cwd = join(temporary, "fallback-symlinks");
+  const links = join(temporary, "fallback-symlinks.tgz");
+  await mkdir(cwd);
+  await writeFile(links, tarball([
+    member("payload", "contained\n"),
+    member("alias", "", "2", "payload"),
+    member("alias2", "", "2", "alias"),
+  ]));
+  const previousPath = process.env.PATH;
+  process.env.PATH = join(temporary, "no-native-tools");
+  let extractionFailed = false;
+  try {
+    await expoTar.extractAsync(links, cwd);
+  } catch (error) {
+    assert.match(error.message, /Cannot extract through symbolic link/);
+    extractionFailed = true;
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+  }
+  if (!extractionFailed) assert.equal(await readFile(join(cwd, "alias2"), "utf8"), "contained\n");
 });
 
 test("actual Expo streaming extraction aborts a bounded high-ratio gzip fixture", async () => {
