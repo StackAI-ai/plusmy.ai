@@ -927,7 +927,9 @@ export async function processDueConnectionJobs(input?: { limit?: number; workerI
     try {
       if (connection.status !== 'active') throw new Error('Connection is not active.');
       if (job.job_type === 'token_refresh') {
-        await performRefresh(connection, { scheduleNextJob: false, force: true, job });
+        if (!job.refresh_schedule_pending) {
+          await performRefresh(connection, { scheduleNextJob: false, force: true, job });
+        }
       } else {
         connectionUpdate = await runConnectionSyncJob(job, connection);
       }

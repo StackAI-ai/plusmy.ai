@@ -259,6 +259,17 @@ test('connection worker uses claim fences for all local effects', async (t) => {
         assert.equal(audits.at(-1)?.metadata?.error, undefined);
       });
     }
+    await t.test('reclaimed committed refresh schedules its successor without a second provider rotation', async () => {
+      reset('token_refresh', 1);
+      jobs[0]!.refresh_schedule_pending = true;
+      connection.expires_at = '2999-01-01T00:00:00Z';
+      integration.refreshTokens = async () => { throw new Error('must not rotate again'); };
+      const result = await work();
+      assert.equal(result.processed[0]?.status, 'succeeded');
+      assert.equal(jobs[1]?.job_type, 'token_refresh');
+      assert.equal(jobs[1]?.status, 'queued');
+      assert.ok(!calls.some(({ path }) => path.endsWith('begin_connection_job_refresh')));
+    });
     await t.test('sync that refreshes then fails still atomically schedules its next credential refresh', async () => {
       reset(); credentialExpiry = '2000-01-01T00:00:00Z';
       handler.run = async () => { throw new Error('sync failed after refresh'); };

@@ -184,6 +184,20 @@ begin
   assert app.begin_connection_job_refresh(j, a.claim_id, lease, 30) is not null;
   assert app.commit_connection_job_refresh(j, a.claim_id, lease, 'rotated-access', 'rotated-refresh', null,
     'Bearer', now() + interval '1 hour', array['read']) = 'committed';
+  update app.connection_sync_jobs set started_at = clock_timestamp() - interval '1 hour' where id = j;
+  select * into b from app.claim_connection_sync_jobs_v2('replacement', 1, 1);
+  assert b.refresh_schedule_pending, 'committed token refresh marker survives reclaim';
+  assert app.finish_connection_job(j, b.claim_id, 'succeeded') = 'succeeded';
+  assert (select count(*) = 1 from app.connection_sync_jobs where connection_id = c and job_type = 'token_refresh' and status = 'queued'),
+    'reclaimed committed refresh schedules a successor';
+  update app.connection_sync_jobs set status = 'canceled' where connection_id = c and status = 'queued';
+
+  j := app.schedule_connection_job_v2(c, 'token_refresh', p_generation => g);
+  select * into a from app.claim_connection_sync_jobs_v2('worker', 1);
+  lease := gen_random_uuid();
+  assert app.begin_connection_job_refresh(j, a.claim_id, lease, 30) is not null;
+  assert app.commit_connection_job_refresh(j, a.claim_id, lease, 'rotated-access', 'rotated-refresh', null,
+    'Bearer', now() + interval '1 hour', array['read']) = 'committed';
   assert app.finish_connection_job(j, a.claim_id, 'canceled') = 'canceled', 'explicit cancellation is not converted to success';
   assert not exists (select 1 from app.connection_sync_jobs where connection_id = c and job_type = 'token_refresh' and status = 'queued'),
     'explicit cancellation does not recreate a job';

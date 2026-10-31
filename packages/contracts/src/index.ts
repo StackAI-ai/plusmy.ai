@@ -74,6 +74,7 @@ export interface ConnectionJobRecord {
   worker_id: string | null;
   claim_id: string | null;
   connection_generation: string;
+  refresh_schedule_pending: boolean;
   started_at: string | null;
   completed_at: string | null;
   dead_lettered_at: string | null;
