@@ -32,13 +32,14 @@ begin
     or new.owner_user_id is distinct from old.owner_user_id
     or new.scope is distinct from old.scope
     or new.provider is distinct from old.provider
-    or new.connection_key is distinct from old.connection_key)
-    and old.refresh_lock_id is not null and new.refresh_lock_id is not distinct from old.refresh_lock_id then
-    -- A transfer cannot inherit an uncertain rotating-token request. Explicit
-    -- credential installation clears the old lease while replacing secrets.
+    or new.connection_key is distinct from old.connection_key) then
+    -- Identity changes cancel the old generation's jobs. Do not leave a
+    -- refreshable connection active without maintenance or inherit an
+    -- uncertain rotating-token request. An install reactivates it only after
+    -- credentials have been written in the same transaction.
     if new.status = 'active' then
       new.status := 'reauth_required';
-      new.reauth_required_reason := 'Connection ownership changed during token refresh. Reconnect this account.';
+      new.reauth_required_reason := 'Connection identity changed. Reconnect this account.';
     end if;
     new.refresh_lock_id := null;
     new.refresh_lock_expires_at := null;
@@ -112,6 +113,10 @@ begin
 
   perform app.write_connection_credentials(v_connection.id, p_provider, p_access_token, p_refresh_token,
     p_api_key, p_token_type, p_expires_at, p_scopes);
+  if v_connection.status <> 'active' then
+    update app.connections set status = 'active', reauth_required_reason = null
+    where id = v_connection.id returning * into v_connection;
+  end if;
   return jsonb_build_object('connection', to_jsonb(v_connection), 'existing', v_existing);
 end;
 $$;

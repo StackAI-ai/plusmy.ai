@@ -260,16 +260,34 @@ begin
     ('ac000000-0000-0000-0000-000000000003', 'ac000000-0000-0000-0000-000000000012', 'member');
   j := app.schedule_connection_job_v2(c, 'sync_connection', p_generation => g);
   select * into a from app.claim_connection_sync_jobs_v2('worker', 1);
+  successor := app.schedule_connection_job_v2(c, 'token_refresh', p_generation => g);
   update app.connections set workspace_id = 'ac000000-0000-0000-0000-000000000003' where id = c;
   assert (select job_generation <> g from app.connections where id = c), 'workspace transfer changes generation';
+  assert (select status = 'reauth_required' and refresh_lock_id is null from app.connections where id = c),
+    'a no-lease transfer requires reconnect instead of silently losing refresh maintenance';
+  assert (select status = 'canceled' from app.connection_sync_jobs where id = successor),
+    'the previous generation refresh job is canceled';
   assert app.finish_connection_job(j, a.claim_id, 'succeeded') is null, 'workspace transfer fences old claim';
   assert app.schedule_connection_sync_for_actor(c, g, 'ac000000-0000-0000-0000-000000000001',
     'ac000000-0000-0000-0000-000000000011', '{}') is null, 'old workspace cannot enqueue after transfer';
   select job_generation into g from app.connections where id = c;
   assert app.schedule_connection_sync_for_actor(c, g, 'ac000000-0000-0000-0000-000000000001',
     'ac000000-0000-0000-0000-000000000011', '{}') is null, 'new generation cannot authorize the wrong workspace';
+  install_result := app.install_connection_credentials_v2('job-fencing-test', 'ac000000-0000-0000-0000-000000000003', null,
+    'job-test', 'workspace', 'Reconnected', 'account', null, array['read'], now() + interval '1 hour', '{}',
+    'transfer-access', 'transfer-refresh', null, 'Bearer', true);
+  assert (select status = 'active' from app.connections where id = c) and install_result ->> 'refresh_job_id' is not null,
+    'reconnect restores active status and refresh maintenance atomically';
+  update app.connection_sync_jobs set status = 'canceled' where connection_id = c and status = 'queued';
+  select job_generation into g from app.connections where id = c;
   update app.connections set scope = 'personal', owner_user_id = 'ac000000-0000-0000-0000-000000000012' where id = c;
   assert (select job_generation <> g from app.connections where id = c), 'owner/scope transfer changes generation';
+  assert (select status = 'reauth_required' from app.connections where id = c), 'owner transfer requires reconnect';
+  install_result := app.install_connection_credentials_v2('job-fencing-test', 'ac000000-0000-0000-0000-000000000003',
+    'ac000000-0000-0000-0000-000000000012', 'job-test', 'personal', 'Reconnected owner', 'account', null,
+    array['read'], now() + interval '1 hour', '{}', 'owner-access', 'owner-refresh', null, 'Bearer', false);
+  assert (select status = 'active' from app.connections where id = c) and not (install_result ? 'refresh_job_id'),
+    'reconnect respects explicit refresh scheduling opt-out';
   select job_generation into g from app.connections where id = c;
   assert app.schedule_connection_sync_for_actor(c, g, 'ac000000-0000-0000-0000-000000000003',
     'ac000000-0000-0000-0000-000000000011', '{}') is null, 'workspace admin cannot schedule another owner personal connection';
@@ -284,6 +302,19 @@ begin
   assert app.commit_connection_refresh(c, lease, 'stale-access', 'stale-refresh', null, 'Bearer',
     now() + interval '1 hour', array['read']) = 'fenced';
   update app.connections set status = 'active', reauth_required_reason = null where id = c;
+  select job_generation into g from app.connections where id = c;
+
+  lease := gen_random_uuid();
+  assert app.begin_connection_refresh(c, lease, 30) is not null;
+  install_result := app.install_connection_credentials_v2('job-fencing-test', 'ac000000-0000-0000-0000-000000000003',
+    'ac000000-0000-0000-0000-000000000012', 'job-test', 'personal', 'Transferred install', 'account', null,
+    array['read'], now() + interval '1 hour', '{}', 'new-access', 'new-refresh', null, 'Bearer', true);
+  assert (select status = 'active' and refresh_lock_id is null and job_generation <> g from app.connections where id = c)
+    and install_result ->> 'refresh_job_id' is not null,
+    'credential installation can change identity and atomically restore active maintenance';
+  assert app.commit_connection_refresh(c, lease, 'stale-access', 'stale-refresh', null, 'Bearer',
+    now() + interval '1 hour', array['read']) = 'fenced', 'identity-changing install fences the old lease';
+  update app.connection_sync_jobs set status = 'canceled' where connection_id = c and status = 'queued';
   select job_generation into g from app.connections where id = c;
 
   -- A scheduling failure rolls back completion too; there is no success with a
