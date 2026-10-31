@@ -261,6 +261,11 @@ async function resolveSecret(secretId: string | null | undefined) {
   return (data as string | null) ?? null;
 }
 
+function isVisibleConnection(connection: Pick<ConnectionRecord, 'scope' | 'owner_user_id'>, userId?: string | null) {
+  return connection.scope === 'workspace' ||
+    (connection.scope === 'personal' && Boolean(userId) && connection.owner_user_id === userId);
+}
+
 export async function listConnectionsForWorkspace(workspaceId: string, userId?: string | null) {
   const supabase = createServiceRoleClient();
   const { data } = await supabase
@@ -271,7 +276,7 @@ export async function listConnectionsForWorkspace(workspaceId: string, userId?: 
     .order('created_at', { ascending: false });
 
   const rows = (data ?? []) as ConnectionRecord[];
-  return rows.filter((row) => row.scope === 'workspace' || row.owner_user_id === userId);
+  return rows.filter((row) => isVisibleConnection(row, userId));
 }
 
 function buildFallbackConnectionHealth(connection: ConnectionRecord): ProviderHealthSnapshot {
@@ -335,7 +340,9 @@ export async function getConnectionById(connectionId: string) {
 }
 
 export async function listConnectionJobs(workspaceId: string, actorUserId: string, optionsOrLimit: number | ConnectionJobFilters = 25) {
-  if (!actorUserId) return [] as ConnectionJobRecord[];
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorUserId)) {
+    throw new Error('A valid actor is required to load connection job status.');
+  }
   const supabase = createServiceRoleClient();
   const options = typeof optionsOrLimit === 'number' ? { limit: optionsOrLimit } : optionsOrLimit;
   const limit = normalizeLimit(options.limit, 25);
@@ -344,8 +351,15 @@ export async function listConnectionJobs(workspaceId: string, actorUserId: strin
     .select('user_id').eq('workspace_id', workspaceId).eq('user_id', actorUserId).maybeSingle();
   if (membershipError) throw membershipError;
   if (!membership) return [] as ConnectionJobRecord[];
-  const connections = await listConnectionsForWorkspace(workspaceId, actorUserId);
-  const connectionIds = connections.map((connection) => connection.id);
+  const { data: connections, error: connectionError, count } = await supabase.schema('app').from('connections')
+    .select('id,scope,owner_user_id', { count: 'exact' }).eq('workspace_id', workspaceId)
+    .or(`scope.eq.workspace,and(scope.eq.personal,owner_user_id.eq.${actorUserId})`);
+  if (connectionError || count === null || count !== (connections?.length ?? 0)) {
+    throw new Error('Unable to load complete connection visibility for job status.');
+  }
+  const connectionIds = (connections ?? [])
+    .filter((connection) => isVisibleConnection(connection as Pick<ConnectionRecord, 'scope' | 'owner_user_id'>, actorUserId))
+    .map((connection) => connection.id);
   if (connectionIds.length === 0) return [] as ConnectionJobRecord[];
 
   let query = supabase
@@ -368,7 +382,8 @@ export async function listConnectionJobs(workspaceId: string, actorUserId: strin
     query = query.eq('connection_id', options.connectionId);
   }
 
-  const { data } = await query;
+  const { data, error } = await query;
+  if (error) throw new Error('Unable to load connection job status.');
   return (data ?? []) as ConnectionJobRecord[];
 }
 

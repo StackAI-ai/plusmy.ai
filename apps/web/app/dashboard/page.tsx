@@ -12,6 +12,7 @@ import { getSearchParam, type AppSearchParams } from '../_lib/search-params'
 import { LinkBadge } from '../_components/link-badge'
 import { buildAuditHref } from '../_lib/audit-href'
 import { buildConnectionsHref } from '../connections/filters'
+import { JobSummary } from './job-summary'
 
 function healthTone(hasIssue: boolean) {
   return hasIssue ? 'brass' : 'moss'
@@ -46,7 +47,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
     ? await Promise.all([
         getWorkspaceOverview(activeWorkspace.id, user.id),
         listConnectionsForWorkspace(activeWorkspace.id, user.id),
-        listConnectionJobs(activeWorkspace.id, user.id, 80),
+        listConnectionJobs(activeWorkspace.id, user.id, 80).catch(() => null),
         listOAuthClientApprovals({
           workspaceId: activeWorkspace.id,
           userId: user.id,
@@ -58,10 +59,12 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
   const activeConnections = connections.filter((connection) => connection.status === 'active').length
   const pendingConnections = connections.filter((connection) => connection.status === 'pending').length
   const reauthRequiredConnections = connections.filter((connection) => connection.status === 'reauth_required').length
-  const queuedConnectionJobs = connectionJobs.filter((job) => job.status === 'queued').length
-  const processingConnectionJobs = connectionJobs.filter((job) => job.status === 'processing').length
-  const failedConnectionJobs = connectionJobs.filter((job) => job.status === 'failed').length
-  const deadLetterConnectionJobs = connectionJobs.filter((job) => job.status === 'dead_letter').length
+  const jobsUnavailable = connectionJobs === null
+  const jobs = connectionJobs ?? []
+  const queuedConnectionJobs = jobs.filter((job) => job.status === 'queued').length
+  const processingConnectionJobs = jobs.filter((job) => job.status === 'processing').length
+  const failedConnectionJobs = jobs.filter((job) => job.status === 'failed').length
+  const deadLetterConnectionJobs = jobs.filter((job) => job.status === 'dead_letter').length
   const activeApprovals = approvals.filter((approval) => approval.status === 'active').length
   const revokedApprovals = approvals.filter((approval) => approval.status === 'revoked').length
   const approvalSignal = approvals.length === 0 ? 'none' : `${activeApprovals} active / ${approvals.length} total`
@@ -92,7 +95,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
         </CardHeader>
       </Card>
 
-      {activeWorkspace && attentionCount > 0 ? (
+      {activeWorkspace && (attentionCount > 0 || jobsUnavailable) ? (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Operator notifications</CardTitle>
@@ -101,6 +104,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
+            {jobsUnavailable ? <p role="status">Sync job status is unavailable. Refresh this page to retry.</p> : null}
             {reauthRequiredConnections > 0 ? (
               <p>
                 <LinkBadge href={reauthConnectionsHref} tone="brass">
@@ -144,7 +148,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
           </CardHeader>
           <CardContent>
             <p className="text-4xl font-semibold text-foreground">
-              {activeConnections}/{overview?.connections ?? 0}
+              {activeConnections}/{connections.length}
             </p>
             <p className="mt-2 text-sm text-muted-foreground">
               {pendingConnections} pending · {reauthRequiredConnections} reauth required
@@ -199,10 +203,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
             <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Sync jobs</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-4xl font-semibold text-foreground">{processingConnectionJobs + queuedConnectionJobs}</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {processingConnectionJobs} processing · {queuedConnectionJobs} queued · {deadLetterConnectionJobs} dead-lettered
-            </p>
+            <JobSummary unavailable={jobsUnavailable} processing={processingConnectionJobs} queued={queuedConnectionJobs} deadLetter={deadLetterConnectionJobs} />
           </CardContent>
         </Card>
       </section>
@@ -221,13 +222,17 @@ export default async function DashboardPage({ searchParams }: { searchParams?: A
             {connections.length ? `${connections.length} total provider installs` : 'No provider installs yet'}
           </li>
           <li className="flex flex-wrap items-center gap-2">
-            <LinkBadge href={failedJobsAuditHref} tone={healthTone(failedConnectionJobs > 0)}>
-              {failedConnectionJobs} failed sync jobs
-            </LinkBadge>
-            <LinkBadge href={deadLetterJobsAuditHref} tone={healthTone(deadLetterConnectionJobs > 0)}>
-              {deadLetterConnectionJobs} dead-letter jobs
-            </LinkBadge>
-            {processingConnectionJobs > 0 ? `${processingConnectionJobs} jobs running now` : 'No jobs currently processing'}
+            {jobsUnavailable ? 'Sync job status unavailable' : (
+              <>
+                <LinkBadge href={failedJobsAuditHref} tone={healthTone(failedConnectionJobs > 0)}>
+                  {failedConnectionJobs} failed sync jobs
+                </LinkBadge>
+                <LinkBadge href={deadLetterJobsAuditHref} tone={healthTone(deadLetterConnectionJobs > 0)}>
+                  {deadLetterConnectionJobs} dead-letter jobs
+                </LinkBadge>
+                {processingConnectionJobs > 0 ? `${processingConnectionJobs} jobs running now` : 'No jobs currently processing'}
+              </>
+            )}
           </li>
           <li className="flex flex-wrap items-center gap-2">
             <LinkBadge href={approvalsHref} tone={healthTone(approvals.length === 0)}>
