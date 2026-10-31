@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Tar consumer compatibility contracts
+        run: pnpm tar:compat
+
       - name: Install Chromium headless shell
         run: pnpm --filter @plusmy/web exec playwright install --with-deps --only-shell chromium
 
@@ -42,6 +45,8 @@ jobs:
             mailpit:v1.22.3
             realtime:v2.78.10
             pg_prove:3.36
+            storage-api:v1.41.8
+            edge-runtime:v1.71.0
           )
           for image in "${images[@]}"; do
             docker pull "ghcr.io/supabase/$image"
