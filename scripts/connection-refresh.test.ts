@@ -22,6 +22,7 @@ test('provider refreshes are fenced against concurrent lifecycle changes', async
   let loseCommitAck = false;
   let beforeAcquire: (() => void) | undefined;
   let installBody: Record<string, any> | undefined;
+  let retainedRefreshToken = false;
 
   function reset() {
     Object.assign(connection, {
@@ -40,6 +41,7 @@ test('provider refreshes are fenced against concurrent lifecycle changes', async
     loseCommitAck = false;
     beforeAcquire = undefined;
     installBody = undefined;
+    retainedRefreshToken = false;
   }
   reset();
 
@@ -107,7 +109,7 @@ test('provider refreshes are fenced against concurrent lifecycle changes', async
       installBody = body;
       Object.assign(connection, { status: 'active', refresh_lock_id: null, metadata: body.p_metadata });
       Object.assign(secrets, { 'access-id': body.p_access_token, 'refresh-id': body.p_refresh_token });
-      return Response.json({ connection, existing: true, ...(body.p_schedule_refresh && body.p_refresh_token && body.p_expires_at
+      return Response.json({ connection, existing: true, ...(body.p_schedule_refresh && (body.p_refresh_token || retainedRefreshToken) && body.p_expires_at
         ? { refresh_job_id: 'atomic-job', refresh_run_after: '2999-01-01T00:00:00Z' } : {}) });
     }
     if (url.pathname === '/rest/v1/connection_sync_jobs' && request.method === 'PATCH') return new Response(null, { status: 204 });
@@ -155,6 +157,16 @@ test('provider refreshes are fenced against concurrent lifecycle changes', async
         assert.ok(!calls.includes('POST /rest/v1/rpc/schedule_connection_job_v2'));
       });
     }
+    await t.test('install audits a successor for a retained refresh token', async () => {
+      reset(); retainedRefreshToken = true;
+      await core.upsertInstalledConnection({
+        workspaceId: 'test-workspace', ownerUserId: null, provider: 'github', scope: 'workspace',
+        externalAccountId: 'test-account', externalAccountEmail: null, displayName: 'test', grantedScopes: [],
+        credentials: { accessToken: 'access', refreshToken: null, expiresAt: '2999-01-01T00:00:00Z', scopes: [] }
+      });
+      assert.equal(installBody?.p_refresh_token, null);
+      assert.equal(calls.filter((call) => call === 'POST /rest/v1/audit_logs').length, 2);
+    });
     await t.test('a successful late refresh cannot reactivate a revoked connection', async () => {
       reset();
       const barrier = blockedRefresh();

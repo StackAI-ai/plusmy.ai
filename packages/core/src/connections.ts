@@ -582,9 +582,13 @@ export async function upsertInstalledConnection(input: {
     throw new Error('Failed to install connection credentials.');
   }
 
-  if (input.scheduleTokenRefreshJob !== false && input.credentials.refreshToken && input.credentials.expiresAt) {
+  if (input.scheduleTokenRefreshJob !== false && input.credentials.refreshToken && input.credentials.expiresAt
+    && (typeof data.refresh_job_id !== 'string' || typeof data.refresh_run_after !== 'string')) {
+    throw new Error('Installed connection refresh scheduling could not be confirmed.');
+  }
+  if (data.refresh_job_id != null) {
     if (typeof data.refresh_job_id !== 'string' || typeof data.refresh_run_after !== 'string') {
-      throw new Error('Installed connection refresh scheduling could not be confirmed.');
+      throw new Error('Installed connection refresh scheduling returned an invalid result.');
     }
     await logAuditEvent({
       workspaceId: input.workspaceId,

@@ -231,6 +231,15 @@ begin
   assert not (install_result ? 'refresh_job_id') and not exists (
     select 1 from app.connection_sync_jobs where connection_id = c and job_type = 'token_refresh' and status = 'queued'
   ), 'explicitly disabled scheduling is preserved';
+  install_result := app.install_connection_credentials_v2('job-fencing-test', 'ac000000-0000-0000-0000-000000000001', null,
+    'job-test', 'workspace', 'Retained token', 'account', null, array['read'], now() + interval '1 hour', '{}',
+    'installed-access', null, null, 'Bearer', true);
+  assert (select app.resolve_secret(refresh_token_secret_id) = 'installed-refresh' from app.connection_credentials where connection_id = c),
+    'omitted refresh token preserves the existing secret';
+  assert install_result ->> 'refresh_job_id' is not null and (
+    select count(*) = 1 from app.connection_sync_jobs where connection_id = c and job_type = 'token_refresh' and status = 'queued'
+  ), 'retained refresh token receives an atomic successor';
+  update app.connection_sync_jobs set status = 'canceled' where connection_id = c and status = 'queued';
   select job_generation into g from app.connections where id = c;
 
   -- The actor-scoped scheduler rechecks the authorized workspace and current

@@ -191,7 +191,10 @@ begin
     p_provider, p_scope, p_display_name, p_external_account_id, p_external_account_email,
     p_scopes, p_expires_at, p_metadata, p_access_token, p_refresh_token, p_api_key, p_token_type);
   v_connection := v_result -> 'connection';
-  if p_schedule_refresh and nullif(p_refresh_token, '') is not null and p_expires_at is not null then
+  if p_schedule_refresh and p_expires_at is not null and exists (
+    select 1 from app.connection_credentials c
+    where c.connection_id = (v_connection ->> 'id')::uuid and c.refresh_token_secret_id is not null
+  ) then
     v_run_after := greatest(p_expires_at - interval '5 minutes', now());
     v_reason := case when (v_result ->> 'existing')::boolean then 'credential_updated' else 'connection_installed' end;
     v_job_id := app.schedule_connection_job_v2((v_connection ->> 'id')::uuid, 'token_refresh',
