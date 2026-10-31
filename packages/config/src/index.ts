@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+export { isMcpHttpOrigin, mcpOriginPolicySchema } from './mcp-origin';
+
 const serverEnvSchema = z.object({
   APP_URL: z.string().url().optional(),
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
