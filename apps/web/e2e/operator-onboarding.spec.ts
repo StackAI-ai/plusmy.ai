@@ -127,6 +127,10 @@ test('connection ownership and callback state stay bound to the acting user', as
     expect((await adminApi.post('/api/connections/sync', {
       data: { workspace_id: workspaceId, connection_id: sharedId }
     })).status()).toBe(200);
+    for (const actorPage of [adminPage, memberPage]) {
+      await actorPage.goto(`/dashboard?workspace=${workspaceId}`);
+      await expect(actorPage.getByText(/up to 80 recent jobs/)).toBeVisible();
+    }
     const { data: queuedAudit } = await service.schema('app').from('audit_logs')
       .select('actor_user_id').eq('resource_id', personalJobId).eq('action', 'connection_job.queued').single();
     expect(queuedAudit?.actor_user_id).toBe('33333333-3333-3333-3333-333333333333');
@@ -166,6 +170,7 @@ test('seeded owner signs in through Mailpit and reaches workspace operator pages
   test.setTimeout(180_000);
   await signIn(page, request, ownerEmail);
   await expect(page.getByText('Local Beta Workspace').first()).toBeVisible();
+  await expect(page.getByText(/up to 80 recent jobs/)).toBeVisible();
 
   const response = await page.context().request.get('/api/workspaces');
   expect(response.ok()).toBe(true);
