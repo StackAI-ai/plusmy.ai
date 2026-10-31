@@ -1,5 +1,6 @@
 import { createServiceRoleClient } from '@plusmy/supabase';
 import { logAuditEvent } from './connections';
+import { listContextBindings } from './context';
 
 function isVisibleContextAsset(metadata: unknown) {
   if (!metadata || Array.isArray(metadata) || typeof metadata !== 'object') {
@@ -94,7 +95,7 @@ export async function getWorkspaceOverview(workspaceId: string, userId: string |
     supabase.schema('app').from('prompt_templates').select('id,owner_user_id').eq('workspace_id', workspaceId),
     supabase.schema('app').from('skill_definitions').select('id,owner_user_id').eq('workspace_id', workspaceId),
     supabase.schema('app').from('context_assets').select('id,owner_user_id,metadata').eq('workspace_id', workspaceId),
-    supabase.schema('app').from('context_bindings').select('id', { count: 'exact', head: true }).eq('workspace_id', workspaceId)
+    listContextBindings(workspaceId, userId)
   ])
 
   const isVisibleOwner = (ownerUserId: string | null) => !ownerUserId || ownerUserId === userId
@@ -105,7 +106,7 @@ export async function getWorkspaceOverview(workspaceId: string, userId: string |
     prompts: (prompts.data ?? []).filter((prompt) => isVisibleOwner(prompt.owner_user_id)).length,
     skills: (skills.data ?? []).filter((skill) => isVisibleOwner(skill.owner_user_id)).length,
     assets: visibleAssets.length,
-    bindings: bindings.count ?? 0,
+    bindings: bindings.length,
     userId: userId ?? null
   }
 }

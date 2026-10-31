@@ -44,8 +44,8 @@ const contextBindingSelect = `
   metadata,
   created_at,
   updated_at,
-  prompt_template:prompt_templates(id,name,slug,description,owner_user_id),
-  skill_definition:skill_definitions(id,name,slug,description,owner_user_id)
+  prompt_template:prompt_templates(id,name,slug,description,owner_user_id,workspace_id),
+  skill_definition:skill_definitions(id,name,slug,description,owner_user_id,workspace_id)
 `
 
 function slugify(value: string) {
@@ -911,9 +911,9 @@ export async function listContextBindings(workspaceId: string, userId: string | 
     .filter((row) => {
       const prompt = normalizeJoinedRecord(row.prompt_template)
       const skill = normalizeJoinedRecord(row.skill_definition)
-      const promptVisible = !prompt?.owner_user_id || prompt.owner_user_id === userId
-      const skillVisible = !skill?.owner_user_id || skill.owner_user_id === userId
-      return promptVisible && skillVisible
+      const promptVisible = !row.prompt_template_id || Boolean(prompt && prompt.workspace_id === workspaceId && !prompt.owner_user_id)
+      const skillVisible = !row.skill_definition_id || Boolean(skill && skill.workspace_id === workspaceId && !skill.owner_user_id)
+      return Boolean(row.prompt_template_id || row.skill_definition_id) && promptVisible && skillVisible
     })
     .map((row) =>
       normalizeContextBindingRow(

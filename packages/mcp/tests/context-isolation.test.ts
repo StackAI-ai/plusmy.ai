@@ -14,6 +14,7 @@ test('context search, health, overview, and MCP paths preserve personal visibili
   const requests: Array<Record<string, unknown>> = [];
   const auditRecords: unknown[] = [];
   let privateOnlyEmbedded = false;
+  let bindingRows: Array<Record<string, unknown>> = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const request = new Request(input, init);
@@ -22,6 +23,9 @@ test('context search, health, overview, and MCP paths preserve personal visibili
       return Response.json({ data: [{ embedding: [1, 0] }] });
     }
     if (url.origin !== 'http://supabase.invalid') throw new Error(`Unexpected network request: ${url.origin}`);
+    if (['/rest/v1/workspace_members', '/rest/v1/prompt_templates', '/rest/v1/skill_definitions', '/rest/v1/context_assets', '/rest/v1/context_asset_chunks', '/rest/v1/context_bindings', '/rest/v1/connections'].includes(url.pathname)) {
+      assert.equal(url.searchParams.get('workspace_id'), 'eq.workspace-a', `${url.pathname} must stay workspace-scoped`);
+    }
     if (url.pathname === '/rest/v1/rpc/match_context_chunks') {
       const body = await request.json() as Record<string, unknown>;
       requests.push(body);
@@ -67,10 +71,10 @@ test('context search, health, overview, and MCP paths preserve personal visibili
         { id: 'owner-connection', provider: 'slack', scope: 'personal', status: 'active', owner_user_id: 'owner', granted_scopes: [] }
       ]);
     }
-    if (url.pathname === '/rest/v1/context_bindings' && request.method === 'HEAD') {
-      return new Response(null, { status: 200, headers: { 'content-range': '0-1/2' } });
+    if (url.pathname === '/rest/v1/context_bindings') {
+      return Response.json(bindingRows);
     }
-    if (url.pathname === '/rest/v1/connection_credentials' || url.pathname === '/rest/v1/context_bindings') {
+    if (url.pathname === '/rest/v1/connection_credentials') {
       return Response.json([]);
     }
     if (url.pathname === '/rest/v1/audit_logs') {
@@ -84,7 +88,7 @@ test('context search, health, overview, and MCP paths preserve personal visibili
   };
 
   try {
-    const { getContextEmbeddingHealth, getWorkspaceOverview, matchContextChunks, resolveContextInjection } = await import('@plusmy/core');
+    const { getContextEmbeddingHealth, getWorkspaceOverview, listContextBindings, matchContextChunks, resolveContextInjection } = await import('@plusmy/core');
     const { getIntegration } = await import('@plusmy/integrations');
     const { handleMcpJsonRpcRequest } = await import('../src/server');
 
@@ -109,9 +113,21 @@ test('context search, health, overview, and MCP paths preserve personal visibili
     assert.equal(emptyHealth.lastEmbeddedAt, null);
     assert.equal(emptyHealth.embeddingIndexStatus, 'stale');
     await assert.rejects(getContextEmbeddingHealth('workspace-a', 'outsider'), /membership is required/);
+    const binding = { workspace_id: 'workspace-a', binding_type: 'workspace', target_key: 'default', priority: 1, metadata: {}, created_at: '', updated_at: '' };
+    bindingRows = [
+      { ...binding, id: 'shared-prompt-binding', prompt_template_id: 'shared-prompt', skill_definition_id: null, prompt_template: { id: 'shared-prompt', name: 'Shared', slug: 'shared', description: null, owner_user_id: null, workspace_id: 'workspace-a' }, skill_definition: null },
+      { ...binding, id: 'shared-skill-binding', prompt_template_id: null, skill_definition_id: 'shared-skill', prompt_template: null, skill_definition: { id: 'shared-skill', name: 'Shared', slug: 'shared', description: null, owner_user_id: null, workspace_id: 'workspace-a' } },
+      { ...binding, id: 'foreign-binding', prompt_template_id: 'foreign', skill_definition_id: null, prompt_template: { id: 'foreign', name: 'foreign workspace title', slug: 'foreign', description: 'foreign workspace description', owner_user_id: null, workspace_id: 'workspace-b' }, skill_definition: null },
+      { ...binding, id: 'private-binding', prompt_template_id: 'private', skill_definition_id: null, prompt_template: { id: 'private', name: 'private title', slug: 'private', description: null, owner_user_id: 'owner', workspace_id: 'workspace-a' }, skill_definition: null },
+      { ...binding, id: 'missing-binding', prompt_template_id: 'missing', skill_definition_id: null, prompt_template: null, skill_definition: null }
+    ];
+    const bindings = await listContextBindings('workspace-a', 'member');
+    assert.deepEqual(bindings.map((item) => item.id), ['shared-prompt-binding', 'shared-skill-binding']);
+    assert.doesNotMatch(JSON.stringify(bindings), /foreign workspace|private title/);
     assert.deepEqual(await getWorkspaceOverview('workspace-a', 'member'), {
       connections: 2, prompts: 2, skills: 2, assets: 2, bindings: 2, userId: 'member'
     });
+    bindingRows = [];
 
     const auth = { sub: 'member', userId: 'member', workspaceId: 'workspace-a', clientId: 'client', scopes: ['mcp:resources', 'mcp:tools'] };
     const resource = await handleMcpJsonRpcRequest(auth, {
