@@ -71,6 +71,9 @@ jobs:
       - name: Connection refresh concurrency contracts
         run: pnpm exec tsx --test scripts/connection-refresh.test.ts
 
+      - name: Connection job claim fencing contracts
+        run: pnpm exec tsx --test scripts/connection-jobs.test.ts
+
       - name: Doctor
         run: node scripts/doctor.mjs
 
@@ -79,6 +82,9 @@ jobs:
 
       - name: Connection refresh database regressions
         run: node_modules/supabase/bin/supabase test db supabase/tests/connection_refresh.sql --local
+
+      - name: Connection job fencing database regressions
+        run: node_modules/supabase/bin/supabase test db supabase/tests/connection_jobs.sql --local
 
       - name: Worker alert delivery contracts
         run: node scripts/local-supabase-env.mjs -- pnpm exec tsx scripts/worker-alert-contracts.ts

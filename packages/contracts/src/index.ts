@@ -58,6 +58,7 @@ export interface ConnectionRecord {
   last_validated_at: string | null;
   reauth_required_reason: string | null;
   metadata: Json;
+  job_generation: string;
 }
 
 export interface ConnectionJobRecord {
@@ -71,6 +72,8 @@ export interface ConnectionJobRecord {
   run_after: string;
   last_error: string | null;
   worker_id: string | null;
+  claim_id: string | null;
+  connection_generation: string;
   started_at: string | null;
   completed_at: string | null;
   dead_lettered_at: string | null;
