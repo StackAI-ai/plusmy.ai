@@ -217,6 +217,17 @@ begin
   assert (select status = 'queued' from app.connection_sync_jobs where id = j), 'failed install restores old job';
   assert (select app.resolve_secret(refresh_token_secret_id) = 'rotated-refresh' from app.connection_credentials where connection_id = c),
     'failed install rolls back Vault writes';
+  begin
+    perform app.install_connection_credentials_v2('job-fencing-test', 'ac000000-0000-0000-0000-000000000003', null,
+      'job-test', 'workspace', 'Failed identity change', 'account', null, array['read'], now() + interval '1 hour', '{}',
+      'failed-transfer-access', 'failed-transfer-refresh', null, 'Bearer', true);
+    raise exception 'identity-changing install unexpectedly survived a failed successor write';
+  exception when check_violation then null; end;
+  assert (select workspace_id = 'ac000000-0000-0000-0000-000000000001' and status = 'active' and job_generation = g
+    from app.connections where id = c), 'failed identity-changing install restores the original connection';
+  assert (select status = 'queued' from app.connection_sync_jobs where id = j), 'failed identity-changing install restores the old job';
+  assert (select app.resolve_secret(refresh_token_secret_id) = 'rotated-refresh' from app.connection_credentials where connection_id = c),
+    'failed identity-changing install rolls back Vault writes';
   alter table app.connection_sync_jobs drop constraint job_test_no_install_successor;
   install_result := app.install_connection_credentials_v2('job-fencing-test', 'ac000000-0000-0000-0000-000000000001', null,
     'job-test', 'workspace', 'Atomic replacement', 'account', null, array['read'], now() + interval '1 hour', '{}',
