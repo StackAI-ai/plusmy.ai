@@ -62,6 +62,9 @@ jobs:
       - name: Auth redirect regression tests
         run: pnpm exec tsx --test apps/web/tests/safe-redirect.test.ts
 
+      - name: Context health rendering contracts
+        run: pnpm exec tsx --test apps/web/tests/context-health-card.test.tsx
+
       - name: Context caller isolation contracts
         run: pnpm exec tsx --test packages/mcp/tests/context-isolation.test.ts
 
