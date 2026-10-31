@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 import { ArrowRight } from 'lucide-react';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
 import { createServerSupabaseClient } from '@plusmy/supabase';
+import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
+import { buildLoginHref } from '../_lib/signin-return';
 import {
   getPlatformCategoryCounts,
   getPlatformCounts,
@@ -58,13 +60,13 @@ const highValueMissingPlatforms = highValueMissingPlatformIds
   .map((platformId) => plannedProviderPlatforms.find((platform) => platform.id === platformId))
   .filter((platform): platform is PlannedPlatform => Boolean(platform));
 
-export default async function PlatformsPage() {
+export default async function PlatformsPage({ searchParams }: { searchParams?: AppSearchParams }) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user }
   } = await supabase.auth.getUser();
   if (!user) {
-    redirect('/login');
+    redirect(buildLoginHref('/platforms', await getSearchParam(searchParams, 'workspace')));
   }
 
   const counts = getPlatformCounts();

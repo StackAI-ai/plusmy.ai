@@ -75,8 +75,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 role: workspace.role,
                 slug: workspace.slug
               }))}
-            />
-            <main className="flex-1 pb-8">{children}</main>
+            >
+              {children}
+            </WorkspaceShell>
           </div>
         </div>
       </body>

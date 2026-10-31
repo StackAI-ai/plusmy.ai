@@ -1,5 +1,8 @@
+import type { Metadata } from 'next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@plusmy/ui';
 import { AcceptInviteForm } from './accept-invite-form';
+
+export const metadata: Metadata = { referrer: 'no-referrer' };
 
 export default async function JoinPage({
   searchParams

@@ -7,6 +7,7 @@ import { DisconnectConnectionButton } from './disconnect-button';
 import { RefreshConnectionButton } from './refresh-button';
 import { SyncConnectionButton } from './sync-button';
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
+import { buildLoginHref } from '../_lib/signin-return';
 import { getConnectionHealth } from './filters';
 import { redirect } from 'next/navigation';
 
@@ -104,7 +105,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams?:
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect('/login');
+    redirect(buildLoginHref('/connections', await getSearchParam(searchParams, 'workspace')));
   }
 
   const workspaces = await listUserWorkspaces(user.id);

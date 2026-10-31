@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { createBrowserSupabaseClient } from '@plusmy/supabase/browser';
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from '@plusmy/ui';
+import { buildSignInCallbackUrl } from '../_lib/signin-return';
 
-export function LoginForm() {
+export function LoginForm({ returnPath, callbackFailed }: { returnPath: string; callbackFailed: boolean }) {
   const [email, setEmail] = useState('');
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(callbackFailed ? 'That sign-in link could not be used. Request a new link.' : null);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -14,23 +15,26 @@ export function LoginForm() {
     setSubmitting(true);
     setStatus(null);
 
-    const supabase = createBrowserSupabaseClient();
-    const redirectTo = `${window.location.origin}/auth/callback`;
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: redirectTo
+    try {
+      const supabase = createBrowserSupabaseClient();
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: buildSignInCallbackUrl(window.location.origin, returnPath)
+        }
+      });
+
+      if (error) {
+        setStatus(`Unable to send the sign-in link. ${error.message}`);
+      } else {
+        setStatus('Magic link sent. Check your inbox.');
+        setEmail('');
       }
-    });
-
-    if (error) {
-      setStatus(error.message);
-    } else {
-      setStatus('Magic link sent. Check your inbox.');
-      setEmail('');
+    } catch {
+      setStatus('Unable to send the sign-in link. Check your connection and try again.');
+    } finally {
+      setSubmitting(false);
     }
-
-    setSubmitting(false);
   }
 
   return (
@@ -55,7 +59,7 @@ export function LoginForm() {
           <Button disabled={submitting} type="submit" className="w-full">
             {submitting ? 'Sending…' : 'Send magic link'}
           </Button>
-          {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
+          <p role="status" className="text-sm text-muted-foreground">{status}</p>
         </form>
       </CardContent>
     </Card>

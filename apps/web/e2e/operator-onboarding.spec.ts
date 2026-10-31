@@ -46,9 +46,9 @@ function magicLink(message: string) {
   return links.find((link) => link.includes('/auth/v1/verify') || link.includes('/auth/callback')) ?? '';
 }
 
-async function signIn(page: Page, request: APIRequestContext, email: string) {
+async function signIn(page: Page, request: APIRequestContext, email: string, options?: { initialPath: string; expectedUrl: RegExp }) {
   const priorEmail = await latestEmail(request, email);
-  await page.goto('/login');
+  await page.goto(options?.initialPath ?? '/login');
   await page.getByLabel('Email address').fill(email);
   await page.getByRole('button', { name: 'Send magic link' }).click();
   await expect(page.getByText('Magic link sent. Check your inbox.')).toBeVisible();
@@ -61,13 +61,89 @@ async function signIn(page: Page, request: APIRequestContext, email: string) {
   }, { timeout: 30_000 }).toBe(true);
 
   await page.goto(link);
-  await expect(page).toHaveURL(/\/dashboard/);
+  await expect(page).toHaveURL(options?.expectedUrl ?? /\/dashboard/);
 }
 
 test('signed-out dashboard does not expose workspace state', async ({ page }) => {
   await page.goto('/dashboard');
   await expect(page.getByText('Sign in required')).toBeVisible();
   await expect(page.getByText('Local Beta Workspace')).toHaveCount(0);
+});
+
+test('signed-out connection deep link returns to its workspace after magic-link sign-in', async ({ page, request }) => {
+  await signIn(page, request, ownerEmail, {
+    initialPath: `/connections?workspace=${workspaceId}`,
+    expectedUrl: new RegExp(`/connections\\?workspace=${workspaceId}`)
+  });
+  await expect(page.getByText('Business tools').first()).toBeVisible();
+});
+
+test('mobile sign-in is visible and invitation secrets are not forwarded to login', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/login');
+  const button = page.getByRole('button', { name: 'Send magic link' });
+  await expect(button).toBeVisible();
+  const bounds = await button.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(844);
+
+  await page.goto('/join?token=disposable-invite-secret');
+  await expect(page.locator('meta[name="referrer"]')).toHaveAttribute('content', 'no-referrer');
+  const signInLink = page.getByRole('link', { name: 'Open sign-in' });
+  await expect(signInLink).toHaveAttribute('href', '/login');
+  await expect(signInLink).toHaveAttribute('referrerpolicy', 'no-referrer');
+  await signInLink.click();
+  expect(page.url()).not.toContain('disposable-invite-secret');
+});
+
+test('desktop sign-in introduction retains its card styling', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/login');
+  const intro = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Sign in to manage your business tools.' }) });
+  await expect(intro).toBeVisible();
+  const styling = await intro.evaluate((element) => ({
+    paddingTop: getComputedStyle(element).paddingTop,
+    borderTopWidth: getComputedStyle(element).borderTopWidth
+  }));
+  expect(styling).toEqual({ paddingTop: '32px', borderTopWidth: '1px' });
+});
+
+test('failed magic link retains the safe destination and offers a retry', async ({ page }) => {
+  await page.goto(`/auth/callback?next=${encodeURIComponent(`/connections?workspace=${workspaceId}`)}`);
+  await expect(page).toHaveURL(/\/login\?/);
+  expect(new URL(page.url()).searchParams.get('next')).toBe(`/connections?workspace=${workspaceId}`);
+  await expect(page.getByRole('status')).toContainText('Request a new link');
+});
+
+test('sign-in request sends only the safe deep-link destination to the auth service', async ({ page }) => {
+  let redirectTo = '';
+  await page.route('**/auth/v1/otp**', async (route) => {
+    const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'POST, OPTIONS' };
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers });
+      return;
+    }
+    redirectTo = new URL(route.request().url()).searchParams.get('redirect_to') ?? '';
+    await route.fulfill({ status: 200, headers, contentType: 'application/json', body: '{}' });
+  });
+  await page.goto(`/connections?workspace=${workspaceId}&token=do-not-forward`);
+  await expect(page).toHaveURL(/\/login\?/);
+  expect(page.url()).not.toContain('do-not-forward');
+  await page.getByLabel('Email address').fill('owner@plusmy.local');
+  await page.getByRole('button', { name: 'Send magic link' }).click();
+  await expect(page.getByRole('status')).toContainText('Magic link sent');
+  expect(new URL(redirectTo).searchParams.get('next')).toBe(`/connections?workspace=${workspaceId}`);
+  expect(redirectTo).not.toContain('do-not-forward');
+});
+
+test('sign-in request network failure restores the submit control', async ({ page }) => {
+  await page.route('**/auth/v1/otp**', (route) => route.abort('failed'));
+  await page.goto('/login');
+  await page.getByLabel('Email address').fill('owner@plusmy.local');
+  const submit = page.getByRole('button', { name: 'Send magic link' });
+  await submit.click();
+  await expect(page.getByRole('status')).toContainText('Unable to send the sign-in link');
+  await expect(submit).toBeEnabled();
 });
 
 test('connection ownership and callback state stay bound to the acting user', async ({ browser, page, request }) => {

@@ -11,6 +11,7 @@ import {
   listUserWorkspaces
 } from '@plusmy/core';
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
+import { buildLoginHref } from '../_lib/signin-return';
 
 export default async function OnboardingPage({ searchParams }: { searchParams?: AppSearchParams }) {
   const supabase = await createServerSupabaseClient();
@@ -18,7 +19,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams?: 
     data: { user }
   } = await supabase.auth.getUser();
   if (!user) {
-    redirect('/login');
+    redirect(buildLoginHref('/onboarding', await getSearchParam(searchParams, 'workspace')));
   }
 
   const workspaces = user ? await listUserWorkspaces(user.id) : [];

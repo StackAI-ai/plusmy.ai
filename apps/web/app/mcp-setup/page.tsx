@@ -5,6 +5,7 @@ import { createServerSupabaseClient } from '@plusmy/supabase';
 import { getAuthorizedWorkspace, listUserWorkspaces } from '@plusmy/core';
 import { redirect } from 'next/navigation';
 import { getSearchParam, type AppSearchParams } from '../_lib/search-params';
+import { buildLoginHref } from '../_lib/signin-return';
 import { getAppOrigin } from '../_lib/origin';
 import { CopyButton } from '../_components/copy-button';
 
@@ -20,7 +21,7 @@ export default async function McpSetupPage({ searchParams }: { searchParams?: Ap
     data: { user }
   } = await supabase.auth.getUser();
   if (!user) {
-    redirect('/login');
+    redirect(buildLoginHref('/mcp-setup', await getSearchParam(searchParams, 'workspace')));
   }
 
   const requestedWorkspaceId = await getSearchParam(searchParams, 'workspace');
