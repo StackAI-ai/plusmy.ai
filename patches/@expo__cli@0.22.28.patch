@@ -1,0 +1,26 @@
+diff --git a/build/src/utils/npm.js b/build/src/utils/npm.js
+--- a/build/src/utils/npm.js
++++ b/build/src/utils/npm.js
+@@ -60,7 +60,8 @@ function _stream() {
+     return data;
+ }
+ function _tar() {
+-    const data = /*#__PURE__*/ _interopRequireDefault(require("tar"));
++    // tar 7 has named CommonJS exports and no default export.
++    const data = { default: require("tar") };
+     _tar = function() {
+         return data;
+     };
+diff --git a/build/src/utils/tar.js b/build/src/utils/tar.js
+--- a/build/src/utils/tar.js
++++ b/build/src/utils/tar.js
+@@ -14,7 +14,8 @@ function _spawnAsync() {
+     return data;
+ }
+ function _tar() {
+-    const data = /*#__PURE__*/ _interopRequireDefault(require("tar"));
++    // tar 7 has named CommonJS exports and no default export.
++    const data = { default: require("tar") };
+     _tar = function() {
+         return data;
+     };

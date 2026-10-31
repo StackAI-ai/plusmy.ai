@@ -8,6 +8,7 @@
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",
     "doctor": "node ./scripts/doctor.mjs",
+    "tar:compat": "node --test scripts/tar-compat.test.mjs",
     "finance:contracts": "tsx ./scripts/finance-contracts.ts",
     "mcp:stress": "node ./scripts/mcp-stress.mjs",
     "mcp:compat": "node ./scripts/mcp-compat-smoke.mjs",
@@ -16,6 +17,16 @@
     "supabase:start": "node_modules/supabase/bin/supabase start",
     "supabase:reset": "node_modules/supabase/bin/supabase db reset",
     "supabase:types": "node_modules/supabase/bin/supabase gen types typescript --local --schema public,app > packages/supabase/src/database.types.ts"
+  },
+  "pnpm": {
+    "overrides": {
+      "@expo/cli@0.22.28>tar": "7.5.22",
+      "cacache@18.0.4>tar": "7.5.22",
+      "supabase@2.83.0>tar": "7.5.22"
+    },
+    "patchedDependencies": {
+      "@expo/cli@0.22.28": "patches/@expo__cli@0.22.28.patch"
+    }
   },
   "devDependencies": {
     "@types/node": "^22.13.10",

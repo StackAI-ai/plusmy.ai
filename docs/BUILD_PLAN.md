@@ -50,6 +50,7 @@
 - 2026-03-23 execution checkpoint: added a local Supabase seed for throwaway owner/admin accounts plus a starter workspace so magic-link email flows can be exercised against the built-in Mailpit inbox on local Supabase. Workspace owner/admin controls remain the admin surface; no separate global admin UI was introduced.
 - 2026-03-23 execution checkpoint: introduced a noninteractive MCP smoke-token fixture shared by compat/stress scripts and wired the stress check into CI to close the private-beta release gate.
 - 2026-03-23 execution checkpoint: added a reusable `tsx`-driven provider contract harness plus `finance:contracts`, covered QuickBooks, Xero, Airtable, and Zoom install/refresh/sync/tool/health flows, and fixed a QuickBooks invoice parsing bug surfaced by the new contract script.
+- 2026-10-31 source-only dependency candidate: replace the tar dependencies of three exact Expo/cacache/Supabase CLI parent versions with 7.5.22 and patch Expo's two incompatible default imports. Local disposable tests exercise real streaming/fallback extraction and selected installer/cache behavior. This is a compatibility shim, not a claim of full archive resource limits, Windows or mobile-runtime acceptance; see [TAR_COMPATIBILITY.md](./TAR_COMPATIBILITY.md). Exact-head CI and independent security review remain mandatory.
 
 ## Next execution slice (2026-03-23)
 - 2026-03-22 completion notes added: harden logged-in gating for setup surfaces, and keep the shared shell and onboarding surfaces focused on business tools instead of infrastructure details.
