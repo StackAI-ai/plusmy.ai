@@ -96,6 +96,18 @@ test('mobile sign-in is visible and invitation secrets are not forwarded to logi
   expect(page.url()).not.toContain('disposable-invite-secret');
 });
 
+test('desktop sign-in introduction retains its card styling', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/login');
+  const intro = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Sign in to manage your business tools.' }) });
+  await expect(intro).toBeVisible();
+  const styling = await intro.evaluate((element) => ({
+    paddingTop: getComputedStyle(element).paddingTop,
+    borderTopWidth: getComputedStyle(element).borderTopWidth
+  }));
+  expect(styling).toEqual({ paddingTop: '32px', borderTopWidth: '1px' });
+});
+
 test('failed magic link retains the safe destination and offers a retry', async ({ page }) => {
   await page.goto(`/auth/callback?next=${encodeURIComponent(`/connections?workspace=${workspaceId}`)}`);
   await expect(page).toHaveURL(/\/login\?/);

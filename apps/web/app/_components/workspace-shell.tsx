@@ -113,14 +113,7 @@ export function WorkspaceShell({
           </nav>
         </>
       ) : null}
-      <main
-        className={cn(
-          'flex-1 pb-8',
-          signedOutLogin && '[&>div>section:first-child]:sr-only md:[&>div>section:first-child]:not-sr-only'
-        )}
-      >
-        {children}
-      </main>
+      <main className="flex-1 pb-8">{children}</main>
     </>
   );
 }
