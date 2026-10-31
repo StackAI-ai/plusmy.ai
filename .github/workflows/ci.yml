@@ -42,6 +42,8 @@ jobs:
             mailpit:v1.22.3
             realtime:v2.78.10
             pg_prove:3.36
+            storage-api:v1.41.8
+            edge-runtime:v1.71.0
           )
           for image in "${images[@]}"; do
             docker pull "ghcr.io/supabase/$image"
@@ -66,11 +68,17 @@ jobs:
       - name: Provider metadata credential-boundary contracts
         run: pnpm exec tsx scripts/connection-metadata-contracts.ts
 
+      - name: Connection refresh concurrency contracts
+        run: pnpm exec tsx --test scripts/connection-refresh.test.ts
+
       - name: Doctor
         run: node scripts/doctor.mjs
 
       - name: Supabase pgTAP regression suite
         run: node_modules/supabase/bin/supabase test db supabase/tests/security_regressions.sql --local
+
+      - name: Connection refresh database regressions
+        run: node_modules/supabase/bin/supabase test db supabase/tests/connection_refresh.sql --local
 
       - name: Worker alert delivery contracts
         run: node scripts/local-supabase-env.mjs -- pnpm exec tsx scripts/worker-alert-contracts.ts

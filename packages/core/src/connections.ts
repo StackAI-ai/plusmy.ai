@@ -251,19 +251,6 @@ export async function logAuditEvent(input: {
   });
 }
 
-async function putSecret(existingSecretId: string | null | undefined, value: string | null | undefined, name: string, description: string) {
-  if (!value) return existingSecretId ?? null;
-  const supabase = createServiceRoleClient();
-  const { data, error } = await supabase.schema('app').rpc('put_secret', {
-    p_secret: value,
-    p_existing_secret_id: existingSecretId ?? null,
-    p_name: name,
-    p_description: description
-  });
-  if (error) throw error;
-  return data as string;
-}
-
 async function resolveSecret(secretId: string | null | undefined) {
   if (!secretId) return null;
   const supabase = createServiceRoleClient();
@@ -508,7 +495,8 @@ export async function markConnectionReauthRequired(connectionId: string, reason:
     .schema('app')
     .from('connections')
     .update({ status: 'reauth_required', reauth_required_reason: reason })
-    .eq('id', connectionId);
+    .eq('id', connectionId)
+    .eq('status', 'active');
   await cancelActiveConnectionJobs(connectionId, reason, 'token_refresh');
 }
 
@@ -534,94 +522,47 @@ export async function upsertInstalledConnection(input: {
     externalAccountId: input.externalAccountId
   });
 
-  const { data: existingConnection } = await supabase
-    .schema('app')
-    .from('connections')
-    .select('id')
-    .eq('connection_key', connectionKey)
-    .maybeSingle();
-
-  const { data: connection, error } = await supabase
-    .schema('app')
-    .from('connections')
-    .upsert(
-      {
-        connection_key: connectionKey,
-        workspace_id: input.workspaceId,
-        owner_user_id: input.ownerUserId,
-        provider: input.provider,
-        scope: input.scope,
-        status: 'active',
-        display_name: input.displayName,
-        external_account_id: input.externalAccountId,
-        external_account_email: input.externalAccountEmail,
-        granted_scopes: input.grantedScopes,
-        expires_at: input.credentials.expiresAt ?? null,
-        reauth_required_reason: null,
-        last_refreshed_at: new Date().toISOString(),
-        last_validated_at: new Date().toISOString(),
-        metadata: sanitizeConnectionMetadata(input.metadata, [
-          input.credentials.accessToken,
-          input.credentials.refreshToken,
-          input.credentials.apiKey
-        ])
-      },
-      { onConflict: 'connection_key' }
-    )
-    .select('*')
-    .single();
-
+  const { data, error } = await supabase.schema('app').rpc('install_connection_credentials', {
+    p_connection_key: connectionKey,
+    p_workspace_id: input.workspaceId,
+    p_owner_user_id: input.ownerUserId,
+    p_provider: input.provider,
+    p_scope: input.scope,
+    p_display_name: input.displayName,
+    p_external_account_id: input.externalAccountId,
+    p_external_account_email: input.externalAccountEmail,
+    p_scopes: input.grantedScopes,
+    p_expires_at: input.credentials.expiresAt ?? null,
+    p_metadata: sanitizeConnectionMetadata(input.metadata, [
+      input.credentials.accessToken, input.credentials.refreshToken, input.credentials.apiKey
+    ]),
+    p_access_token: input.credentials.accessToken ?? null,
+    p_refresh_token: input.credentials.refreshToken ?? null,
+    p_api_key: input.credentials.apiKey ?? null,
+    p_token_type: input.credentials.tokenType ?? null
+  });
+  const connection = data?.connection as ConnectionRecord | undefined;
+  const existingConnection = Boolean(data?.existing);
   if (error || !connection) {
-    throw error ?? new Error('Failed to upsert connection.');
-  }
-
-  const { data: existingCredentials } = await supabase
-    .schema('app')
-    .from('connection_credentials')
-    .select('*')
-    .eq('connection_id', connection.id)
-    .maybeSingle();
-
-  const accessTokenSecretId = await putSecret(existingCredentials?.access_token_secret_id, input.credentials.accessToken, `${connection.id}-access-token`, `${input.provider} access token`);
-  const refreshTokenSecretId = await putSecret(existingCredentials?.refresh_token_secret_id, input.credentials.refreshToken, `${connection.id}-refresh-token`, `${input.provider} refresh token`);
-  const apiKeySecretId = await putSecret(existingCredentials?.api_key_secret_id, input.credentials.apiKey, `${connection.id}-api-key`, `${input.provider} api key`);
-
-  await supabase.schema('app').from('connection_credentials').upsert(
-    {
-      connection_id: connection.id,
-      access_token_secret_id: accessTokenSecretId,
-      refresh_token_secret_id: refreshTokenSecretId,
-      api_key_secret_id: apiKeySecretId,
-      token_type: input.credentials.tokenType ?? 'Bearer',
-      expires_at: input.credentials.expiresAt ?? null,
-      version: existingCredentials ? Number(existingCredentials.version ?? 0) + 1 : 1
-    },
-    { onConflict: 'connection_id' }
-  );
-
-  await supabase.schema('app').from('connection_grants').delete().eq('connection_id', connection.id);
-  if (input.grantedScopes.length) {
-    await supabase.schema('app').from('connection_grants').insert(
-      input.grantedScopes.map((scope) => ({ connection_id: connection.id, scope, granted: true }))
-    );
+    throw new Error('Failed to install connection credentials.');
   }
 
   if (input.scheduleTokenRefreshJob !== false && input.credentials.refreshToken && input.credentials.expiresAt) {
     await scheduleTokenRefreshJob(connection.id, input.credentials.expiresAt, existingConnection ? 'credential_updated' : 'connection_installed');
   }
 
-      await logAuditEvent({
-        workspaceId: input.workspaceId,
-        actorType: 'system',
-        action: existingConnection ? 'connection.updated' : 'connection.created',
-        resourceType: 'connection',
-        resourceId: connection.id,
-        metadata: {
-          ...withConnectionAuditMetadata(connection, {
-            scope: input.scope
-          })
-        }
-      });
+  await logAuditEvent({
+    workspaceId: input.workspaceId,
+    actorType: 'system',
+    action: existingConnection ? 'connection.updated' : 'connection.created',
+    resourceType: 'connection',
+    resourceId: connection.id,
+    metadata: {
+      ...withConnectionAuditMetadata(connection, {
+        scope: input.scope
+      })
+    }
+  });
 
   return connection as ConnectionRecord;
 }
@@ -629,13 +570,15 @@ export async function upsertInstalledConnection(input: {
 async function acquireRefreshLock(connectionId: string) {
   const supabase = createServiceRoleClient();
   const lockId = randomUUID();
-  const { data, error } = await supabase.schema('app').rpc('acquire_connection_refresh_lock', {
+  const { data, error } = await supabase.schema('app').rpc('begin_connection_refresh', {
     p_connection_id: connectionId,
     p_lock_id: lockId,
     p_ttl_seconds: 30
   });
   if (error) throw error;
-  return data ? lockId : null;
+  return data?.connection && data?.credentials
+    ? { lockId, connection: data.connection as ConnectionRecord, credentials: data.credentials as ResolvedConnectionCredentials }
+    : null;
 }
 
 async function releaseRefreshLock(connectionId: string, lockId: string) {
@@ -648,81 +591,97 @@ async function releaseRefreshLock(connectionId: string, lockId: string) {
 
 async function performRefresh(
   connection: ConnectionRecord,
-  credentials: ResolvedConnectionCredentials,
-  options?: { scheduleNextJob?: boolean }
+  options?: { scheduleNextJob?: boolean; force?: boolean }
 ) {
   const integration = getIntegration(connection.provider);
-  if (!integration) return credentials;
-  if (!credentials.refreshToken) throw new Error('Missing refresh token.');
+  if (!integration) throw new Error('Unsupported connection provider.');
 
-  const lockId = await acquireRefreshLock(connection.id);
-  if (!lockId) return credentials;
+  const attempt = await acquireRefreshLock(connection.id);
+  if (!attempt) throw new Error('Connection refresh is unavailable or already in progress. Retry or reconnect.');
+  const { lockId, credentials, connection: lockedConnection } = attempt;
 
+  let providerCallStarted = false;
+  let refreshed: ProviderTokenSet;
   try {
-    const refreshed = await integration.refreshTokens({
-      refreshToken: credentials.refreshToken,
-      metadata: asJsonObject(connection.metadata)
-    });
-    await upsertInstalledConnection({
-      workspaceId: connection.workspace_id,
-      ownerUserId: connection.owner_user_id,
-      provider: connection.provider,
-      scope: connection.scope,
-      externalAccountId: connection.external_account_id ?? `${connection.provider}-account`,
-      externalAccountEmail: connection.external_account_email,
-      displayName: connection.display_name,
-      grantedScopes: refreshed.scopes,
-      credentials: refreshed,
-      metadata: (connection.metadata as Record<string, unknown>) ?? {},
-      scheduleTokenRefreshJob: false
-    });
-
-    if (options?.scheduleNextJob !== false && refreshed.expiresAt) {
-      await scheduleTokenRefreshJob(connection.id, refreshed.expiresAt, 'scheduled_after_refresh');
+    if (!credentials.refreshToken) throw new Error('Missing refresh token.');
+    if (!options?.force && credentials.expiresAt && new Date(credentials.expiresAt).getTime() - Date.now() > REFRESH_SKEW_MS) {
+      return credentials;
     }
 
-    return {
-      accessToken: refreshed.accessToken,
-      refreshToken: refreshed.refreshToken,
-      apiKey: refreshed.apiKey,
-      tokenType: refreshed.tokenType,
-      expiresAt: refreshed.expiresAt
-    } satisfies ResolvedConnectionCredentials;
-  } catch (error) {
-    await markConnectionReauthRequired(connection.id, error instanceof Error ? error.message : 'Token refresh failed.');
-      await logAuditEvent({
-        workspaceId: connection.workspace_id,
-        actorType: 'system',
-        action: 'connection.reauth_required',
-        resourceType: 'connection',
-        resourceId: connection.id,
-        status: 'error',
-        metadata: {
-          ...withConnectionAuditMetadata(connection, {
-            reason: error instanceof Error ? error.message : 'Token refresh failed.'
-          })
-        }
+    providerCallStarted = true;
+    refreshed = await integration.refreshTokens({
+      refreshToken: credentials.refreshToken,
+      metadata: asJsonObject(lockedConnection.metadata)
+    });
+    if (!refreshed.accessToken) throw new Error('Provider returned no access token.');
+    const supabase = createServiceRoleClient();
+    const { data, error } = await supabase.schema('app').rpc('commit_connection_refresh', {
+      p_connection_id: connection.id,
+      p_lock_id: lockId,
+      p_access_token: refreshed.accessToken ?? null,
+      p_refresh_token: refreshed.refreshToken ?? null,
+      p_api_key: refreshed.apiKey ?? null,
+      p_token_type: refreshed.tokenType ?? null,
+      p_expires_at: refreshed.expiresAt ?? null,
+      p_scopes: refreshed.scopes
+    });
+    if (error || data !== 'committed') throw new Error('Connection refresh could not be committed safely.');
+  } catch {
+    if (providerCallStarted) {
+      // Do not release an uncertain lease if this RPC fails; expiry requires reconnect.
+      const supabase = createServiceRoleClient();
+      const { data: marked } = await supabase.schema('app').rpc('fail_connection_refresh', {
+        p_connection_id: connection.id,
+        p_lock_id: lockId
       });
-    throw error;
+      if (marked) {
+        await logAuditEvent({
+          workspaceId: connection.workspace_id,
+          actorType: 'system',
+          action: 'connection.reauth_required',
+          resourceType: 'connection',
+          resourceId: connection.id,
+          status: 'error',
+          metadata: {
+            ...withConnectionAuditMetadata(connection, {
+              reason: 'Token refresh did not finish safely. Reconnect this account.'
+            })
+          }
+        });
+      }
+      throw new Error('Connection refresh did not finish safely. Retry or reconnect.');
+    }
+    throw new Error('Connection credentials could not be loaded for refresh.');
   } finally {
-    await releaseRefreshLock(connection.id, lockId);
+    if (!providerCallStarted) await releaseRefreshLock(connection.id, lockId);
   }
+
+  if (options?.scheduleNextJob !== false && refreshed.expiresAt) {
+    await scheduleTokenRefreshJob(connection.id, refreshed.expiresAt, 'scheduled_after_refresh');
+  }
+  return {
+    accessToken: refreshed.accessToken,
+    refreshToken: refreshed.refreshToken,
+    apiKey: refreshed.apiKey,
+    tokenType: refreshed.tokenType,
+    expiresAt: refreshed.expiresAt
+  } satisfies ResolvedConnectionCredentials;
 }
 
 export async function refreshConnectionIfNeeded(connection: ConnectionRecord, credentials: ResolvedConnectionCredentials) {
+  if (connection.status !== 'active') throw new Error('Connection is not active.');
   if (!credentials.accessToken || !credentials.expiresAt) return credentials;
   const expiresAt = new Date(credentials.expiresAt).getTime();
   if (expiresAt - Date.now() > REFRESH_SKEW_MS) return credentials;
   if (!credentials.refreshToken) return credentials;
-  return await performRefresh(connection, credentials);
+  return await performRefresh(connection);
 }
 
 export async function forceRefreshConnection(connectionId: string, options?: { scheduleNextJob?: boolean }) {
   const connection = await getConnectionById(connectionId);
   if (!connection) throw new Error('Connection not found.');
-  if (connection.status === 'revoked') throw new Error('Connection revoked.');
-  const credentials = await resolveConnectionCredentials(connectionId);
-  return await performRefresh(connection, credentials, options);
+  if (connection.status !== 'active') throw new Error('Connection is not active.');
+  return await performRefresh(connection, { ...options, force: true });
 }
 
 async function finalizeConnectionJob(input: {
@@ -898,7 +857,7 @@ async function runConnectionSyncJob(job: ConnectionJobRecord, connection: Connec
     update.external_account_email = result.externalAccountEmail ?? null;
   }
 
-  await supabase.schema('app').from('connections').update(update).eq('id', connection.id);
+  await supabase.schema('app').from('connections').update(update).eq('id', connection.id).eq('status', 'active');
 }
 
 export async function processDueConnectionJobs(input?: { limit?: number; workerId?: string }) {
@@ -1400,7 +1359,9 @@ export async function revokeConnection(input: {
     .from('connections')
     .update({
       status: 'revoked',
-      reauth_required_reason: 'Connection revoked by workspace operator.'
+      reauth_required_reason: 'Connection revoked by workspace operator.',
+      refresh_lock_id: null,
+      refresh_lock_expires_at: null
     })
     .eq('id', input.connectionId)
     .eq('workspace_id', input.workspaceId);
