@@ -25,6 +25,7 @@ test('connection worker uses claim fences for all local effects', async (t) => {
   let beforeFinish: (() => void) | undefined;
   let afterCommit: (() => void) | undefined;
   let loseFinishAck: boolean;
+  let loseCommitAck: boolean;
   function reset(type = 'sync_connection', attempts = 0) {
     connection = {
       id: 'connection', workspace_id: 'workspace', provider: 'github', status: 'active', scope: 'workspace',
@@ -35,7 +36,7 @@ test('connection worker uses claim fences for all local effects', async (t) => {
       job_type: type, payload: {}, status: 'queued', attempts, max_attempts: 3, claim_id: null }];
     calls = []; audits = []; refreshToken = 'old-refresh'; credentialExpiry = null;
     beforeFinish = undefined; afterCommit = undefined;
-    loseFinishAck = false;
+    loseFinishAck = false; loseCommitAck = false;
     integration.refreshTokens = async () => ({ accessToken: 'new-access', refreshToken: 'new-refresh', scopes: [], expiresAt: '2999-01-01T00:00:00Z' });
     handler.run = async () => ({ displayName: 'Synced', metadata: { source: 'provider' } });
   }
@@ -96,6 +97,8 @@ test('connection worker uses claim fences for all local effects', async (t) => {
       if (!job) return Response.json(null);
       let status = body.p_status;
       if (['succeeded', 'queued'].includes(status) && connection.status !== 'active') status = 'dead_letter';
+      if (connection.status === 'active' && job.job_type === 'token_refresh' && job.refresh_schedule_pending
+        && ['queued', 'dead_letter', 'failed'].includes(status)) status = 'succeeded';
       if (status === 'queued' && jobs.some((other) => other.status === 'queued' && other.job_type === job.job_type)) status = 'canceled';
       Object.assign(job, { status, claim_id: null });
       if (status === 'succeeded') {
@@ -124,6 +127,7 @@ test('connection worker uses claim fences for all local effects', async (t) => {
       const job = owned(body);
       if (job) job.refresh_schedule_pending = true;
       afterCommit?.();
+      if (loseCommitAck) return Response.json({ message: 'lost commit acknowledgement' }, { status: 500 });
       return Response.json('committed');
     }
     if (path === '/rest/v1/rpc/fail_connection_job_refresh') {
@@ -136,6 +140,12 @@ test('connection worker uses claim fences for all local effects', async (t) => {
       jobs.push({ id: 'scheduled', status: 'queued' });
       return Response.json('scheduled');
     }
+    if (path === '/rest/v1/rpc/schedule_connection_sync_for_actor') {
+      if (connection.status !== 'active' || connection.job_generation !== body.p_generation
+        || connection.workspace_id !== body.p_workspace_id || body.p_actor_user_id !== 'member') return Response.json(null);
+      jobs.push({ id: 'scheduled', status: 'queued' });
+      return Response.json({ job_id: 'scheduled', provider: connection.provider, run_after: '2026-01-01T00:00:00Z' });
+    }
     throw new Error(`Unexpected mock endpoint ${request.method} ${path}`);
   };
   const work = () => core.processDueConnectionJobs({ workerId: 'same-worker', limit: 1 });
@@ -145,11 +155,24 @@ test('connection worker uses claim fences for all local effects', async (t) => {
       const authorizedGeneration = connection.job_generation;
       invalidate('active');
       const jobId = await core.scheduleConnectionSyncJob({
-        connectionId: 'connection', generation: authorizedGeneration, actorUserId: 'member'
+        connectionId: 'connection', workspaceId: 'workspace', generation: authorizedGeneration, actorUserId: 'member'
       });
       assert.equal(jobId, null);
-      assert.equal(calls.find(({ path }) => path === '/rest/v1/rpc/schedule_connection_job_v2')?.body.p_generation, authorizedGeneration);
+      const request = calls.find(({ path }) => path === '/rest/v1/rpc/schedule_connection_sync_for_actor');
+      assert.equal(request?.body.p_generation, authorizedGeneration);
+      assert.equal(request?.body.p_workspace_id, 'workspace');
+      assert.equal(request?.body.p_actor_user_id, 'member');
       assert.equal(audits.length, 0);
+    });
+    await t.test('manual sync queues and audits only an accepted actor-scoped request', async () => {
+      reset();
+      const jobId = await core.scheduleConnectionSyncJob({
+        connectionId: 'connection', workspaceId: 'workspace', generation: 'generation-1', actorUserId: 'member'
+      });
+      assert.equal(jobId, 'scheduled');
+      assert.equal(audits.at(-1)?.action, 'connection_job.queued');
+      assert.equal(audits.at(-1)?.workspace_id, 'workspace');
+      assert.equal(audits.at(-1)?.actor_user_id, 'member');
     });
     await t.test('normal sync applies metadata only in the fenced completion RPC', async () => {
       reset();
@@ -224,6 +247,18 @@ test('connection worker uses claim fences for all local effects', async (t) => {
       assert.ok(calls.some(({ path, body }) => path.endsWith('commit_connection_job_refresh') && body.p_claim_id === 'claim-1'));
       assert.ok(!calls.some(({ path }) => path.endsWith('schedule_connection_job_v2')));
     });
+    for (const attempts of [0, 2]) {
+      await t.test(`lost credential commit acknowledgement recovers on ${attempts === 0 ? 'retryable' : 'final'} attempt`, async () => {
+        reset('token_refresh', attempts); loseCommitAck = true;
+        const result = await work();
+        assert.equal(result.processed[0]?.status, 'succeeded');
+        assert.equal(refreshToken, 'new-refresh');
+        assert.equal(jobs[1]?.job_type, 'token_refresh');
+        assert.equal(jobs[1]?.status, 'queued');
+        assert.equal(audits.at(-1)?.action, 'connection_job.succeeded');
+        assert.equal(audits.at(-1)?.metadata?.error, undefined);
+      });
+    }
     await t.test('sync that refreshes then fails still atomically schedules its next credential refresh', async () => {
       reset(); credentialExpiry = '2000-01-01T00:00:00Z';
       handler.run = async () => { throw new Error('sync failed after refresh'); };

@@ -415,18 +415,36 @@ export async function scheduleConnectionJob(input: {
 
 export async function scheduleConnectionSyncJob(input: {
   connectionId: string;
+  workspaceId: string;
   generation: string;
-  actorUserId?: string | null;
+  actorUserId: string;
   payload?: Record<string, Json>;
 }) {
-  return await scheduleConnectionJob({
-    connectionId: input.connectionId,
-    jobType: 'sync_connection',
-    payload: input.payload,
-    maxAttempts: 4,
-    generation: input.generation,
-    actorUserId: input.actorUserId ?? null
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase.schema('app').rpc('schedule_connection_sync_for_actor', {
+    p_connection_id: input.connectionId,
+    p_generation: input.generation,
+    p_workspace_id: input.workspaceId,
+    p_actor_user_id: input.actorUserId,
+    p_payload: input.payload ?? {}
   });
+  if (error) throw error;
+  if (!data) return null;
+  if (typeof data.job_id !== 'string' || typeof data.provider !== 'string' || typeof data.run_after !== 'string') {
+    throw new Error('Connection sync scheduling returned an invalid result.');
+  }
+  await logAuditEvent({
+    workspaceId: input.workspaceId,
+    actorType: 'user',
+    actorUserId: input.actorUserId,
+    action: 'connection_job.queued',
+    resourceType: 'connection_job',
+    resourceId: data.job_id,
+    metadata: withConnectionAuditMetadata({ id: input.connectionId, provider: data.provider }, {
+      job_type: 'sync_connection', run_after: data.run_after, max_attempts: 4
+    })
+  });
+  return data.job_id as string;
 }
 
 export async function scheduleTokenRefreshJob(
@@ -538,7 +556,7 @@ export async function upsertInstalledConnection(input: {
     externalAccountId: input.externalAccountId
   });
 
-  const { data, error } = await supabase.schema('app').rpc('install_connection_credentials', {
+  const { data, error } = await supabase.schema('app').rpc('install_connection_credentials_v2', {
     p_connection_key: connectionKey,
     p_workspace_id: input.workspaceId,
     p_owner_user_id: input.ownerUserId,
@@ -555,7 +573,8 @@ export async function upsertInstalledConnection(input: {
     p_access_token: input.credentials.accessToken ?? null,
     p_refresh_token: input.credentials.refreshToken ?? null,
     p_api_key: input.credentials.apiKey ?? null,
-    p_token_type: input.credentials.tokenType ?? null
+    p_token_type: input.credentials.tokenType ?? null,
+    p_schedule_refresh: input.scheduleTokenRefreshJob !== false
   });
   const connection = data?.connection as ConnectionRecord | undefined;
   const existingConnection = Boolean(data?.existing);
@@ -564,8 +583,19 @@ export async function upsertInstalledConnection(input: {
   }
 
   if (input.scheduleTokenRefreshJob !== false && input.credentials.refreshToken && input.credentials.expiresAt) {
-    await scheduleTokenRefreshJob(connection.id, input.credentials.expiresAt,
-      existingConnection ? 'credential_updated' : 'connection_installed', connection.job_generation);
+    if (typeof data.refresh_job_id !== 'string' || typeof data.refresh_run_after !== 'string') {
+      throw new Error('Installed connection refresh scheduling could not be confirmed.');
+    }
+    await logAuditEvent({
+      workspaceId: input.workspaceId,
+      actorType: 'system',
+      action: 'connection_job.queued',
+      resourceType: 'connection_job',
+      resourceId: data.refresh_job_id,
+      metadata: withConnectionAuditMetadata(connection, {
+        job_type: 'token_refresh', run_after: data.refresh_run_after, max_attempts: 5
+      })
+    });
   }
 
   await logAuditEvent({
@@ -933,7 +963,7 @@ export async function processDueConnectionJobs(input?: { limit?: number; workerI
         attempts: job.attempts,
         max_attempts: job.max_attempts,
         ...(finalStatus === 'queued' ? { retry_delay_seconds: retryDelaySeconds } : {}),
-        ...(message ? { error: message } : {})
+        ...(message && finalStatus !== 'succeeded' ? { error: message } : {})
       }
     });
     processed.push({ id: job.id, status: finalStatus, jobType: job.job_type, connectionId: job.connection_id });

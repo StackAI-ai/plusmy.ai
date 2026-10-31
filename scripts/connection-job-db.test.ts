@@ -62,9 +62,12 @@ test('job fences on disposable PostgreSQL, including real row-lock interleavings
     sql(`create role anon; create role authenticated; create role service_role;
       create schema app; create schema auth; create schema vault;
       create type app.connection_scope as enum ('workspace', 'personal');
+      create type app.workspace_role as enum ('owner', 'admin', 'member');
       create type app.connection_status as enum ('pending', 'active', 'reauth_required', 'revoked');
       create table app.workspaces(id uuid primary key, name text, slug text);
       create table auth.users(id uuid primary key);
+      create table app.workspace_members(workspace_id uuid, user_id uuid, role app.workspace_role,
+        unique(workspace_id, user_id));
       create table app.providers(id text primary key, display_name text);
       ${tables}
       create table vault.test_secrets(id uuid primary key default gen_random_uuid(), value text);
@@ -131,6 +134,51 @@ test('job fences on disposable PostgreSQL, including real row-lock interleavings
           asyncSql(`select count(*) from app.claim_connection_sync_jobs_v2('b',1)`)
         ]);
         assert.equal(counts.map(Number).reduce((a, b) => a + b), 1);
+      } finally { holder.close(); }
+    });
+    await t.test('workspace transfer wins against a stale operator scheduling request', async () => {
+      setup();
+      const workspace = 'ad000000-0000-0000-0000-000000000001';
+      const other = 'ad000000-0000-0000-0000-000000000003';
+      const actor = 'ad000000-0000-0000-0000-000000000011';
+      sql(`insert into app.workspaces values ('${other}','Other','other') on conflict do nothing;
+        insert into auth.users values ('${actor}') on conflict do nothing;
+        insert into app.workspace_members values ('${workspace}','${actor}','admin') on conflict do nothing;`);
+      const generation = sql(`select job_generation from app.connections where id='${c}'`);
+      const holder = await session();
+      try {
+        await holder.run(`begin; update app.connections set workspace_id='${other}' where id='${c}'`);
+        const scheduling = asyncSql(`select app.schedule_connection_sync_for_actor('${c}','${generation}','${workspace}','${actor}','{}')`);
+        for (let i = 0; i < 100; i++) {
+          if (sql(`select count(*) from pg_stat_activity where application_name='plusmy-job-fence-tests' and wait_event_type='Lock'`) !== '0') break;
+          if (i === 99) assert.fail('scheduler never reached the connection-lock barrier');
+          await new Promise((done) => setTimeout(done, 10));
+        }
+        await holder.run('commit');
+        assert.equal(await scheduling, '');
+        assert.equal(sql(`select count(*) from app.connection_sync_jobs where connection_id='${c}' and status='queued'`), '0');
+      } finally { holder.close(); }
+    });
+    await t.test('role demotion wins against a stale operator scheduling request', async () => {
+      setup();
+      const workspace = 'ad000000-0000-0000-0000-000000000001';
+      const actor = 'ad000000-0000-0000-0000-000000000011';
+      sql(`insert into auth.users values ('${actor}') on conflict do nothing;
+        insert into app.workspace_members values ('${workspace}','${actor}','admin')
+        on conflict (workspace_id,user_id) do update set role='admin';`);
+      const generation = sql(`select job_generation from app.connections where id='${c}'`);
+      const holder = await session();
+      try {
+        await holder.run(`begin; update app.workspace_members set role='member' where workspace_id='${workspace}' and user_id='${actor}'`);
+        const scheduling = asyncSql(`select app.schedule_connection_sync_for_actor('${c}','${generation}','${workspace}','${actor}','{}')`);
+        for (let i = 0; i < 100; i++) {
+          if (sql(`select count(*) from pg_stat_activity where application_name='plusmy-job-fence-tests' and wait_event_type='Lock'`) !== '0') break;
+          if (i === 99) assert.fail('scheduler never reached the membership-lock barrier');
+          await new Promise((done) => setTimeout(done, 10));
+        }
+        await holder.run('commit');
+        assert.equal(await scheduling, '');
+        assert.equal(sql(`select count(*) from app.connection_sync_jobs where connection_id='${c}' and status='queued'`), '0');
       } finally { holder.close(); }
     });
     await t.test('revoke holding the row lock wins against an already dispatched completion RPC', async () => {

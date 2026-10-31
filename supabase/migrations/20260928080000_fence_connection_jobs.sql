@@ -20,8 +20,28 @@ where status = 'processing';
 create function app.fence_connection_job_generation()
 returns trigger language plpgsql security definer set search_path = pg_catalog, app as $$
 begin
-  if new.status = 'revoked' and old.status is distinct from new.status then
+  if (new.status = 'revoked' and old.status is distinct from new.status)
+    or new.workspace_id is distinct from old.workspace_id
+    or new.owner_user_id is distinct from old.owner_user_id
+    or new.scope is distinct from old.scope
+    or new.provider is distinct from old.provider
+    or new.connection_key is distinct from old.connection_key then
     new.job_generation := gen_random_uuid();
+  end if;
+  if (new.workspace_id is distinct from old.workspace_id
+    or new.owner_user_id is distinct from old.owner_user_id
+    or new.scope is distinct from old.scope
+    or new.provider is distinct from old.provider
+    or new.connection_key is distinct from old.connection_key)
+    and old.refresh_lock_id is not null and new.refresh_lock_id is not distinct from old.refresh_lock_id then
+    -- A transfer cannot inherit an uncertain rotating-token request. Explicit
+    -- credential installation clears the old lease while replacing secrets.
+    if new.status = 'active' then
+      new.status := 'reauth_required';
+      new.reauth_required_reason := 'Connection ownership changed during token refresh. Reconnect this account.';
+    end if;
+    new.refresh_lock_id := null;
+    new.refresh_lock_expires_at := null;
   end if;
   return new;
 end;
@@ -118,6 +138,69 @@ begin
     last_error = null, worker_id = null, started_at = null, completed_at = null
   returning id into v_job_id;
   return v_job_id;
+end;
+$$;
+
+-- Operator intent is valid only for the same workspace, generation, and
+-- membership/role at the instant of scheduling. SHARE serializes removals and
+-- role changes until this transaction commits.
+create function app.schedule_connection_sync_for_actor(
+  p_connection_id uuid, p_generation uuid, p_workspace_id uuid,
+  p_actor_user_id uuid, p_payload jsonb default '{}'::jsonb
+)
+returns jsonb language plpgsql security definer set search_path = pg_catalog, app as $$
+declare
+  v_connection app.connections%rowtype;
+  v_role app.workspace_role;
+  v_job_id uuid;
+  v_run_after timestamptz := now();
+begin
+  if p_actor_user_id is null or p_generation is null or p_workspace_id is null then return null; end if;
+  select * into v_connection from app.connections where id = p_connection_id for update;
+  if not found or v_connection.status <> 'active'
+    or v_connection.workspace_id is distinct from p_workspace_id
+    or v_connection.job_generation is distinct from p_generation then return null; end if;
+  select m.role into v_role from app.workspace_members m
+    where m.workspace_id = p_workspace_id and m.user_id = p_actor_user_id for share;
+  if not found or (v_connection.scope = 'personal' and v_connection.owner_user_id is distinct from p_actor_user_id)
+    or (v_connection.scope = 'workspace' and v_role not in ('owner', 'admin')) then return null; end if;
+  v_job_id := app.schedule_connection_job_v2(p_connection_id, 'sync_connection',
+    coalesce(p_payload, '{}'::jsonb), v_run_after, 4, p_generation);
+  if v_job_id is null then return null; end if;
+  return jsonb_build_object('job_id', v_job_id, 'provider', v_connection.provider, 'run_after', v_run_after);
+end;
+$$;
+
+-- Keep credential replacement and its first refresh schedule in one transaction.
+create function app.install_connection_credentials_v2(
+  p_connection_key text, p_workspace_id uuid, p_owner_user_id uuid, p_provider text,
+  p_scope app.connection_scope, p_display_name text, p_external_account_id text,
+  p_external_account_email text, p_scopes text[], p_expires_at timestamptz, p_metadata jsonb,
+  p_access_token text, p_refresh_token text, p_api_key text, p_token_type text,
+  p_schedule_refresh boolean default true
+)
+returns jsonb language plpgsql security definer set search_path = pg_catalog, app as $$
+declare
+  v_result jsonb;
+  v_connection jsonb;
+  v_job_id uuid;
+  v_run_after timestamptz;
+  v_reason text;
+begin
+  v_result := app.install_connection_credentials(p_connection_key, p_workspace_id, p_owner_user_id,
+    p_provider, p_scope, p_display_name, p_external_account_id, p_external_account_email,
+    p_scopes, p_expires_at, p_metadata, p_access_token, p_refresh_token, p_api_key, p_token_type);
+  v_connection := v_result -> 'connection';
+  if p_schedule_refresh and nullif(p_refresh_token, '') is not null and p_expires_at is not null then
+    v_run_after := greatest(p_expires_at - interval '5 minutes', now());
+    v_reason := case when (v_result ->> 'existing')::boolean then 'credential_updated' else 'connection_installed' end;
+    v_job_id := app.schedule_connection_job_v2((v_connection ->> 'id')::uuid, 'token_refresh',
+      jsonb_build_object('reason', v_reason, 'expires_at', p_expires_at), v_run_after, 5,
+      (v_connection ->> 'job_generation')::uuid);
+    if v_job_id is null then raise exception 'Could not schedule the installed connection refresh.' using errcode = '55000'; end if;
+    v_result := v_result || jsonb_build_object('refresh_job_id', v_job_id, 'refresh_run_after', v_run_after);
+  end if;
+  return v_result;
 end;
 $$;
 
@@ -223,6 +306,13 @@ begin
     v_status := 'dead_letter';
     p_last_error := coalesce(p_last_error, 'Connection is not active.');
   end if;
+  -- A committed refresh is authoritative even when its RPC acknowledgement
+  -- was lost. Retrying can rotate again; dead-lettering would lose the next run.
+  if v_connection.status = 'active' and v_job.job_type = 'token_refresh'
+    and v_job.refresh_schedule_pending and v_status in ('queued', 'dead_letter', 'failed') then
+    v_status := 'succeeded';
+    p_last_error := null;
+  end if;
   if v_status = 'queued' and exists (select 1 from app.connection_sync_jobs
     where connection_id = v_job.connection_id and job_type = v_job.job_type and status = 'queued') then
     v_status := 'canceled';
@@ -309,12 +399,16 @@ revoke all on function app.cancel_obsolete_connection_jobs() from public, anon, 
 revoke all on function app.set_connection_job_fence() from public, anon, authenticated, service_role;
 revoke all on function app.lock_connection_job(uuid, uuid) from public, anon, authenticated, service_role;
 revoke all on function app.schedule_connection_job_v2(uuid, text, jsonb, timestamptz, integer, uuid) from public, anon, authenticated;
+revoke all on function app.schedule_connection_sync_for_actor(uuid, uuid, uuid, uuid, jsonb) from public, anon, authenticated;
+revoke all on function app.install_connection_credentials_v2(text, uuid, uuid, text, app.connection_scope, text, text, text, text[], timestamptz, jsonb, text, text, text, text, boolean) from public, anon, authenticated;
 revoke all on function app.claim_connection_sync_jobs_v2(text, integer, integer) from public, anon, authenticated;
 revoke all on function app.finish_connection_job(uuid, uuid, text, text, timestamptz, jsonb) from public, anon, authenticated;
 revoke all on function app.begin_connection_job_refresh(uuid, uuid, uuid, integer) from public, anon, authenticated;
 revoke all on function app.commit_connection_job_refresh(uuid, uuid, uuid, text, text, text, text, timestamptz, text[]) from public, anon, authenticated;
 revoke all on function app.fail_connection_job_refresh(uuid, uuid, uuid) from public, anon, authenticated;
 grant execute on function app.schedule_connection_job_v2(uuid, text, jsonb, timestamptz, integer, uuid) to service_role;
+grant execute on function app.schedule_connection_sync_for_actor(uuid, uuid, uuid, uuid, jsonb) to service_role;
+grant execute on function app.install_connection_credentials_v2(text, uuid, uuid, text, app.connection_scope, text, text, text, text[], timestamptz, jsonb, text, text, text, text, boolean) to service_role;
 grant execute on function app.claim_connection_sync_jobs_v2(text, integer, integer) to service_role;
 grant execute on function app.finish_connection_job(uuid, uuid, text, text, timestamptz, jsonb) to service_role;
 grant execute on function app.begin_connection_job_refresh(uuid, uuid, uuid, integer) to service_role;

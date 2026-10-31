@@ -4,7 +4,13 @@ select no_plan();
 -- assertions:start
 -- The disposable PG harness executes this exact block without requiring pgTAP.
 insert into app.workspaces (id, name, slug)
-values ('ac000000-0000-0000-0000-000000000001', 'Job fencing', 'job-fencing-test');
+values ('ac000000-0000-0000-0000-000000000001', 'Job fencing', 'job-fencing-test'),
+       ('ac000000-0000-0000-0000-000000000003', 'Other workspace', 'job-fencing-other');
+insert into auth.users (id) values
+  ('ac000000-0000-0000-0000-000000000011'),
+  ('ac000000-0000-0000-0000-000000000012');
+insert into app.workspace_members (workspace_id, user_id, role) values
+  ('ac000000-0000-0000-0000-000000000001', 'ac000000-0000-0000-0000-000000000011', 'admin');
 insert into app.providers (id, display_name) values ('job-test', 'Job test') on conflict (id) do nothing;
 
 do $$
@@ -17,6 +23,8 @@ declare
   b app.connection_sync_jobs%rowtype;
   lease uuid := gen_random_uuid();
   result text;
+  failure_status text;
+  install_result jsonb;
 begin
   insert into app.connections (id, connection_key, workspace_id, provider, scope, status, display_name)
   values (c, 'job-fencing-test', 'ac000000-0000-0000-0000-000000000001', 'job-test', 'workspace', 'active', 'Original');
@@ -28,6 +36,9 @@ begin
   assert not has_function_privilege('authenticated', 'app.begin_connection_job_refresh(uuid,uuid,uuid,integer)', 'execute');
   assert not has_function_privilege('authenticated', 'app.commit_connection_job_refresh(uuid,uuid,uuid,text,text,text,text,timestamptz,text[])', 'execute');
   assert not has_function_privilege('anon', 'app.fail_connection_job_refresh(uuid,uuid,uuid)', 'execute');
+  assert not has_function_privilege('authenticated', 'app.schedule_connection_sync_for_actor(uuid,uuid,uuid,uuid,jsonb)', 'execute');
+  assert has_function_privilege('service_role', 'app.schedule_connection_sync_for_actor(uuid,uuid,uuid,uuid,jsonb)', 'execute');
+  assert not has_function_privilege('authenticated', 'app.install_connection_credentials_v2(text,uuid,uuid,text,app.connection_scope,text,text,text,text[],timestamptz,jsonb,text,text,text,text,boolean)', 'execute');
   assert not has_function_privilege('service_role', 'app.lock_connection_job(uuid,uuid)', 'execute');
   assert has_function_privilege('service_role', 'app.finish_connection_job(uuid,uuid,text,text,timestamptz,jsonb)', 'execute');
   begin
@@ -147,6 +158,110 @@ begin
   assert (select not refresh_schedule_pending from app.connection_sync_jobs where id = j);
   assert (select count(*) = 1 from app.connection_sync_jobs where connection_id = c and job_type = 'token_refresh' and status = 'queued'), 'sync refresh keeps its next refresh even when sync retries';
   update app.connection_sync_jobs set status = 'canceled' where connection_id = c and status = 'queued';
+
+  -- The credential commit may succeed even if its acknowledgement is lost.
+  -- On either a retryable or final attempt, the committed marker proves the
+  -- rotation happened and must preserve the next scheduled refresh.
+  foreach failure_status in array array['queued', 'dead_letter'] loop
+    j := app.schedule_connection_job_v2(c, 'token_refresh', p_generation => g);
+    select * into a from app.claim_connection_sync_jobs_v2('worker', 1);
+    lease := gen_random_uuid();
+    assert app.begin_connection_job_refresh(j, a.claim_id, lease, 30) is not null;
+    assert app.commit_connection_job_refresh(j, a.claim_id, lease, 'rotated-access', 'rotated-refresh', null,
+      'Bearer', now() + interval '1 hour', array['read']) = 'committed';
+    assert not app.fail_connection_job_refresh(j, a.claim_id, lease), 'committed lease is already cleared';
+    assert app.finish_connection_job(j, a.claim_id, failure_status, 'lost commit acknowledgement') = 'succeeded',
+      'committed token refresh cannot be retried or dead-lettered after an acknowledgement loss';
+    assert (select not refresh_schedule_pending from app.connection_sync_jobs where id = j);
+    assert (select count(*) = 1 from app.connection_sync_jobs where connection_id = c and job_type = 'token_refresh' and status = 'queued'),
+      'a committed refresh schedules its next run';
+    update app.connection_sync_jobs set status = 'canceled' where connection_id = c and status = 'queued';
+  end loop;
+
+  j := app.schedule_connection_job_v2(c, 'token_refresh', p_generation => g);
+  select * into a from app.claim_connection_sync_jobs_v2('worker', 1);
+  lease := gen_random_uuid();
+  assert app.begin_connection_job_refresh(j, a.claim_id, lease, 30) is not null;
+  assert app.commit_connection_job_refresh(j, a.claim_id, lease, 'rotated-access', 'rotated-refresh', null,
+    'Bearer', now() + interval '1 hour', array['read']) = 'committed';
+  assert app.finish_connection_job(j, a.claim_id, 'canceled') = 'canceled', 'explicit cancellation is not converted to success';
+  assert not exists (select 1 from app.connection_sync_jobs where connection_id = c and job_type = 'token_refresh' and status = 'queued'),
+    'explicit cancellation does not recreate a job';
+
+  -- A reconnect either replaces the refresh schedule with credentials, or
+  -- rolls the entire installation back, including canceled old jobs and Vault.
+  j := app.schedule_connection_job_v2(c, 'token_refresh', p_generation => g);
+  alter table app.connection_sync_jobs add constraint job_test_no_install_successor
+    check (not (job_type = 'token_refresh' and status = 'queued')) not valid;
+  begin
+    perform app.install_connection_credentials_v2('job-fencing-test', 'ac000000-0000-0000-0000-000000000001', null,
+      'job-test', 'workspace', 'Failed replacement', 'account', null, array['read'], now() + interval '1 hour', '{}',
+      'failed-access', 'failed-refresh', null, 'Bearer', true);
+    raise exception 'install unexpectedly survived a failed successor write';
+  exception when check_violation then null; end;
+  assert (select job_generation = g from app.connections where id = c), 'failed install rolls back generation';
+  assert (select status = 'queued' from app.connection_sync_jobs where id = j), 'failed install restores old job';
+  assert (select app.resolve_secret(refresh_token_secret_id) = 'rotated-refresh' from app.connection_credentials where connection_id = c),
+    'failed install rolls back Vault writes';
+  alter table app.connection_sync_jobs drop constraint job_test_no_install_successor;
+  install_result := app.install_connection_credentials_v2('job-fencing-test', 'ac000000-0000-0000-0000-000000000001', null,
+    'job-test', 'workspace', 'Atomic replacement', 'account', null, array['read'], now() + interval '1 hour', '{}',
+    'installed-access', 'installed-refresh', null, 'Bearer', true);
+  assert (select status = 'canceled' from app.connection_sync_jobs where id = j), 'successful reconnect cancels old job';
+  assert (select count(*) = 1 from app.connection_sync_jobs where connection_id = c and job_type = 'token_refresh' and status = 'queued'),
+    'successful reconnect atomically creates replacement';
+  assert install_result ->> 'refresh_job_id' is not null;
+  install_result := app.install_connection_credentials_v2('job-fencing-test', 'ac000000-0000-0000-0000-000000000001', null,
+    'job-test', 'workspace', 'No schedule requested', 'account', null, array['read'], now() + interval '1 hour', '{}',
+    'installed-access', 'installed-refresh', null, 'Bearer', false);
+  assert not (install_result ? 'refresh_job_id') and not exists (
+    select 1 from app.connection_sync_jobs where connection_id = c and job_type = 'token_refresh' and status = 'queued'
+  ), 'explicitly disabled scheduling is preserved';
+  select job_generation into g from app.connections where id = c;
+
+  -- The actor-scoped scheduler rechecks the authorized workspace and current
+  -- role under locks, not merely a connection snapshot from the web route.
+  assert app.schedule_connection_sync_for_actor(c, g, 'ac000000-0000-0000-0000-000000000001',
+    'ac000000-0000-0000-0000-000000000011', '{}') is not null, 'current admin may schedule';
+  update app.connection_sync_jobs set status = 'canceled' where connection_id = c and status = 'queued';
+  update app.workspace_members set role = 'member' where workspace_id = 'ac000000-0000-0000-0000-000000000001'
+    and user_id = 'ac000000-0000-0000-0000-000000000011';
+  assert app.schedule_connection_sync_for_actor(c, g, 'ac000000-0000-0000-0000-000000000001',
+    'ac000000-0000-0000-0000-000000000011', '{}') is null, 'demoted workspace member cannot schedule';
+  delete from app.workspace_members where workspace_id = 'ac000000-0000-0000-0000-000000000001'
+    and user_id = 'ac000000-0000-0000-0000-000000000011';
+  assert app.schedule_connection_sync_for_actor(c, g, 'ac000000-0000-0000-0000-000000000001',
+    'ac000000-0000-0000-0000-000000000011', '{}') is null, 'removed member cannot schedule';
+  insert into app.workspace_members (workspace_id, user_id, role) values
+    ('ac000000-0000-0000-0000-000000000003', 'ac000000-0000-0000-0000-000000000011', 'admin'),
+    ('ac000000-0000-0000-0000-000000000003', 'ac000000-0000-0000-0000-000000000012', 'member');
+  j := app.schedule_connection_job_v2(c, 'sync_connection', p_generation => g);
+  select * into a from app.claim_connection_sync_jobs_v2('worker', 1);
+  update app.connections set workspace_id = 'ac000000-0000-0000-0000-000000000003' where id = c;
+  assert (select job_generation <> g from app.connections where id = c), 'workspace transfer changes generation';
+  assert app.finish_connection_job(j, a.claim_id, 'succeeded') is null, 'workspace transfer fences old claim';
+  assert app.schedule_connection_sync_for_actor(c, g, 'ac000000-0000-0000-0000-000000000001',
+    'ac000000-0000-0000-0000-000000000011', '{}') is null, 'old workspace cannot enqueue after transfer';
+  select job_generation into g from app.connections where id = c;
+  assert app.schedule_connection_sync_for_actor(c, g, 'ac000000-0000-0000-0000-000000000001',
+    'ac000000-0000-0000-0000-000000000011', '{}') is null, 'new generation cannot authorize the wrong workspace';
+  update app.connections set scope = 'personal', owner_user_id = 'ac000000-0000-0000-0000-000000000012' where id = c;
+  assert (select job_generation <> g from app.connections where id = c), 'owner/scope transfer changes generation';
+  select job_generation into g from app.connections where id = c;
+  assert app.schedule_connection_sync_for_actor(c, g, 'ac000000-0000-0000-0000-000000000003',
+    'ac000000-0000-0000-0000-000000000011', '{}') is null, 'workspace admin cannot schedule another owner personal connection';
+  assert app.schedule_connection_sync_for_actor(c, g, 'ac000000-0000-0000-0000-000000000003',
+    'ac000000-0000-0000-0000-000000000012', '{}') is not null, 'current personal owner may schedule';
+  update app.connection_sync_jobs set status = 'canceled' where connection_id = c and status = 'queued';
+  lease := gen_random_uuid();
+  assert app.begin_connection_refresh(c, lease, 30) is not null;
+  update app.connections set owner_user_id = 'ac000000-0000-0000-0000-000000000011' where id = c;
+  assert (select status = 'reauth_required' and refresh_lock_id is null from app.connections where id = c),
+    'ownership transfer fences an uncertain request-level refresh';
+  assert app.commit_connection_refresh(c, lease, 'stale-access', 'stale-refresh', null, 'Bearer',
+    now() + interval '1 hour', array['read']) = 'fenced';
+  update app.connections set status = 'active', reauth_required_reason = null where id = c;
+  select job_generation into g from app.connections where id = c;
 
   -- A scheduling failure rolls back completion too; there is no success with a
   -- silently missing successor. Retry of the RPC is still guarded by the token.
