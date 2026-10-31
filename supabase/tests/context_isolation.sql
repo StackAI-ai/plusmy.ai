@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(80);
+select plan(86);
 
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
 values
@@ -165,6 +165,10 @@ select lives_ok(
   $$insert into app.context_bindings (id, workspace_id, binding_type, target_key, prompt_template_id) values ('96000000-0000-4000-8000-000000000001', '91000000-0000-4000-8000-000000000001', 'workspace', 'default', '94000000-0000-4000-8000-000000000001')$$,
   'admin can bind a shared prompt in the same workspace'
 );
+select is((select count(*)::integer from app.context_bindings where id = '96000000-0000-4000-8000-000000000001'), 1, 'admin can read a valid shared binding');
+select set_config('request.jwt.claim.sub', '90000000-0000-4000-8000-000000000002', true);
+select is((select count(*)::integer from app.context_bindings where id = '96000000-0000-4000-8000-000000000001'), 1, 'member can read a valid shared binding');
+select set_config('request.jwt.claim.sub', '90000000-0000-4000-8000-000000000003', true);
 select throws_ok(
   $$insert into app.context_bindings (workspace_id, binding_type, target_key, prompt_template_id) values ('91000000-0000-4000-8000-000000000001', 'workspace', 'default', '94000000-0000-4000-8000-000000000004')$$,
   '23514', null, 'admin cannot bind a prompt from another workspace'
@@ -176,6 +180,18 @@ select throws_ok(
 select throws_ok(
   $$insert into app.context_bindings (workspace_id, binding_type, target_key, prompt_template_id) values ('91000000-0000-4000-8000-000000000001', 'workspace', 'default', '94000000-0000-4000-8000-000000000002')$$,
   '23514', null, 'admin cannot bind another user private prompt'
+);
+select throws_ok(
+  $$insert into app.context_bindings (workspace_id, binding_type, target_key, prompt_template_id, skill_definition_id) values ('91000000-0000-4000-8000-000000000001', 'workspace', 'default', '94000000-0000-4000-8000-000000000001', '95000000-0000-4000-8000-000000000004')$$,
+  '23514', null, 'a shared prompt cannot mask a foreign skill in a mixed binding'
+);
+select throws_ok(
+  $$insert into app.context_bindings (workspace_id, binding_type, target_key, prompt_template_id) values ('91000000-0000-4000-8000-000000000001', 'invalid', 'default', '94000000-0000-4000-8000-000000000001')$$,
+  '23514', null, 'unsupported binding types are rejected'
+);
+select throws_ok(
+  $$insert into app.context_bindings (workspace_id, binding_type, target_key, prompt_template_id) values ('91000000-0000-4000-8000-000000000001', 'workspace', ' ', '94000000-0000-4000-8000-000000000001')$$,
+  '23514', null, 'blank binding targets are rejected'
 );
 select throws_ok(
   $$update app.context_bindings set prompt_template_id = '94000000-0000-4000-8000-000000000004' where id = '96000000-0000-4000-8000-000000000001'$$,
@@ -282,6 +298,13 @@ select is((select min(asset_id::text) from app.match_context_chunks('91000000-00
 reset role;
 -- Construct a malformed pre-migration row only inside this rolled-back fixture.
 alter table app.context_bindings disable trigger validate_context_binding_resources;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '90000000-0000-4000-8000-000000000003', true);
+select throws_ok(
+  $$insert into app.context_bindings (workspace_id, binding_type, target_key, prompt_template_id) values ('91000000-0000-4000-8000-000000000001', 'workspace', 'default', '94000000-0000-4000-8000-000000000004')$$,
+  '42501', null, 'binding RLS rejects cross-workspace writes even without the trigger'
+);
+reset role;
 insert into app.context_bindings (id, workspace_id, binding_type, target_key, prompt_template_id)
 values ('96000000-0000-4000-8000-000000000002', '91000000-0000-4000-8000-000000000001', 'workspace', 'default', '94000000-0000-4000-8000-000000000004');
 alter table app.context_bindings enable trigger validate_context_binding_resources;

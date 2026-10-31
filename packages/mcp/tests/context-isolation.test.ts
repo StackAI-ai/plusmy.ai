@@ -13,6 +13,8 @@ test('context search, health, overview, and MCP paths preserve personal visibili
 
   const requests: Array<Record<string, unknown>> = [];
   const auditRecords: unknown[] = [];
+  const sharedPromptId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const sharedSkillId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
   let privateOnlyEmbedded = false;
   let bindingRows: Array<Record<string, unknown>> = [];
   const originalFetch = globalThis.fetch;
@@ -48,11 +50,12 @@ test('context search, health, overview, and MCP paths preserve personal visibili
       return Response.json(url.searchParams.get('user_id') === 'eq.member' ? [{ user_id: 'member' }] : []);
     }
     if (url.pathname === '/rest/v1/prompt_templates') {
-      const shared = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', name: 'Shared prompt', description: null, content: 'shared prompt', owner_user_id: null };
+      const shared = { id: sharedPromptId, name: 'Shared prompt', slug: 'shared', description: null, content: 'shared prompt', owner_user_id: null };
       return Response.json(url.searchParams.has('id') ? [shared] : [shared, { id: 'member-prompt', owner_user_id: 'member' }, { id: 'owner-prompt', owner_user_id: 'owner' }]);
     }
     if (url.pathname === '/rest/v1/skill_definitions') {
-      return Response.json([{ id: 'shared-skill', owner_user_id: null }, { id: 'member-skill', owner_user_id: 'member' }, { id: 'owner-skill', owner_user_id: 'owner' }]);
+      const shared = { id: sharedSkillId, name: 'Shared skill', slug: 'shared', description: null, instructions: 'shared skill', owner_user_id: null };
+      return Response.json(url.searchParams.has('id') ? [shared] : [shared, { id: 'member-skill', owner_user_id: 'member' }, { id: 'owner-skill', owner_user_id: 'owner' }]);
     }
     if (url.pathname === '/rest/v1/context_assets') {
       return Response.json([{ id: 'shared', owner_user_id: null, metadata: {} }, { id: 'member', owner_user_id: 'member', metadata: {} }, { id: 'owner', owner_user_id: 'owner', metadata: {} }]);
@@ -113,12 +116,15 @@ test('context search, health, overview, and MCP paths preserve personal visibili
     assert.equal(emptyHealth.lastEmbeddedAt, null);
     assert.equal(emptyHealth.embeddingIndexStatus, 'stale');
     await assert.rejects(getContextEmbeddingHealth('workspace-a', 'outsider'), /membership is required/);
+    const auth = { sub: 'member', userId: 'member', workspaceId: 'workspace-a', clientId: 'client', scopes: ['mcp:resources', 'mcp:tools'] };
     const binding = { workspace_id: 'workspace-a', binding_type: 'workspace', target_key: 'default', priority: 1, metadata: {}, created_at: '', updated_at: '' };
     bindingRows = [
-      { ...binding, id: 'shared-prompt-binding', prompt_template_id: 'shared-prompt', skill_definition_id: null, prompt_template: { id: 'shared-prompt', name: 'Shared', slug: 'shared', description: null, owner_user_id: null, workspace_id: 'workspace-a' }, skill_definition: null },
-      { ...binding, id: 'shared-skill-binding', prompt_template_id: null, skill_definition_id: 'shared-skill', prompt_template: null, skill_definition: { id: 'shared-skill', name: 'Shared', slug: 'shared', description: null, owner_user_id: null, workspace_id: 'workspace-a' } },
+      { ...binding, id: 'shared-prompt-binding', prompt_template_id: sharedPromptId, skill_definition_id: null, prompt_template: { id: sharedPromptId, name: 'Shared', slug: 'shared', description: null, owner_user_id: null, workspace_id: 'workspace-a' }, skill_definition: null },
+      { ...binding, id: 'shared-skill-binding', prompt_template_id: null, skill_definition_id: sharedSkillId, prompt_template: null, skill_definition: { id: sharedSkillId, name: 'Shared', slug: 'shared', description: null, owner_user_id: null, workspace_id: 'workspace-a' } },
       { ...binding, id: 'foreign-binding', prompt_template_id: 'foreign', skill_definition_id: null, prompt_template: { id: 'foreign', name: 'foreign workspace title', slug: 'foreign', description: 'foreign workspace description', owner_user_id: null, workspace_id: 'workspace-b' }, skill_definition: null },
       { ...binding, id: 'private-binding', prompt_template_id: 'private', skill_definition_id: null, prompt_template: { id: 'private', name: 'private title', slug: 'private', description: null, owner_user_id: 'owner', workspace_id: 'workspace-a' }, skill_definition: null },
+      { ...binding, id: 'mixed-binding', prompt_template_id: sharedPromptId, skill_definition_id: 'foreign-skill', prompt_template: { id: sharedPromptId, name: 'Shared', slug: 'shared', description: null, owner_user_id: null, workspace_id: 'workspace-a' }, skill_definition: { id: 'foreign-skill', name: 'foreign workspace skill', slug: 'foreign', description: null, owner_user_id: null, workspace_id: 'workspace-b' } },
+      { ...binding, id: 'invalid-type-binding', binding_type: 'invalid', prompt_template_id: sharedPromptId, skill_definition_id: null, prompt_template: { id: sharedPromptId, name: 'Shared', slug: 'shared', description: null, owner_user_id: null, workspace_id: 'workspace-a' }, skill_definition: null },
       { ...binding, id: 'missing-binding', prompt_template_id: 'missing', skill_definition_id: null, prompt_template: null, skill_definition: null }
     ];
     const bindings = await listContextBindings('workspace-a', 'member');
@@ -127,11 +133,19 @@ test('context search, health, overview, and MCP paths preserve personal visibili
     assert.deepEqual(await getWorkspaceOverview('workspace-a', 'member'), {
       connections: 2, prompts: 2, skills: 2, assets: 2, bindings: 2, userId: 'member'
     });
+    const listed = await handleMcpJsonRpcRequest(auth, { jsonrpc: '2.0', id: 3, method: 'resources/list' });
+    assert.match(JSON.stringify(listed.response.result), new RegExp(sharedPromptId));
+    assert.doesNotMatch(JSON.stringify(listed.response.result), /foreign workspace|private title/);
+    const boundResource = await handleMcpJsonRpcRequest(auth, {
+      jsonrpc: '2.0', id: 4, method: 'resources/read',
+      params: { uri: `plusmy://binding/workspace/default/prompt/${sharedPromptId}` }
+    });
+    assert.match(JSON.stringify(boundResource.response.result), /shared prompt/);
+    assert.doesNotMatch(JSON.stringify(boundResource.response.result), /foreign workspace|owner private title/);
     bindingRows = [];
 
-    const auth = { sub: 'member', userId: 'member', workspaceId: 'workspace-a', clientId: 'client', scopes: ['mcp:resources', 'mcp:tools'] };
     const resource = await handleMcpJsonRpcRequest(auth, {
-      jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri: 'plusmy://prompt/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }
+      jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri: `plusmy://prompt/${sharedPromptId}` }
     });
     assert.equal(requests.at(-1)?.p_actor_user_id, 'member');
     assert.match(JSON.stringify(resource.response.result), /member private context/);

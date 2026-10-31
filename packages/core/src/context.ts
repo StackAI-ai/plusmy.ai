@@ -913,7 +913,8 @@ export async function listContextBindings(workspaceId: string, userId: string | 
       const skill = normalizeJoinedRecord(row.skill_definition)
       const promptVisible = !row.prompt_template_id || Boolean(prompt && prompt.workspace_id === workspaceId && !prompt.owner_user_id)
       const skillVisible = !row.skill_definition_id || Boolean(skill && skill.workspace_id === workspaceId && !skill.owner_user_id)
-      return Boolean(row.prompt_template_id || row.skill_definition_id) && promptVisible && skillVisible
+      return allowedContextBindingTypes.has(row.binding_type as ContextBindingType)
+        && Boolean(row.prompt_template_id || row.skill_definition_id) && promptVisible && skillVisible
     })
     .map((row) =>
       normalizeContextBindingRow(
