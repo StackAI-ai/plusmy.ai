@@ -1,5 +1,6 @@
 import { createServiceRoleClient } from '@plusmy/supabase';
 import { logAuditEvent } from './connections';
+import { listContextBindings } from './context';
 
 function isVisibleContextAsset(metadata: unknown) {
   if (!metadata || Array.isArray(metadata) || typeof metadata !== 'object') {
@@ -90,21 +91,22 @@ export async function createWorkspaceBootstrap(input: { userId: string; name: st
 export async function getWorkspaceOverview(workspaceId: string, userId: string | null | undefined) {
   const supabase = createServiceRoleClient()
   const [connections, prompts, skills, assets, bindings] = await Promise.all([
-    supabase.schema('app').from('connections').select('id,scope,owner_user_id', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
-    supabase.schema('app').from('prompt_templates').select('id,owner_user_id', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
-    supabase.schema('app').from('skill_definitions').select('id,owner_user_id', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
+    supabase.schema('app').from('connections').select('id,scope,owner_user_id').eq('workspace_id', workspaceId),
+    supabase.schema('app').from('prompt_templates').select('id,owner_user_id').eq('workspace_id', workspaceId),
+    supabase.schema('app').from('skill_definitions').select('id,owner_user_id').eq('workspace_id', workspaceId),
     supabase.schema('app').from('context_assets').select('id,owner_user_id,metadata').eq('workspace_id', workspaceId),
-    supabase.schema('app').from('context_bindings').select('id', { count: 'exact', head: true }).eq('workspace_id', workspaceId)
+    listContextBindings(workspaceId, userId)
   ])
 
-  const visibleAssets = (assets.data ?? []).filter((asset) => isVisibleContextAsset(asset.metadata))
+  const isVisibleOwner = (ownerUserId: string | null) => !ownerUserId || ownerUserId === userId
+  const visibleAssets = (assets.data ?? []).filter((asset) => isVisibleOwner(asset.owner_user_id) && isVisibleContextAsset(asset.metadata))
 
   return {
-    connections: connections.count ?? 0,
-    prompts: prompts.count ?? 0,
-    skills: skills.count ?? 0,
+    connections: (connections.data ?? []).filter((connection) => connection.scope === 'workspace' || Boolean(userId && connection.owner_user_id === userId)).length,
+    prompts: (prompts.data ?? []).filter((prompt) => isVisibleOwner(prompt.owner_user_id)).length,
+    skills: (skills.data ?? []).filter((skill) => isVisibleOwner(skill.owner_user_id)).length,
     assets: visibleAssets.length,
-    bindings: bindings.count ?? 0,
+    bindings: bindings.length,
     userId: userId ?? null
   }
 }

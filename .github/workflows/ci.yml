@@ -41,6 +41,8 @@ jobs:
             kong:2.8.1
             mailpit:v1.22.3
             realtime:v2.78.10
+            storage-api:v1.41.8
+            edge-runtime:v1.71.0
             pg_prove:3.36
           )
           for image in "${images[@]}"; do
@@ -60,6 +62,12 @@ jobs:
       - name: Auth redirect regression tests
         run: pnpm exec tsx --test apps/web/tests/safe-redirect.test.ts
 
+      - name: Context caller isolation contracts
+        run: pnpm exec tsx --test packages/mcp/tests/context-isolation.test.ts
+
+      - name: Context RPC HTTP contracts
+        run: node scripts/local-supabase-env.mjs -- node --test scripts/context-rpc-http-contracts.mjs
+
       - name: Finance provider contracts
         run: pnpm finance:contracts
 
@@ -71,6 +79,9 @@ jobs:
 
       - name: Supabase pgTAP regression suite
         run: node_modules/supabase/bin/supabase test db supabase/tests/security_regressions.sql --local
+
+      - name: Context isolation pgTAP suite
+        run: node_modules/supabase/bin/supabase test db supabase/tests/context_isolation.sql --local
 
       - name: Worker alert delivery contracts
         run: node scripts/local-supabase-env.mjs -- pnpm exec tsx scripts/worker-alert-contracts.ts

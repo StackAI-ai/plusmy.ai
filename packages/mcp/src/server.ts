@@ -66,8 +66,7 @@ function summarizeRuntimeContext(runtimeContext: Awaited<ReturnType<typeof resol
 function summarizeContextInjection(contextInjection: ContextInjectionResult) {
   return {
     query: contextInjection.query,
-    matchCount: contextInjection.matches.length,
-    assetTitles: contextInjection.matches.map((match) => match.title)
+    matchCount: contextInjection.matches.length
   };
 }
 
@@ -227,6 +226,7 @@ export async function executeToolCall(authContext: McpAuthContext, toolName: str
   });
   const contextInjection = await resolveContextInjection(
     authContext.workspaceId,
+    authContext.userId,
     [toolName, toolDefinition?.title ?? null, toolDefinition?.description ?? null, JSON.stringify(input)],
     3
   );

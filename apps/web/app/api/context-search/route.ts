@@ -34,6 +34,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'workspace_required' }, { status: 404 });
   }
 
-  const matches = await matchContextChunks(workspace.id, body.query, body.limit ?? 8);
+  const matches = await matchContextChunks(workspace.id, user.id, body.query, body.limit ?? 8);
   return NextResponse.json({ matches });
 }

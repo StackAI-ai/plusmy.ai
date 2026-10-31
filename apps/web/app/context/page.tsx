@@ -75,7 +75,7 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
         listPromptTemplates(workspace.id, user.id),
         listSkillDefinitions(workspace.id, user.id),
         listContextBindings(workspace.id, user.id),
-        getContextEmbeddingHealth(workspace.id),
+        getContextEmbeddingHealth(workspace.id, user.id),
         listConnectionsForWorkspace(workspace.id, user.id)
       ])
     : [[], [], [], [], null, []]
@@ -128,8 +128,8 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
                 {embeddingHealth ? (
                   <p className="text-sm text-muted-foreground">
                     {embeddingHealth.totalChunks === 0
-                      ? 'No vector chunks are stored yet.'
-                      : `${embeddingHealth.embeddedChunks} of ${embeddingHealth.totalChunks} stored chunks have embeddings.${embeddingHealth.lastEmbeddedAt ? ` Last embed ${embeddingHealth.lastEmbeddedAt}.` : ''}`}
+                      ? 'No visible vector chunks are stored yet.'
+                      : `${embeddingHealth.embeddedChunks} of ${embeddingHealth.totalChunks} visible chunks have embeddings.${embeddingHealth.lastEmbeddedAt ? ` Last embed ${embeddingHealth.lastEmbeddedAt}.` : ''}`}
                     {embeddingHealth.embeddingIndexName
                       ? ` Index ${embeddingHealth.embeddingIndexName} is ${embeddingHealth.embeddingIndexStatus}.`
                       : ' Vector index health is unavailable.'}
