@@ -65,6 +65,9 @@ jobs:
       - name: Context caller isolation contracts
         run: pnpm exec tsx --test packages/mcp/tests/context-isolation.test.ts
 
+      - name: Context RPC HTTP contracts
+        run: node scripts/local-supabase-env.mjs -- node --test scripts/context-rpc-http-contracts.mjs
+
       - name: Finance provider contracts
         run: pnpm finance:contracts
 
