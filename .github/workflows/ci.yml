@@ -62,6 +62,9 @@ jobs:
       - name: Auth redirect regression tests
         run: pnpm exec tsx --test apps/web/tests/safe-redirect.test.ts
 
+      - name: Connection sync request contracts
+        run: pnpm exec tsx --test apps/web/tests/sync-request.test.ts
+
       - name: Finance provider contracts
         run: pnpm finance:contracts
 
