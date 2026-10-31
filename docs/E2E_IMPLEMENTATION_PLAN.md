@@ -52,8 +52,8 @@ private-beta certification.
 
 1. **Freeze and reconcile the candidate.** Keep the original checkout's edits;
    review each draft against its stated base and preserve existing branch heads.
-   PR #8 depends on #1; PR #11 depends on #2. Other current drafts are based on
-   `dev`. CI files, migration checksums, build-plan notes and lockfiles overlap.
+   PR #8 depends on #1; PR #11 depends on #2; PR #12 depends on #3. Other current
+   drafts are based on `dev`. CI files, migration checksums, build-plan notes and lockfiles overlap.
    Integrate only with explicit authorization, then rerun the combined audit,
    install, build, database and browser suites on the resulting exact commit.
 2. **Close security and data-integrity gates.** Finish refresh-job claim and
@@ -101,7 +101,8 @@ private-beta certification.
 | [#3](https://github.com/StackAI-ai/plusmy.ai/pull/3) | Vault credential refresh fencing | Job claims, callback generation, grants, no-mixed-writer rollout, real concurrency/provider tests and cross-provider review. |
 | [#4](https://github.com/StackAI-ai/plusmy.ai/pull/4), [#5](https://github.com/StackAI-ai/plusmy.ai/pull/5), [#6](https://github.com/StackAI-ai/plusmy.ai/pull/6), [#7](https://github.com/StackAI-ai/plusmy.ai/pull/7), [#9](https://github.com/StackAI-ai/plusmy.ai/pull/9), [#10](https://github.com/StackAI-ai/plusmy.ai/pull/10) | Scoped Next.js, shell-quote, nanoid, brace-expansion, tar and node-forge updates | Reconcile overlapping lockfiles and CI, rerun a combined audit, review compatibility and certify affected mobile/tooling paths. Tar can fail on previously accepted symlink chains and can leave partial output. |
 | [#8](https://github.com/StackAI-ai/plusmy.ai/pull/8) | Proposed MCP Origin guard, stacked on #1 | User approval of trust policy, cross-provider review and named-client/ingress verification. |
-| [#11](https://github.com/StackAI-ai/plusmy.ai/pull/11) | Actor-scoped context-health aggregate, stacked on #2 | Exact-head real Supabase CI and independent review; separate asset/prompt/skill list pagination remains. |
+| [#11](https://github.com/StackAI-ai/plusmy.ai/pull/11) | Actor-scoped context-health aggregate, stacked on #2 | Exact-head CI and Sol source review passed; cross-provider review, complete-page failure testing and asset/prompt/skill list pagination remain. |
+| [#12](https://github.com/StackAI-ai/plusmy.ai/pull/12) | Connection-job claim fencing, stacked on #3 | Exact-head CI, independent security review and no-mixed-worker migration/recovery rehearsal. |
 
 All are drafts, not integrated or deployed. The detailed, actionable inventory,
 including evidence and ownership, is [PRIVATE_BETA_ISSUE_CHECKLIST.md](./PRIVATE_BETA_ISSUE_CHECKLIST.md).
