@@ -43,6 +43,7 @@ jobs:
             mailpit:v1.22.3
             realtime:v2.78.10
             storage-api:v1.41.8
+            edge-runtime:v1.71.0
             pg_prove:3.36
           )
           for image in "${images[@]}"; do
@@ -63,7 +64,7 @@ jobs:
         run: pnpm exec tsx --test apps/web/tests/safe-redirect.test.ts
 
       - name: MCP HTTP transport contracts
-        run: pnpm exec tsx --test packages/mcp/tests/http-transport.test.ts apps/web/tests/mcp-route.test.ts
+        run: pnpm exec tsx --test packages/mcp/tests/http-transport.test.ts apps/web/tests/mcp-route.test.ts apps/web/tests/mcp-origin.test.ts
 
       - name: Finance provider contracts
         run: pnpm finance:contracts

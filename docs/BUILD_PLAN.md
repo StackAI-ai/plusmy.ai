@@ -101,3 +101,8 @@
 ## 2026-10-30 Execution Checkpoint
 - The MCP HTTP endpoint accepts authenticated initialization notifications and bounded JSON-RPC batches, validates initialization parameters, and declines unsupported server-sent-event GETs with HTTP 405. A standard MCP TypeScript SDK client connects and reads a workspace prompt in a mock-backed route contract; the Supabase-backed browser journey is configured to exercise the same client through the running app.
 - The integration branch is `dev`; implementation pull requests target `dev`, with a separate reviewed promotion to `main`. Named MCP clients, real provider certifications, staging worker/alert acceptance, historical-grant review, and the MCP Origin policy remain open release gates.
+
+## 2026-10-31 Source-only MCP Origin proposal
+- Prepared an undeployed `/mcp` Origin guard that uses the canonical `APP_URL` origin plus an optional exact `MCP_ALLOWED_ORIGINS` list, retains absent-Origin native clients, and rejects malformed/disallowed Origins before authentication and dispatch. Missing/invalid policy configuration fails closed; no request-host/forwarding fallback or wildcard CORS remains on this route.
+- Added exact-origin CORS, safe non-cacheable headers, canonical auth challenges, and mock-backed Origin/preflight/auth/notification/rate-limit regressions. The draft configuration semantics, reverse-proxy/preview assumptions, independent-review requirement, and named-client certification gates are in [mcp-origin-policy.md](./mcp-origin-policy.md).
+- The Origin policy and list remain pending owner approval. This source proposal changes no live environment, deployment, security/access setting, provider, or database. Mock/local evidence does not close the existing staging or named-client release gates.

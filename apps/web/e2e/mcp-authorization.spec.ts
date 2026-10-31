@@ -18,7 +18,11 @@ function envValue(key: string) {
 }
 
 function serviceClient() {
-  return createClient(envValue('NEXT_PUBLIC_SUPABASE_URL'), envValue('SUPABASE_SERVICE_ROLE_KEY'), {
+  const url = envValue('NEXT_PUBLIC_SUPABASE_URL');
+  if (!['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname)) {
+    throw new Error('MCP E2E requires a loopback Supabase instance.');
+  }
+  return createClient(url, envValue('SUPABASE_SERVICE_ROLE_KEY'), {
     auth: { persistSession: false }
   });
 }
@@ -116,6 +120,48 @@ test('MCP consent, PKCE exchange, scope narrowing, and revocation work end to en
     expect(raced.map((response) => response.status()).sort()).toEqual([200, 400]);
     const fullToken = await raced.find((response) => response.status() === 200)!.json();
     expect(fullToken.scope).toBe('mcp:tools mcp:resources');
+    const browserPing = await page.evaluate(async (token: string) => {
+      const response = await fetch('http://127.0.0.1:3009/mcp', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+          'mcp-protocol-version': '2025-03-26'
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 800, method: 'ping' })
+      });
+      return { status: response.status, body: await response.json() };
+    }, fullToken.access_token);
+    expect(browserPing.status).toBe(200);
+    expect(browserPing.body).toEqual({ jsonrpc: '2.0', id: 800, result: {} });
+
+    const currentWindow = Math.floor(Date.now() / 60_000) * 60_000;
+    const rateAction = 'google.__origin_rate_limit_test';
+    const { error: rateSetupError } = await service.schema('app').from('rate_limit_buckets').insert(
+      [currentWindow, currentWindow + 60_000].map((start) => ({
+        workspace_id: workspaceId, subject: clientId, action: rateAction,
+        window_starts_at: new Date(start).toISOString(), window_seconds: 60, count: 60
+      }))
+    );
+    expect(rateSetupError).toBeNull();
+    const browserRateLimit = await page.evaluate(async (token: string) => {
+      const response = await fetch('http://127.0.0.1:3009/mcp', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+          'mcp-protocol-version': '2025-03-26'
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 801, method: 'tools/call',
+          params: { name: 'google.__origin_rate_limit_test', arguments: {} }
+        })
+      });
+      return { status: response.status, limit: response.headers.get('ratelimit-limit'), body: await response.json() };
+    }, fullToken.access_token);
+    expect(browserRateLimit.status).toBe(200);
+    expect(browserRateLimit.limit).toBe('60');
+    expect(browserRateLimit.body.error.code).toBe(-32000);
     expect((await mcpCall(request, fullToken.access_token, 'initialize', 1, {
       protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'e2e-client', version: '1.0.0' }
     })).body.result.serverInfo.name).toBe('plusmy.ai');
@@ -255,6 +301,10 @@ test('MCP consent, PKCE exchange, scope narrowing, and revocation work end to en
     expect(audit?.filter((entry) => entry.action === 'oauth_client.approved')).toHaveLength(2);
     expect(audit?.filter((entry) => entry.action === 'oauth_client.approval_revoked')).toHaveLength(1);
   } finally {
+    await service.schema('app').from('rate_limit_buckets').delete().eq('workspace_id', workspaceId)
+      .eq('subject', clientId).eq('action', 'google.__origin_rate_limit_test');
+    await service.schema('app').from('audit_logs').delete().eq('resource_id', 'google.__origin_rate_limit_test')
+      .eq('actor_client_id', clientId);
     if (connectionId) {
       await service.schema('app').from('audit_logs').delete().eq('resource_id', 'hubspot.search_contacts').eq('actor_client_id', clientId);
       await service.schema('app').from('connections').delete().eq('id', connectionId);
