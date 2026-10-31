@@ -1303,30 +1303,36 @@ export async function matchContextChunks(workspaceId: string, userId: string, qu
 export async function getContextEmbeddingHealth(workspaceId: string, userId: string): Promise<ContextEmbeddingHealth> {
   if (!userId) throw new Error('Workspace membership is required.')
   const supabase = createServiceRoleClient()
-  const { data: membership, error: membershipError } = await supabase.schema('app').from('workspace_members')
-    .select('user_id').eq('workspace_id', workspaceId).eq('user_id', userId).maybeSingle()
-  if (membershipError || !membership) throw new Error('Workspace membership is required.')
-
-  const [{ data: assets, error: assetsError }, { data: chunks, error: chunksError }, { data: indexHealth, error: indexError }] = await Promise.all([
-    supabase.schema('app').from('context_assets').select('id,owner_user_id,metadata').eq('workspace_id', workspaceId),
-    supabase.schema('app').from('context_asset_chunks').select('asset_id,metadata,created_at').eq('workspace_id', workspaceId),
+  const [{ data: summary, error: summaryError }, { data: indexHealth, error: indexError }] = await Promise.all([
+    supabase.schema('app').rpc('context_embedding_summary', {
+      p_workspace_id: workspaceId,
+      p_actor_user_id: userId
+    }).maybeSingle(),
     supabase.schema('app').rpc('context_vector_index_health')
   ])
-  if (assetsError || chunksError || indexError) throw assetsError ?? chunksError ?? indexError
-
-  const assetRows = dataOrEmptyArray(assets).filter((asset) => !asset.owner_user_id || asset.owner_user_id === userId)
-  const visibleAssetIds = new Set(assetRows.map((asset) => asset.id))
-  const chunkRows = dataOrEmptyArray(chunks).filter((chunk) => visibleAssetIds.has(chunk.asset_id))
-  const systemManagedAssets = assetRows.filter((asset) => isSystemManagedContextAsset(asset.metadata)).length
-  const embeddedRows = chunkRows.filter((chunk) => asContextAssetMetadata(chunk.metadata).embedded === true)
-  const embeddedChunks = embeddedRows.length
-  const createdTimestamps = embeddedRows
-    .map((chunk) => {
-      const metadata = asContextAssetMetadata(chunk.metadata)
-      return typeof metadata.embedded_at === 'string' ? metadata.embedded_at : chunk.created_at
-    })
-    .filter((value): value is string => Boolean(value))
-    .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())
+  if (summaryError || indexError) throw summaryError ?? indexError
+  if (!summary) throw new Error('Workspace membership is required.')
+  if (typeof summary !== 'object') {
+    throw new Error('Context embedding summary is unavailable.')
+  }
+  const fields = summary as Record<string, unknown>
+  const count = (key: string) => {
+    const value = fields[key]
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+      throw new Error('Context embedding summary is unavailable.')
+    }
+    return value
+  }
+  const totalAssets = count('total_assets')
+  const systemManagedAssets = count('system_managed_assets')
+  const totalChunks = count('total_chunks')
+  const embeddedChunks = count('embedded_chunks')
+  if (systemManagedAssets > totalAssets || embeddedChunks > totalChunks) {
+    throw new Error('Context embedding summary is inconsistent.')
+  }
+  if (fields.last_embedded_at !== null && typeof fields.last_embedded_at !== 'string') {
+    throw new Error('Context embedding summary is unavailable.')
+  }
 
   const vectorIndexHealth = Array.isArray(indexHealth) ? indexHealth[0] : indexHealth
   const indexName =
@@ -1347,20 +1353,16 @@ export async function getContextEmbeddingHealth(workspaceId: string, userId: str
       : 'Embed a visible context asset before relying on semantic search.'
 
   return {
-    totalAssets: assetRows.length,
-    visibleAssets: assetRows.length - systemManagedAssets,
+    totalAssets,
+    visibleAssets: totalAssets - systemManagedAssets,
     systemManagedAssets,
-    totalChunks: chunkRows.length,
+    totalChunks,
     embeddedChunks,
-    chunksMissingEmbeddings: Math.max(chunkRows.length - embeddedChunks, 0),
-    lastEmbeddedAt: createdTimestamps[0] ?? null,
+    chunksMissingEmbeddings: totalChunks - embeddedChunks,
+    lastEmbeddedAt: fields.last_embedded_at,
     embeddingIndexName: indexName,
     embeddingIndexPresent: indexPresent,
     embeddingIndexStatus: indexStatus,
     embeddingIndexRecommendation: indexRecommendation
   }
-}
-
-function dataOrEmptyArray<T>(value: T[] | null | undefined) {
-  return value ?? []
 }

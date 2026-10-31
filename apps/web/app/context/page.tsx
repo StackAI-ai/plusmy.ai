@@ -13,6 +13,7 @@ import {
   listUserWorkspaces
 } from '@plusmy/core'
 import { ContextBindingForm } from './binding-form'
+import { ContextHealthCard } from './context-health-card'
 import { ContextIngestForm } from './context-ingest-form'
 import { DeleteContextBindingButton } from './delete-binding-button'
 import { ContextSearchForm } from './search-form'
@@ -75,7 +76,10 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
         listPromptTemplates(workspace.id, user.id),
         listSkillDefinitions(workspace.id, user.id),
         listContextBindings(workspace.id, user.id),
-        getContextEmbeddingHealth(workspace.id, user.id),
+        getContextEmbeddingHealth(workspace.id, user.id).catch(() => {
+          console.error('Context embedding health is unavailable.')
+          return null
+        }),
         listConnectionsForWorkspace(workspace.id, user.id)
       ])
     : [[], [], [], [], null, []]
@@ -134,6 +138,8 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
                       ? ` Index ${embeddingHealth.embeddingIndexName} is ${embeddingHealth.embeddingIndexStatus}.`
                       : ' Vector index health is unavailable.'}
                   </p>
+                ) : workspace ? (
+                  <p className="text-sm text-muted-foreground">Embedding health is temporarily unavailable.</p>
                 ) : null}
               </div>
               <Badge>{workspace?.name ?? 'No workspace'}</Badge>
@@ -193,35 +199,7 @@ export default async function ContextPage({ searchParams }: { searchParams?: App
                 </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Embedding health</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-4xl font-semibold text-foreground">
-                  {embeddingHealth ? `${embeddingHealth.embeddedChunks}/${embeddingHealth.totalChunks}` : '0/0'}
-                </p>
-                <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-                  <p>
-                    {embeddingHealth
-                      ? `${embeddingHealth.chunksMissingEmbeddings} chunks missing embeddings`
-                      : 'No embedding summary yet'}
-                  </p>
-                  <p>
-                    {embeddingHealth?.systemManagedAssets
-                      ? `${embeddingHealth.systemManagedAssets} hidden prompt and skill mirrors`
-                      : 'No hidden prompt or skill mirrors'}
-                  </p>
-                  <p>
-                    {embeddingHealth?.embeddingIndexRecommendation
-                      ? embeddingHealth.embeddingIndexRecommendation
-                      : embeddingHealth?.embeddingIndexPresent
-                        ? 'Vector index present and ready for similarity lookup.'
-                        : 'Vector index missing.'}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+            <ContextHealthCard health={embeddingHealth} hasWorkspace={Boolean(workspace)} />
           </section>
 
           <div className="grid gap-4 xl:grid-cols-3">
