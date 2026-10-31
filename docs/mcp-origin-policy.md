@@ -50,7 +50,7 @@ OAuth route, provider handler, or token-storage boundary changes in this patch.
 
 | Condition | Result |
 | --- | --- |
-| Missing/invalid policy configuration | Generic 503 on every method, no CORS grant or auth challenge |
+| Missing/invalid policy configuration, if the route is reached | Generic 503 on every method, no CORS grant or auth challenge |
 | Present malformed/disallowed Origin | Generic 403, no CORS grant or auth challenge |
 | Accepted OPTIONS (no token required) | Empty 204; fixed allowed methods `POST, OPTIONS` |
 | Accepted GET/HEAD/PUT/PATCH/DELETE | 405; `Allow: POST, OPTIONS`; no SSE or session deletion |
@@ -123,8 +123,10 @@ reverse-proxy, deployed-framework, or named-client certification.
 
 The disposable CI browser suite also checks a configured localhost origin and a
 different loopback origin against the real Next route, including browser CORS
-rejection and the unauthenticated challenge. This does not certify a deployed
-proxy, a named client, or any real account.
+rejection, the unauthenticated challenge, an authenticated MCP call with protocol
+headers, and browser-readable rate-limit headers. Existing middleware may reject
+malformed environment configuration before the route returns its generic 503.
+These tests do not certify a deployed proxy, a named client, or any real account.
 - [ ] Certify OpenAI, Anthropic, Gemini, and Cursor independently on approved
   disposable staging accounts. Record client/version, whether requests are
   native/server-to-server or browser-originated, observed Origin and required
