@@ -185,7 +185,7 @@ $$;
 reset role;
 
 -- ACLs are additive. An inherited grant (or a surviving column grant) must not
--- resurrect the deleted admin policies. This is rolled back with the suite.
+-- resurrect the deleted admin policies. Test roles are removed by the rollback.
 create role connection_access_test_writer nologin;
 grant connection_access_test_writer to authenticated;
 grant insert, update, delete on app.connections, app.connection_grants to connection_access_test_writer;
@@ -252,9 +252,8 @@ drop policy access_test_extra_insert on app.connection_grants;
 drop policy access_test_extra_update on app.connection_grants;
 drop policy access_test_extra_delete on app.connection_grants;
 revoke update (job_generation, refresh_lock_id, refresh_lock_expires_at) on app.connections from authenticated;
+revoke insert, update, delete on app.connections, app.connection_grants from connection_access_test_writer;
 revoke connection_access_test_writer from authenticated;
-drop owned by connection_access_test_writer;
-drop role connection_access_test_writer;
 
 -- An unexpected inherited anon grant and permissive policies must also fail
 -- closed. These roles and policies exist only inside the test transaction.
@@ -285,9 +284,9 @@ reset role;
 drop policy access_test_anon_select on app.connections;
 drop policy access_test_anon_update on app.connections;
 drop policy access_test_anon_insert on app.connections;
+revoke select, insert, update, delete on app.connections, app.connection_grants from connection_access_test_anon;
+revoke usage on schema app, auth from connection_access_test_anon;
 revoke connection_access_test_anon from anon;
-drop owned by connection_access_test_anon;
-drop role connection_access_test_anon;
 
 -- Model unexpected permissive policies without altering any live policy. They
 -- cannot OR around the authenticated restrictive visibility/admin boundaries.
