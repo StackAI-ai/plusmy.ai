@@ -140,6 +140,17 @@ test('connection worker uses claim fences for all local effects', async (t) => {
   };
   const work = () => core.processDueConnectionJobs({ workerId: 'same-worker', limit: 1 });
   try {
+    await t.test('manual sync keeps the authorized generation across reconnect', async () => {
+      reset();
+      const authorizedGeneration = connection.job_generation;
+      invalidate('active');
+      const jobId = await core.scheduleConnectionSyncJob({
+        connectionId: 'connection', generation: authorizedGeneration, actorUserId: 'member'
+      });
+      assert.equal(jobId, null);
+      assert.equal(calls.find(({ path }) => path === '/rest/v1/rpc/schedule_connection_job_v2')?.body.p_generation, authorizedGeneration);
+      assert.equal(audits.length, 0);
+    });
     await t.test('normal sync applies metadata only in the fenced completion RPC', async () => {
       reset();
       const result = await work();

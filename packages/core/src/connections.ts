@@ -415,6 +415,7 @@ export async function scheduleConnectionJob(input: {
 
 export async function scheduleConnectionSyncJob(input: {
   connectionId: string;
+  generation: string;
   actorUserId?: string | null;
   payload?: Record<string, Json>;
 }) {
@@ -423,6 +424,7 @@ export async function scheduleConnectionSyncJob(input: {
     jobType: 'sync_connection',
     payload: input.payload,
     maxAttempts: 4,
+    generation: input.generation,
     actorUserId: input.actorUserId ?? null
   });
 }

@@ -39,9 +39,16 @@ export async function POST(request: NextRequest) {
   if (connection.status === 'revoked') {
     return NextResponse.json({ error: 'connection_revoked' }, { status: 400 });
   }
+  if (connection.status !== 'active') {
+    return NextResponse.json({ error: 'connection_inactive' }, { status: 409 });
+  }
+  if (!connection.job_generation) {
+    return NextResponse.json({ error: 'connection_job_fencing_unavailable' }, { status: 503 });
+  }
 
   const jobId = await scheduleConnectionSyncJob({
     connectionId: connection.id,
+    generation: connection.job_generation,
     actorUserId: user.id,
     payload: {
       requested_by: user.id,
@@ -49,5 +56,6 @@ export async function POST(request: NextRequest) {
     }
   });
 
+  if (!jobId) return NextResponse.json({ error: 'connection_changed' }, { status: 409 });
   return NextResponse.json({ ok: true, connection_id: connection.id, job_id: jobId });
 }

@@ -21,7 +21,13 @@ export function SyncConnectionButton({ workspaceId, connectionId }: { workspaceI
 
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
-      setStatus(payload?.error ?? 'Sync could not be queued.');
+      setStatus(payload?.error === 'connection_changed'
+        ? 'This connection changed. Refresh the page and try again.'
+        : payload?.error === 'connection_inactive'
+          ? 'This connection is not active. Reconnect or finish setup before syncing.'
+          : payload?.error === 'connection_job_fencing_unavailable'
+            ? 'Sync is temporarily unavailable. Try again later.'
+            : payload?.error ?? 'Sync could not be queued.');
       setSubmitting(false);
       return;
     }
