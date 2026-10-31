@@ -1311,7 +1311,8 @@ export async function getContextEmbeddingHealth(workspaceId: string, userId: str
     supabase.schema('app').rpc('context_vector_index_health')
   ])
   if (summaryError || indexError) throw summaryError ?? indexError
-  if (!summary || typeof summary !== 'object') {
+  if (!summary) throw new Error('Workspace membership is required.')
+  if (typeof summary !== 'object') {
     throw new Error('Context embedding summary is unavailable.')
   }
   const fields = summary as Record<string, unknown>

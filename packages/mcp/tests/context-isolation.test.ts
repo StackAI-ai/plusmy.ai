@@ -12,6 +12,7 @@ test('context search, health, overview, and MCP paths preserve personal visibili
   });
 
   const requests: Array<Record<string, unknown>> = [];
+  const summaryRequests: Array<Record<string, unknown>> = [];
   const auditRecords: unknown[] = [];
   const sharedPromptId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   const sharedSkillId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -45,6 +46,18 @@ test('context search, health, overview, and MCP paths preserve personal visibili
     }
     if (url.pathname === '/rest/v1/rpc/context_vector_index_health') {
       return Response.json([{ index_name: 'context_asset_chunks_embedding_idx', index_present: true, index_status: 'healthy' }]);
+    }
+    if (url.pathname === '/rest/v1/rpc/context_embedding_summary') {
+      const body = await request.json() as Record<string, unknown>;
+      summaryRequests.push(body);
+      if (body.p_workspace_id !== 'workspace-a' || body.p_actor_user_id !== 'member') return Response.json(null);
+      return Response.json({
+        total_assets: 2,
+        system_managed_assets: 0,
+        total_chunks: 2,
+        embedded_chunks: privateOnlyEmbedded ? 0 : 2,
+        last_embedded_at: privateOnlyEmbedded ? null : '2021-01-01T00:00:00Z'
+      });
     }
     if (url.pathname === '/rest/v1/workspace_members') {
       return Response.json(url.searchParams.get('user_id') === 'eq.member' ? [{ user_id: 'member' }] : []);
@@ -110,6 +123,7 @@ test('context search, health, overview, and MCP paths preserve personal visibili
     assert.equal(health.totalChunks, 2);
     assert.equal(health.embeddedChunks, 2);
     assert.equal(health.lastEmbeddedAt, '2021-01-01T00:00:00Z');
+    assert.deepEqual(summaryRequests.at(-1), { p_workspace_id: 'workspace-a', p_actor_user_id: 'member' });
     privateOnlyEmbedded = true;
     const emptyHealth = await getContextEmbeddingHealth('workspace-a', 'member');
     assert.equal(emptyHealth.embeddedChunks, 0);
