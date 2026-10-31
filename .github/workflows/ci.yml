@@ -42,6 +42,8 @@ jobs:
             mailpit:v1.22.3
             realtime:v2.78.10
             pg_prove:3.36
+            storage-api:v1.41.8
+            edge-runtime:v1.71.0
           )
           for image in "${images[@]}"; do
             docker pull "ghcr.io/supabase/$image"
@@ -59,6 +61,15 @@ jobs:
 
       - name: Auth redirect regression tests
         run: pnpm exec tsx --test apps/web/tests/safe-redirect.test.ts
+
+      - name: Expo brace-expansion dependency contracts
+        run: node --test scripts/mobile-brace-expansion.test.mjs
+
+      - name: Mobile Expo configuration smoke check
+        env:
+          EXPO_OFFLINE: 1
+          EXPO_NO_TELEMETRY: 1
+        run: pnpm --filter @plusmy/mobile exec expo config --type public --json
 
       - name: Finance provider contracts
         run: pnpm finance:contracts

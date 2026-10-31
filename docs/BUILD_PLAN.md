@@ -50,6 +50,7 @@
 - 2026-03-23 execution checkpoint: added a local Supabase seed for throwaway owner/admin accounts plus a starter workspace so magic-link email flows can be exercised against the built-in Mailpit inbox on local Supabase. Workspace owner/admin controls remain the admin surface; no separate global admin UI was introduced.
 - 2026-03-23 execution checkpoint: introduced a noninteractive MCP smoke-token fixture shared by compat/stress scripts and wired the stress check into CI to close the private-beta release gate.
 - 2026-03-23 execution checkpoint: added a reusable `tsx`-driven provider contract harness plus `finance:contracts`, covered QuickBooks, Xero, Airtable, and Zoom install/refresh/sync/tool/health flows, and fixed a QuickBooks invoice parsing bug surfaced by the new contract script.
+- 2026-10-31 source-only dependency checkpoint: update Expo tooling's brace-expansion 1.1.12 to 1.1.21 and 2.0.2 to 2.1.7 within existing parent ranges. Focused tests cover both resolved versions, ordinary glob behavior and bounded termination for selected pathological inputs. Audit reachability, full mobile runtime compatibility, exact-head CI and independent review remain separate gates.
 
 ## Next execution slice (2026-03-23)
 - 2026-03-22 completion notes added: harden logged-in gating for setup surfaces, and keep the shared shell and onboarding surfaces focused on business tools instead of infrastructure details.
