@@ -374,19 +374,25 @@ export async function scheduleConnectionJob(input: {
   runAfter?: string | null;
   maxAttempts?: number;
   actorUserId?: string | null;
+  generation?: string;
 }) {
   const supabase = createServiceRoleClient();
-  const { data, error } = await supabase.schema('app').rpc('schedule_connection_job', {
+  const connection = await getConnectionById(input.connectionId);
+  if (!connection) return null;
+  const generation = input.generation ?? connection.job_generation;
+  if (!generation) throw new Error('Connection job fencing migration is required.');
+  const { data, error } = await supabase.schema('app').rpc('schedule_connection_job_v2', {
     p_connection_id: input.connectionId,
     p_job_type: input.jobType,
     p_payload: input.payload ?? {},
     p_run_after: input.runAfter ?? new Date().toISOString(),
-    p_max_attempts: input.maxAttempts ?? 3
+    p_max_attempts: input.maxAttempts ?? 3,
+    p_generation: generation
   });
   if (error) throw error;
 
-  const jobId = String(data ?? '');
-  const connection = await getConnectionById(input.connectionId);
+  if (!data) return null;
+  const jobId = String(data);
   if (connection) {
     await logAuditEvent({
       workspaceId: connection.workspace_id,
@@ -409,19 +415,41 @@ export async function scheduleConnectionJob(input: {
 
 export async function scheduleConnectionSyncJob(input: {
   connectionId: string;
-  actorUserId?: string | null;
+  workspaceId: string;
+  generation: string;
+  actorUserId: string;
   payload?: Record<string, Json>;
 }) {
-  return await scheduleConnectionJob({
-    connectionId: input.connectionId,
-    jobType: 'sync_connection',
-    payload: input.payload,
-    maxAttempts: 4,
-    actorUserId: input.actorUserId ?? null
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase.schema('app').rpc('schedule_connection_sync_for_actor', {
+    p_connection_id: input.connectionId,
+    p_generation: input.generation,
+    p_workspace_id: input.workspaceId,
+    p_actor_user_id: input.actorUserId,
+    p_payload: input.payload ?? {}
   });
+  if (error) throw error;
+  if (!data) return null;
+  if (typeof data.job_id !== 'string' || typeof data.provider !== 'string' || typeof data.run_after !== 'string') {
+    throw new Error('Connection sync scheduling returned an invalid result.');
+  }
+  await logAuditEvent({
+    workspaceId: input.workspaceId,
+    actorType: 'user',
+    actorUserId: input.actorUserId,
+    action: 'connection_job.queued',
+    resourceType: 'connection_job',
+    resourceId: data.job_id,
+    metadata: withConnectionAuditMetadata({ id: input.connectionId, provider: data.provider }, {
+      job_type: 'sync_connection', run_after: data.run_after, max_attempts: 4
+    })
+  });
+  return data.job_id as string;
 }
 
-export async function scheduleTokenRefreshJob(connectionId: string, expiresAt: string | null | undefined, reason = 'scheduled') {
+export async function scheduleTokenRefreshJob(
+  connectionId: string, expiresAt: string | null | undefined, reason = 'scheduled', generation?: string
+) {
   if (!expiresAt) return null;
 
   const refreshAt = new Date(expiresAt).getTime() - REFRESH_SKEW_MS;
@@ -432,11 +460,12 @@ export async function scheduleTokenRefreshJob(connectionId: string, expiresAt: s
     jobType: 'token_refresh',
     payload: { reason, expires_at: expiresAt },
     runAfter,
-    maxAttempts: 5
+    maxAttempts: 5,
+    generation
   });
 }
 
-async function cancelActiveConnectionJobs(connectionId: string, reason: string, jobType?: string | null) {
+async function cancelActiveConnectionJobs(connectionId: string, generation: string, reason: string, jobType?: string | null) {
   const supabase = createServiceRoleClient();
   let query = supabase
     .schema('app')
@@ -448,13 +477,15 @@ async function cancelActiveConnectionJobs(connectionId: string, reason: string, 
       last_error: reason
     })
     .eq('connection_id', connectionId)
+    .eq('connection_generation', generation)
     .in('status', ['queued', 'processing']);
 
   if (jobType) {
     query = query.eq('job_type', jobType);
   }
 
-  await query;
+  const { error } = await query;
+  if (error) throw error;
 }
 
 export async function pickConnectionForProvider(workspaceId: string, userId: string | null | undefined, provider: ProviderId) {
@@ -491,13 +522,16 @@ export async function resolveConnectionCredentials(connectionId: string): Promis
 
 export async function markConnectionReauthRequired(connectionId: string, reason: string) {
   const supabase = createServiceRoleClient();
-  await supabase
+  const { data, error } = await supabase
     .schema('app')
     .from('connections')
     .update({ status: 'reauth_required', reauth_required_reason: reason })
     .eq('id', connectionId)
-    .eq('status', 'active');
-  await cancelActiveConnectionJobs(connectionId, reason, 'token_refresh');
+    .eq('status', 'active')
+    .select('job_generation')
+    .maybeSingle();
+  if (error) throw error;
+  if (data?.job_generation) await cancelActiveConnectionJobs(connectionId, data.job_generation, reason, 'token_refresh');
 }
 
 export async function upsertInstalledConnection(input: {
@@ -522,7 +556,7 @@ export async function upsertInstalledConnection(input: {
     externalAccountId: input.externalAccountId
   });
 
-  const { data, error } = await supabase.schema('app').rpc('install_connection_credentials', {
+  const { data, error } = await supabase.schema('app').rpc('install_connection_credentials_v2', {
     p_connection_key: connectionKey,
     p_workspace_id: input.workspaceId,
     p_owner_user_id: input.ownerUserId,
@@ -539,7 +573,8 @@ export async function upsertInstalledConnection(input: {
     p_access_token: input.credentials.accessToken ?? null,
     p_refresh_token: input.credentials.refreshToken ?? null,
     p_api_key: input.credentials.apiKey ?? null,
-    p_token_type: input.credentials.tokenType ?? null
+    p_token_type: input.credentials.tokenType ?? null,
+    p_schedule_refresh: input.scheduleTokenRefreshJob !== false
   });
   const connection = data?.connection as ConnectionRecord | undefined;
   const existingConnection = Boolean(data?.existing);
@@ -547,8 +582,24 @@ export async function upsertInstalledConnection(input: {
     throw new Error('Failed to install connection credentials.');
   }
 
-  if (input.scheduleTokenRefreshJob !== false && input.credentials.refreshToken && input.credentials.expiresAt) {
-    await scheduleTokenRefreshJob(connection.id, input.credentials.expiresAt, existingConnection ? 'credential_updated' : 'connection_installed');
+  if (input.scheduleTokenRefreshJob !== false && input.credentials.refreshToken && input.credentials.expiresAt
+    && (typeof data.refresh_job_id !== 'string' || typeof data.refresh_run_after !== 'string')) {
+    throw new Error('Installed connection refresh scheduling could not be confirmed.');
+  }
+  if (data.refresh_job_id != null) {
+    if (typeof data.refresh_job_id !== 'string' || typeof data.refresh_run_after !== 'string') {
+      throw new Error('Installed connection refresh scheduling returned an invalid result.');
+    }
+    await logAuditEvent({
+      workspaceId: input.workspaceId,
+      actorType: 'system',
+      action: 'connection_job.queued',
+      resourceType: 'connection_job',
+      resourceId: data.refresh_job_id,
+      metadata: withConnectionAuditMetadata(connection, {
+        job_type: 'token_refresh', run_after: data.refresh_run_after, max_attempts: 5
+      })
+    });
   }
 
   await logAuditEvent({
@@ -567,11 +618,11 @@ export async function upsertInstalledConnection(input: {
   return connection as ConnectionRecord;
 }
 
-async function acquireRefreshLock(connectionId: string) {
+async function acquireRefreshLock(connectionId: string, job?: ConnectionJobRecord) {
   const supabase = createServiceRoleClient();
   const lockId = randomUUID();
-  const { data, error } = await supabase.schema('app').rpc('begin_connection_refresh', {
-    p_connection_id: connectionId,
+  const { data, error } = await supabase.schema('app').rpc(job ? 'begin_connection_job_refresh' : 'begin_connection_refresh', {
+    ...(job ? { p_job_id: job.id, p_claim_id: job.claim_id } : { p_connection_id: connectionId }),
     p_lock_id: lockId,
     p_ttl_seconds: 30
   });
@@ -591,12 +642,12 @@ async function releaseRefreshLock(connectionId: string, lockId: string) {
 
 async function performRefresh(
   connection: ConnectionRecord,
-  options?: { scheduleNextJob?: boolean; force?: boolean }
+  options?: { scheduleNextJob?: boolean; force?: boolean; job?: ConnectionJobRecord }
 ) {
   const integration = getIntegration(connection.provider);
   if (!integration) throw new Error('Unsupported connection provider.');
 
-  const attempt = await acquireRefreshLock(connection.id);
+  const attempt = await acquireRefreshLock(connection.id, options?.job);
   if (!attempt) throw new Error('Connection refresh is unavailable or already in progress. Retry or reconnect.');
   const { lockId, credentials, connection: lockedConnection } = attempt;
 
@@ -615,8 +666,8 @@ async function performRefresh(
     });
     if (!refreshed.accessToken) throw new Error('Provider returned no access token.');
     const supabase = createServiceRoleClient();
-    const { data, error } = await supabase.schema('app').rpc('commit_connection_refresh', {
-      p_connection_id: connection.id,
+    const { data, error } = await supabase.schema('app').rpc(options?.job ? 'commit_connection_job_refresh' : 'commit_connection_refresh', {
+      ...(options?.job ? { p_job_id: options.job.id, p_claim_id: options.job.claim_id } : { p_connection_id: connection.id }),
       p_lock_id: lockId,
       p_access_token: refreshed.accessToken ?? null,
       p_refresh_token: refreshed.refreshToken ?? null,
@@ -630,8 +681,8 @@ async function performRefresh(
     if (providerCallStarted) {
       // Do not release an uncertain lease if this RPC fails; expiry requires reconnect.
       const supabase = createServiceRoleClient();
-      const { data: marked } = await supabase.schema('app').rpc('fail_connection_refresh', {
-        p_connection_id: connection.id,
+      const { data: marked } = await supabase.schema('app').rpc(options?.job ? 'fail_connection_job_refresh' : 'fail_connection_refresh', {
+        ...(options?.job ? { p_job_id: options.job.id, p_claim_id: options.job.claim_id } : { p_connection_id: connection.id }),
         p_lock_id: lockId
       });
       if (marked) {
@@ -657,7 +708,7 @@ async function performRefresh(
   }
 
   if (options?.scheduleNextJob !== false && refreshed.expiresAt) {
-    await scheduleTokenRefreshJob(connection.id, refreshed.expiresAt, 'scheduled_after_refresh');
+    await scheduleTokenRefreshJob(connection.id, refreshed.expiresAt, 'scheduled_after_refresh', lockedConnection.job_generation);
   }
   return {
     accessToken: refreshed.accessToken,
@@ -668,13 +719,15 @@ async function performRefresh(
   } satisfies ResolvedConnectionCredentials;
 }
 
-export async function refreshConnectionIfNeeded(connection: ConnectionRecord, credentials: ResolvedConnectionCredentials) {
+export async function refreshConnectionIfNeeded(
+  connection: ConnectionRecord, credentials: ResolvedConnectionCredentials, job?: ConnectionJobRecord
+) {
   if (connection.status !== 'active') throw new Error('Connection is not active.');
   if (!credentials.accessToken || !credentials.expiresAt) return credentials;
   const expiresAt = new Date(credentials.expiresAt).getTime();
   if (expiresAt - Date.now() > REFRESH_SKEW_MS) return credentials;
   if (!credentials.refreshToken) return credentials;
-  return await performRefresh(connection);
+  return await performRefresh(connection, { job, scheduleNextJob: !job });
 }
 
 export async function forceRefreshConnection(connectionId: string, options?: { scheduleNextJob?: boolean }) {
@@ -685,28 +738,23 @@ export async function forceRefreshConnection(connectionId: string, options?: { s
 }
 
 async function finalizeConnectionJob(input: {
-  jobId: string;
+  job: ConnectionJobRecord;
   status: ConnectionJobStatus;
   lastError?: string | null;
-  workerId?: string | null;
   runAfter?: string | null;
+  connectionUpdate?: Record<string, unknown> | null;
 }) {
   const supabase = createServiceRoleClient();
-  const completed =
-    input.status === 'succeeded' || input.status === 'failed' || input.status === 'dead_letter' || input.status === 'canceled';
-  await supabase
-    .schema('app')
-    .from('connection_sync_jobs')
-    .update({
-      status: input.status,
-      last_error: input.lastError ?? null,
-      worker_id: input.workerId ?? null,
-      run_after: input.runAfter ?? undefined,
-      started_at: input.status === 'queued' ? null : undefined,
-      completed_at: completed ? new Date().toISOString() : null,
-      dead_lettered_at: input.status === 'dead_letter' ? new Date().toISOString() : null
-    })
-    .eq('id', input.jobId);
+  const { data, error } = await supabase.schema('app').rpc('finish_connection_job', {
+    p_job_id: input.job.id,
+    p_claim_id: input.job.claim_id,
+    p_status: input.status,
+    p_last_error: input.lastError ?? null,
+    p_run_after: input.runAfter ?? null,
+    p_connection_update: input.connectionUpdate ?? null
+  });
+  if (error) throw error;
+  return (data as ConnectionJobStatus | null) ?? null;
 }
 
 export async function dispatchPendingConnectionJobAlerts() {
@@ -803,14 +851,13 @@ export async function dispatchPendingConnectionJobAlerts() {
 }
 
 async function runConnectionSyncJob(job: ConnectionJobRecord, connection: ConnectionRecord) {
-  const supabase = createServiceRoleClient();
   const integration = getIntegration(connection.provider);
   if (!integration) {
     throw new Error(`Unsupported provider ${connection.provider}.`);
   }
 
   const credentials = await resolveConnectionCredentials(connection.id);
-  const freshCredentials = await refreshConnectionIfNeeded(connection, credentials);
+  const freshCredentials = await refreshConnectionIfNeeded(connection, credentials, job);
   const handler = integration.syncJobs?.find((entry) => entry.jobType === job.job_type);
   if (!handler && job.job_type !== 'sync_connection') {
     throw new Error(`Unsupported connection job type ${job.job_type}.`);
@@ -835,15 +882,7 @@ async function runConnectionSyncJob(job: ConnectionJobRecord, connection: Connec
     }
   }, [freshCredentials.accessToken, freshCredentials.refreshToken, freshCredentials.apiKey]);
 
-  const update: Record<string, unknown> = {
-    last_validated_at: new Date().toISOString(),
-    metadata,
-    reauth_required_reason: null
-  };
-
-  if (connection.status !== 'revoked') {
-    update.status = 'active';
-  }
+  const update: Record<string, unknown> = { metadata };
 
   if (result?.displayName) {
     update.display_name = result.displayName;
@@ -857,140 +896,90 @@ async function runConnectionSyncJob(job: ConnectionJobRecord, connection: Connec
     update.external_account_email = result.externalAccountEmail ?? null;
   }
 
-  await supabase.schema('app').from('connections').update(update).eq('id', connection.id).eq('status', 'active');
+  return update;
 }
 
 export async function processDueConnectionJobs(input?: { limit?: number; workerId?: string }) {
   const supabase = createServiceRoleClient();
   const workerId = input?.workerId ?? randomUUID();
   const limit = normalizeLimit(input?.limit, 10);
-  const { data, error } = await supabase.schema('app').rpc('claim_connection_sync_jobs', {
+  const { data, error } = await supabase.schema('app').rpc('claim_connection_sync_jobs_v2', {
     p_worker_id: workerId,
     p_limit: limit
   });
   if (error) throw error;
 
   const jobs = (data ?? []) as ConnectionJobRecord[];
+  if (jobs.some((job) => !job.claim_id || !job.connection_generation)) {
+    throw new Error('Connection job fencing migration is required.');
+  }
   const processed: Array<{ id: string; status: ConnectionJobStatus; jobType: string; connectionId: string }> = [];
+  const fenced: string[] = [];
 
   for (const job of jobs) {
     const connection = await getConnectionById(job.connection_id);
-    if (!connection) {
-      await finalizeConnectionJob({
-        jobId: job.id,
-        status: 'failed',
-        lastError: 'Connection not found.',
-        workerId
-      });
-      processed.push({ id: job.id, status: 'failed', jobType: job.job_type, connectionId: job.connection_id });
+    if (!connection || connection.job_generation !== job.connection_generation) {
+      fenced.push(job.id);
       continue;
     }
 
+    let status: ConnectionJobStatus = 'succeeded';
+    let message: string | null = null;
+    let runAfter: string | null = null;
+    let retryDelaySeconds: number | null = null;
+    let connectionUpdate: Record<string, unknown> | null = null;
     try {
+      if (connection.status !== 'active') throw new Error('Connection is not active.');
       if (job.job_type === 'token_refresh') {
-        await forceRefreshConnection(job.connection_id, { scheduleNextJob: false });
+        if (!job.refresh_schedule_pending) {
+          await performRefresh(connection, { scheduleNextJob: false, force: true, job });
+        }
       } else {
-        await runConnectionSyncJob(job, connection);
+        connectionUpdate = await runConnectionSyncJob(job, connection);
       }
-
-      await finalizeConnectionJob({
-        jobId: job.id,
-        status: 'succeeded',
-        workerId
-      });
-
-      if (job.job_type === 'token_refresh') {
-        const refreshedConnection = await getConnectionById(job.connection_id);
-        if (refreshedConnection?.expires_at) {
-          await scheduleTokenRefreshJob(job.connection_id, refreshedConnection.expires_at, 'scheduled_after_refresh');
-        }
-      }
-
-      await logAuditEvent({
-        workspaceId: connection.workspace_id,
-        actorType: 'system',
-        action: 'connection_job.succeeded',
-        resourceType: 'connection_job',
-        resourceId: job.id,
-        metadata: {
-          ...withConnectionAuditMetadata(connection),
-          job_type: job.job_type,
-          attempts: job.attempts
-        }
-      });
-
-      processed.push({ id: job.id, status: 'succeeded', jobType: job.job_type, connectionId: job.connection_id });
     } catch (error) {
-      const latestConnection = await getConnectionById(job.connection_id);
-      const shouldRetry =
-        job.attempts < job.max_attempts &&
-        latestConnection?.status !== 'reauth_required' &&
-        latestConnection?.status !== 'revoked';
-      const message = error instanceof Error ? error.message : 'Connection job failed.';
-
-      if (shouldRetry) {
-        const retryDelaySeconds = calculateRetryDelaySeconds(job.job_type, job.attempts);
-        await finalizeConnectionJob({
-          jobId: job.id,
-          status: 'queued',
-          lastError: message,
-          workerId: null,
-          runAfter: new Date(Date.now() + retryDelaySeconds * 1000).toISOString()
-        });
-        await logAuditEvent({
-          workspaceId: connection.workspace_id,
-          actorType: 'system',
-          action: 'connection_job.retry_scheduled',
-          resourceType: 'connection_job',
-          resourceId: job.id,
-          status: 'error',
-          metadata: {
-            ...withConnectionAuditMetadata(connection),
-            job_type: job.job_type,
-            attempts: job.attempts,
-            retry_delay_seconds: retryDelaySeconds,
-            error: message
-          }
-        });
-        processed.push({ id: job.id, status: 'queued', jobType: job.job_type, connectionId: job.connection_id });
-        continue;
+      message = error instanceof Error ? error.message : 'Connection job failed.';
+      status = job.attempts < job.max_attempts ? 'queued' : 'dead_letter';
+      if (status === 'queued') {
+        retryDelaySeconds = calculateRetryDelaySeconds(job.job_type, job.attempts);
+        runAfter = new Date(Date.now() + retryDelaySeconds * 1000).toISOString();
       }
-
-      const finalStatus = latestConnection?.status === 'revoked' ? 'canceled' : 'dead_letter';
-      await finalizeConnectionJob({
-        jobId: job.id,
-        status: finalStatus,
-        lastError: message,
-        workerId
-      });
-      await logAuditEvent({
-        workspaceId: connection.workspace_id,
-        actorType: 'system',
-        action: finalStatus === 'dead_letter' ? 'connection_job.dead_lettered' : 'connection_job.failed',
-        resourceType: 'connection_job',
-        resourceId: job.id,
-        status: 'error',
-        metadata: {
-          ...withConnectionAuditMetadata(connection),
-          job_type: job.job_type,
-          attempts: job.attempts,
-          max_attempts: job.max_attempts,
-          error: message
-        }
-      });
-      processed.push({
-        id: job.id,
-        status: finalStatus,
-        jobType: job.job_type,
-        connectionId: job.connection_id
-      });
     }
+
+    // Completion, sync metadata, and refresh rescheduling share one DB fence.
+    // An RPC/ack error is not a provider failure and must not retry completed work.
+    const finalStatus = await finalizeConnectionJob({ job, status, lastError: message, runAfter, connectionUpdate });
+    if (!finalStatus) {
+      fenced.push(job.id);
+      continue;
+    }
+    const action = finalStatus === 'succeeded' ? 'connection_job.succeeded'
+      : finalStatus === 'queued' ? 'connection_job.retry_scheduled'
+        : finalStatus === 'dead_letter' ? 'connection_job.dead_lettered' : 'connection_job.failed';
+    await logAuditEvent({
+      workspaceId: connection.workspace_id,
+      actorType: 'system',
+      action,
+      resourceType: 'connection_job',
+      resourceId: job.id,
+      status: finalStatus === 'succeeded' ? 'success' : 'error',
+      metadata: {
+        ...withConnectionAuditMetadata(connection),
+        job_type: job.job_type,
+        attempts: job.attempts,
+        max_attempts: job.max_attempts,
+        ...(finalStatus === 'queued' ? { retry_delay_seconds: retryDelaySeconds } : {}),
+        ...(message && finalStatus !== 'succeeded' ? { error: message } : {})
+      }
+    });
+    processed.push({ id: job.id, status: finalStatus, jobType: job.job_type, connectionId: job.connection_id });
   }
 
   return {
     workerId,
     claimed: jobs.length,
     processed,
+    fenced,
     alerts: await dispatchPendingConnectionJobAlerts()
   };
 }
@@ -1367,7 +1356,7 @@ export async function revokeConnection(input: {
     .eq('workspace_id', input.workspaceId);
 
   if (error) throw error;
-  await cancelActiveConnectionJobs(input.connectionId, 'Connection revoked by workspace operator.');
+  // The generation trigger cancels jobs in the same transaction as revoke.
 
   await logAuditEvent({
     workspaceId: input.workspaceId,
